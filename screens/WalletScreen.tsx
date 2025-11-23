@@ -109,19 +109,6 @@ export default function WalletScreen({ navigation }: Props) {
               styles.actionButton,
               { backgroundColor: 'rgba(255,255,255,0.2)', opacity: pressed ? 0.7 : 1 }
             ]}
-            onPress={() => navigation.navigate('Withdrawal')}
-          >
-            <Feather name="arrow-up-circle" size={20} color="#FFFFFF" />
-            <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.sm }]}>
-              Withdraw
-            </ThemedText>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              { backgroundColor: 'rgba(255,255,255,0.2)', opacity: pressed ? 0.7 : 1 }
-            ]}
             onPress={() => {}}
           >
             <Feather name="arrow-down-circle" size={20} color="#FFFFFF" />

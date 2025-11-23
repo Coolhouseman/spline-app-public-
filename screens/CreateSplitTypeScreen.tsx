@@ -8,19 +8,28 @@ import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Friend } from '@/utils/storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<any, 'CreateSplitType'>;
 
-export default function CreateSplitTypeScreen({ navigation, route }: Props) {
+export default function CreateSplitTypeScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { selectedFriends } = route.params as { selectedFriends: Friend[] };
+  const insets = useSafeAreaInsets();
 
   const handleSelectType = (type: 'equal' | 'specified') => {
-    navigation.navigate('CreateSplitDetails', { selectedFriends, splitType: type });
+    navigation.navigate('CreateSplitSelectFriends', { splitType: type });
   };
 
   return (
     <ScreenScrollView contentContainerStyle={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.xl }]}>
+        <Pressable
+          style={({ pressed }) => [styles.closeButton, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => navigation.goBack()}
+        >
+          <Feather name="x" size={24} color={theme.text} />
+        </Pressable>
+      </View>
       <ThemedView style={styles.content}>
         <ThemedText style={[Typography.h1, { color: theme.text, textAlign: 'center', marginBottom: Spacing.md }]}>
           Choose Split Type
@@ -80,6 +89,16 @@ export default function CreateSplitTypeScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
+  },
+  header: {
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'flex-end',
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,

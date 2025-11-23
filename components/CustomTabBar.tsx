@@ -48,7 +48,7 @@ export function CustomTabBar({ state, descriptors, navigation }: any) {
                   navigation.navigate('HomeTab');
                   requestAnimationFrame(() => {
                     navigation.navigate('HomeTab', {
-                      screen: 'CreateSplitSelectFriends',
+                      screen: 'CreateSplitType',
                     } as never);
                   });
                 }}

@@ -11,11 +11,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<any, 'CreateSplitSelectFriends'>;
 
-export default function CreateSplitSelectFriendsScreen({ navigation }: Props) {
+export default function CreateSplitSelectFriendsScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const params = route.params as { splitType?: 'equal' | 'specified' } | undefined;
+  const splitType = params?.splitType;
   const [friends, setFriends] = useState<Friend[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    if (!splitType) {
+      navigation.goBack();
+    }
+  }, [splitType, navigation]);
 
   useEffect(() => {
     loadFriends();
@@ -37,8 +45,9 @@ export default function CreateSplitSelectFriendsScreen({ navigation }: Props) {
   };
 
   const handleContinue = () => {
+    if (!splitType) return;
     const selectedFriends = friends.filter(f => selected.has(f.uniqueId));
-    navigation.navigate('CreateSplitType', { selectedFriends });
+    navigation.navigate('CreateSplitDetails', { selectedFriends, splitType });
   };
 
   const renderFriend = ({ item }: { item: Friend }) => {

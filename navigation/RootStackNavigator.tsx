@@ -32,14 +32,14 @@ export default function RootStackNavigator() {
         options={{ headerShown: false, presentation: 'modal' }}
       />
       <Stack.Screen 
-        name="CreateSplitSelectFriends" 
-        component={CreateSplitSelectFriendsScreen}
+        name="CreateSplitType" 
+        component={CreateSplitTypeScreen}
         options={{ headerShown: false, presentation: 'modal' }}
       />
       <Stack.Screen 
-        name="CreateSplitType" 
-        component={CreateSplitTypeScreen}
-        options={{ title: 'Split Type' }}
+        name="CreateSplitSelectFriends" 
+        component={CreateSplitSelectFriendsScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen 
         name="CreateSplitDetails" 
