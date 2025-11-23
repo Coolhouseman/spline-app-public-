@@ -78,23 +78,24 @@ Preferred communication style: Simple, everyday language.
 - **Split Types**:
   - Equal split: Divide total equally among participants
   - Specified amounts: Custom amounts per participant
-- **Creation Flow**:
-  1. Select friends from connections
-  2. Choose split type
-  3. Enter event details and amounts
-  4. Optional receipt image upload
+- **Creation Flow** (Updated November 2025):
+  1. **Type Selection First**: User clicks centered '+' button to open modal with split type options
+  2. **Friend Selection**: Choose friends from connections based on selected split type
+  3. **Event Details**: Enter event name, total amount, and optional receipt image
+  4. **Review & Create**: Finalize split with selected participants
 - **Status Tracking**: Pending, paid, declined states per participant
 - **Settlement**: Wallet-based payment system
+- **Navigation**: Defensive guards prevent crashes from missing parameters during navigation
 
 ### Wallet System
 - **Balance Management**: Track available funds
-  - **Available Funds Card**: Prominent card on home screen showing wallet balance
-    - Quick action buttons for Add Funds and Withdraw
-    - Persisted via AsyncStorage through centralized storage service
-    - Proper layout padding to prevent overlap with tab bar
-- **Transaction History**: Deposits, withdrawals, payments, transfers
+  - Wallet balance displayed in dedicated Wallet tab
+  - **Add Funds**: Quick action button in Wallet screen for depositing money
+  - Persisted via AsyncStorage through centralized storage service
+  - **Withdraw functionality removed** per user request (November 2025)
+- **Transaction History**: Deposits, payments, transfers
 - **Bank Integration**: Mock Plaid-style bank connection (not implemented)
-- **Withdrawal Options**: Instant and standard withdrawal methods (UI only)
+- **Home Screen**: Available Funds card removed per user request (November 2025)
 
 ### Media Handling
 - **Image Picker**: expo-image-picker for profile pictures and receipts
