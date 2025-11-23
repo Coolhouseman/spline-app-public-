@@ -1,0 +1,110 @@
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import LoginScreen from '@/screens/LoginScreen';
+import SignupFirstNameScreen from '@/screens/SignupFirstNameScreen';
+import SignupLastNameScreen from '@/screens/SignupLastNameScreen';
+import SignupEmailScreen from '@/screens/SignupEmailScreen';
+import SignupPasswordScreen from '@/screens/SignupPasswordScreen';
+import SignupPhoneScreen from '@/screens/SignupPhoneScreen';
+import SignupDOBScreen from '@/screens/SignupDOBScreen';
+import SignupProfilePictureScreen from '@/screens/SignupProfilePictureScreen';
+import SignupBioScreen from '@/screens/SignupBioScreen';
+import SignupCompleteScreen from '@/screens/SignupCompleteScreen';
+import { useTheme } from '@/hooks/useTheme';
+import { getCommonScreenOptions } from './screenOptions';
+
+const Stack = createNativeStackNavigator();
+
+export default function AuthStackNavigator() {
+  const { theme, isDark } = useTheme();
+
+  return (
+    <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
+      <Stack.Screen 
+        name="Login" 
+        component={LoginScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="SignupFirstName" 
+        component={SignupFirstNameScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupLastName" 
+        component={SignupLastNameScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupEmail" 
+        component={SignupEmailScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupPassword" 
+        component={SignupPasswordScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupPhone" 
+        component={SignupPhoneScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupDOB" 
+        component={SignupDOBScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupProfilePicture" 
+        component={SignupProfilePictureScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupBio" 
+        component={SignupBioScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupComplete" 
+        component={SignupCompleteScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}

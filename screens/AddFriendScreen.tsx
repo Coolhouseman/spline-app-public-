@@ -1,0 +1,138 @@
+import React, { useState } from 'react';
+import { View, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
+import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
+import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { storageService } from '@/utils/storage';
+
+type Props = NativeStackScreenProps<any, 'AddFriend'>;
+
+export default function AddFriendScreen({ navigation }: Props) {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const [uniqueId, setUniqueId] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAddFriend = async () => {
+    if (uniqueId.length < 5 || uniqueId.length > 10) {
+      Alert.alert('Invalid ID', 'Unique ID must be between 5-10 digits');
+      return;
+    }
+
+    if (uniqueId === user?.uniqueId) {
+      Alert.alert('Invalid ID', 'You cannot add yourself as a friend');
+      return;
+    }
+
+    setLoading(true);
+
+    const friends = await storageService.getFriends();
+    const alreadyAdded = friends.find(f => f.uniqueId === uniqueId);
+    
+    if (alreadyAdded) {
+      Alert.alert('Already friends', `You are already friends with ${alreadyAdded.firstName} ${alreadyAdded.lastName}`);
+      setLoading(false);
+      return;
+    }
+
+    const newFriend = {
+      uniqueId,
+      firstName: 'Friend',
+      lastName: uniqueId.substring(0, 3),
+      profilePicture: undefined,
+    };
+
+    await storageService.addFriend(newFriend);
+    setLoading(false);
+
+    Alert.alert(
+      'Friend added!',
+      `${newFriend.firstName} ${newFriend.lastName} has been added to your friends list`,
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    );
+  };
+
+  const isValidId = /^\d{5,10}$/.test(uniqueId);
+
+  return (
+    <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
+      <ThemedView style={styles.content}>
+        <ThemedText style={[Typography.h1, { color: theme.text, marginBottom: Spacing.md }]}>
+          Add Friend
+        </ThemedText>
+        <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.xl }]}>
+          Enter your friend's unique ID to add them
+        </ThemedText>
+
+        <TextInput
+          style={[styles.input, { 
+            backgroundColor: theme.surface, 
+            color: theme.text, 
+            borderColor: theme.border 
+          }]}
+          placeholder="Enter 5-10 digit ID"
+          placeholderTextColor={theme.textSecondary}
+          value={uniqueId}
+          onChangeText={setUniqueId}
+          keyboardType="number-pad"
+          autoFocus
+          maxLength={10}
+        />
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.sm }]}>
+          Only numeric IDs between 5-10 digits are valid
+        </ThemedText>
+      </ThemedView>
+
+      <View style={styles.footer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.button,
+            { 
+              backgroundColor: theme.primary, 
+              opacity: pressed ? 0.7 : (!isValidId || loading ? 0.4 : 1)
+            }
+          ]}
+          onPress={handleAddFriend}
+          disabled={!isValidId || loading}
+        >
+          <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
+            {loading ? 'Adding...' : 'Add Friend'}
+          </ThemedText>
+        </Pressable>
+      </View>
+    </ScreenKeyboardAwareScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexGrow: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  input: {
+    height: Spacing.inputHeight,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    fontSize: 16,
+  },
+  footer: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+  },
+  button: {
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
