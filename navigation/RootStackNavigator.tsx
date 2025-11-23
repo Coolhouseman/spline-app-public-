@@ -1,15 +1,27 @@
 import React from 'react';
+import { View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
 import MainHomeScreen from '@/screens/MainHomeScreen';
 import EventDetailScreen from '@/screens/EventDetailScreen';
 import NotificationsScreen from '@/screens/NotificationsScreen';
 import CreateSplitSelectFriendsScreen from '@/screens/CreateSplitSelectFriendsScreen';
 import CreateSplitTypeScreen from '@/screens/CreateSplitTypeScreen';
 import CreateSplitDetailsScreen from '@/screens/CreateSplitDetailsScreen';
+import { FloatingActionButton } from '@/components/FloatingActionButton';
 import { useTheme } from '@/hooks/useTheme';
 import { getCommonScreenOptions } from './screenOptions';
 
 const Stack = createNativeStackNavigator();
+
+function HomeWrapper(props: any) {
+  return (
+    <View style={{ flex: 1 }}>
+      <MainHomeScreen {...props} />
+      <FloatingActionButton navigation={props.navigation} />
+    </View>
+  );
+}
 
 export default function RootStackNavigator() {
   const { theme, isDark } = useTheme();
@@ -18,7 +30,7 @@ export default function RootStackNavigator() {
     <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
       <Stack.Screen 
         name="MainHome" 
-        component={MainHomeScreen}
+        component={HomeWrapper}
         options={{ headerShown: false }}
       />
       <Stack.Screen 

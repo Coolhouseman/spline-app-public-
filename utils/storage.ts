@@ -91,6 +91,14 @@ export const storageService = {
     await AsyncStorage.removeItem(KEYS.USER);
   },
 
+  async updateUser(userId: string, updates: Partial<User>): Promise<void> {
+    const user = await this.getUser();
+    if (user && user.id === userId) {
+      const updatedUser = { ...user, ...updates };
+      await this.saveUser(updatedUser);
+    }
+  },
+
   async saveFriends(friends: Friend[]): Promise<void> {
     await AsyncStorage.setItem(KEYS.FRIENDS, JSON.stringify(friends));
   },

@@ -1,314 +1,178 @@
-# Split Payment App - Design Guidelines
+# Professional Split Payment App - Design Guidelines
 
 ## Authentication Architecture
 
-**Auth Required**: Yes - Multi-user social payment app with backend data sync
+**Auth Required**: Yes - Multi-user financial app with secure backend sync
 
 **Implementation**:
-- Custom email/password signup (per user's Typeform-style requirement)
-- Multi-step onboarding wizard collecting: first name, last name, email, password, phone number, date of birth (native date picker), profile picture upload, user bio
-- Auto-generate 5-10 digit numeric unique ID upon account creation (display to user after signup)
-- Include privacy policy and terms of service links on signup screen
-- Mock Blinkpay bank connection flow for prototype
-- Account settings must include logout and delete account options
+- Email/password signup with professional multi-step wizard
+- Collect: first name, last name, email, password (with strength requirements), phone number (SMS verification), date of birth, profile picture
+- Generate secure 6-digit numeric user PIN for friend connections
+- Prominent privacy policy and terms of service links
+- Mock bank connection flow (Plaid-style) for prototype
+- Two-factor authentication option in settings
+- Account settings include logout and delete account with security confirmations
 
 ## Navigation Structure
 
 **Root Navigation**: Tab Bar (4 tabs with floating action button)
 
-Tabs:
-1. **Home** - Dashboard of split activities
-2. **Friends** - Friend management
-3. **[Floating Action Button]** - Create Split Event (positioned above tab bar center)
-4. **Wallet** - Balance and withdrawals
-5. **Profile** - User account and settings
-
-**Navigation Stacks**:
-- Home Stack: Home → Event Detail
-- Friends Stack: Friends List → Add Friend
-- Create Stack: Select Friends → Split Type → Event Details → Receipt Upload (if specified)
-- Wallet Stack: Wallet → Withdrawal Options → Bank Connection
-- Profile Stack: Profile → Settings → Account Management
-
-**Modal Screens**:
-- Notification panel (slide-in from top)
-- Image zoom view (receipt enlargement)
-- Confirmation alerts (payment acceptance, withdrawal confirmation)
+**Tabs**:
+1. Home - Payment activity dashboard
+2. Friends - Connection management
+3. [FAB] - New Split (positioned center above tab bar)
+4. Wallet - Balance and transfers
+5. Profile - Account and settings
 
 ## Screen Specifications
 
-### 1. Onboarding Flow (Stack-Only, No Tab Bar)
+### Onboarding Wizard
+**Layout**: Professional multi-step form
+- Clean header with "Create Account" title and step indicator (1/6)
+- Each step in a white card with subtle shadow
+- Blue progress bar at top
+- Primary action button below card
+- Back button in header for steps 2+
 
-**Typeform-Style Signup Screens** (one field per screen):
-- Each screen features one primary input centered vertically
-- Transparent header with progress indicator (step X of 8)
-- "Continue" button fixed at bottom (above safe area)
-- Back button in top-left corner (except first screen)
-- Smooth transitions between steps
+**Steps**: Name → Email → Password → Phone (with SMS code) → Date of Birth → Profile Picture
 
-**Safe Area Insets**: 
-- Top: insets.top + Spacing.xl
-- Bottom: insets.bottom + Spacing.xl
+**Completion**: Display user PIN prominently with "Share this PIN to connect with friends" explanation
 
-**Screens in order**:
-1. First Name
-2. Last Name  
-3. Email Address
-4. Password (with strength indicator)
-5. Phone Number (with country code picker)
-6. Date of Birth (native iOS roller/Android date picker)
-7. Profile Picture Upload (camera or gallery options)
-8. User Bio (multiline text input, 200 char limit)
-
-**Completion Screen**:
-- Display generated unique ID prominently
-- "Copy ID" button
-- Explanation: "Share this ID with friends to connect"
-- "Get Started" button navigates to main app
-
-### 2. Home Screen
-
-**Purpose**: Dashboard showing all split activities
-
+### Home Screen
 **Layout**:
-- Transparent header with "Split" title centered
-- Notification bell icon in top-right (with badge count)
-- Search bar below header (filter by event name)
-- Segmented control: "In Progress" | "Completed"
-- ScrollView with activity cards
+- Default navigation header with "Activity" title
+- Notification bell icon (header-right) with red badge
+- Search bar below header
+- Segmented control: Active | Completed
+- ScrollView with professional payment cards
 
-**Activity Card Design**:
-- Event name (bold, 18pt)
-- Initiator profile picture (small circular avatar)
-- Total amount and your share
-- Progress bar (for in-progress only)
-- Participant count indicator
-- Timestamp
-- Card has subtle shadow, rounded corners (12px)
+**Payment Card**:
+- White background, 16px border radius, subtle shadow
+- Event name (18pt semibold)
+- Initiator avatar (40px) with name
+- Amount display (bold, primary blue)
+- Progress indicator (if active)
+- Participant count badge
+- Timestamp (12pt, gray)
+- Tap reveals detail screen
 
-**Safe Area Insets**: 
-- Top: headerHeight + Spacing.xl
-- Bottom: tabBarHeight + Spacing.xl
+**Safe Area Insets**: Top: headerHeight + Spacing.xl, Bottom: tabBarHeight + Spacing.xl
 
-### 3. Event Detail Screen
-
-**Purpose**: View all participants and payment statuses
-
+### Event Detail Screen
 **Layout**:
-- Custom header with event name as title
-- "Initiator" badge clearly displayed below event name
-- Total amount and progress summary at top
-- Receipt image (if specified split) - tappable to enlarge
-- Participant list (scrollable)
-- Each participant shows: profile picture (medium), full name, status badge
+- Standard header with event name
+- Summary card: Total amount, your share, initiator badge
+- Receipt image preview (if applicable) - tap to enlarge modal
+- Participant list with status badges
+- Fixed "Request Payment" button (if initiator) at bottom
 
-**Status Badge Colors**:
-- Paid: Green background, white text
-- Pending: Orange background, white text
-- Declined: Red background, white text
+**Status Badges**: Paid (green), Pending (blue), Declined (red) - all with rounded corners and clear typography
 
-**Safe Area Insets**: 
-- Top: Spacing.xl (non-transparent header)
-- Bottom: tabBarHeight + Spacing.xl
+**Safe Area Insets**: Top: Spacing.xl, Bottom: tabBarHeight + Spacing.xl
 
-### 4. Friends Screen
-
-**Purpose**: Manage friend connections
-
+### Friends Screen
 **Layout**:
-- Default navigation header with "Friends" title
-- Search bar (search by name or ID)
-- "Add Friend" button in header-right (plus icon)
-- FlatList of friend cards
-- Empty state: "Add friends using their unique ID"
+- Header with "Friends" title and "Add" button (header-right)
+- Search bar (search by name or PIN)
+- List of friend cards with avatars, names, PINs
+- Empty state: Professional illustration with "Connect friends using their 6-digit PIN"
 
-**Friend Card**:
-- Profile picture (medium, circular)
-- Full name
-- Unique ID displayed below name
-- Subtle divider between cards
+**Safe Area Insets**: Top: Spacing.xl, Bottom: tabBarHeight + Spacing.xl
 
-**Add Friend Modal**:
-- Text input for numeric ID
-- "Add Friend" button (disabled until valid ID entered)
-- Validation: 5-10 digits only
+### Create Split Flow
+**Select Friends**: Multi-select list with checkboxes, search, selected count, Continue in header
 
-**Safe Area Insets**: 
-- Top: Spacing.xl (standard header)
-- Bottom: tabBarHeight + Spacing.xl
+**Split Type**: Two professional option cards with icons:
+- Equal Split: "Divide evenly among participants"
+- Custom: "Specify individual amounts"
 
-### 5. Create Split Event Flow
+**Equal Split Form**: Event name, total amount (large currency input), auto-calculated per-person display, Create button below
 
-**Screen 1: Select Friends**
-- Multi-select list with checkboxes
-- Friend search at top
-- "Continue" button in header-right (enabled when ≥1 selected)
-- Selected count indicator
+**Custom Split Form**: Event name, receipt upload option, amount inputs per participant, Create button below
 
-**Screen 2: Split Type**
-- Two large option cards: "Equal Split" | "Specified"
-- Icon + description for each
-- Tapping card proceeds to next step
+**Safe Area Insets**: Top: Spacing.xl, Bottom: insets.bottom + Spacing.xl
 
-**Screen 3a: Equal Split**
-- Event name input (required)
-- Total amount input (currency formatted)
-- Auto-calculated share displayed per person
-- "Create Event" button below form
-
-**Screen 3b: Specified Split**
-- Event name input (required)
-- "Upload Receipt" photo picker
-- Receipt preview (tappable to zoom)
-- "What is your share?" amount input
-- Remaining amount display
-- "Create Event" button below form
-
-**Safe Area Insets**: 
-- Top: Spacing.xl (standard headers)
-- Bottom: insets.bottom + Spacing.xl (no tab bar in flow)
-
-### 6. Notification Panel
-
-**Layout**:
-- Slide-down modal from top
-- Semi-transparent backdrop
-- White panel with rounded bottom corners
-- List of pending invitations
-- Each notification shows: event name, initiator name, amount
-- Two action buttons: "Accept" (primary) | "Decline" (secondary)
-
-### 7. Wallet Screen
-
-**Purpose**: View balance and withdraw funds
-
+### Wallet Screen
 **Layout**:
 - Transparent header with "Wallet" title
-- Large balance display at top (prominent typography)
-- "Transfer" and "Withdraw" buttons side-by-side
-- Transaction history list below
-- Each transaction: icon, description, amount (+ or -), date
+- Large balance card (prominent typography, primary blue)
+- Two action buttons: Withdraw | Add Funds
+- Transaction history list below (icons, descriptions, amounts with +/-)
 
-**Withdrawal Modal**:
-- Two option cards: "Instant" | "Standard"
-- Instant: "2% fee • Arrives in minutes"
-- Standard: "Free • Arrives in 3-4 days"
-- Amount input field
-- "Connect Bank Account" button (if not connected)
-- "Withdraw" button (if bank connected)
+**Withdrawal Flow**: Modal with bank selection, amount input, processing time display, security confirmation
 
-**Safe Area Insets**: 
-- Top: headerHeight + Spacing.xl
-- Bottom: tabBarHeight + Spacing.xl
+**Safe Area Insets**: Top: headerHeight + Spacing.xl, Bottom: tabBarHeight + Spacing.xl
 
-### 8. Profile Screen
-
+### Profile Screen
 **Layout**:
-- Profile header: large avatar, name, unique ID (with copy button)
-- Edit profile button
-- Settings list: Account, Notifications, Privacy, Help
-- Logout button at bottom (destructive style)
+- Profile header: Large avatar (120px), name, PIN with copy button, verification badge
+- Settings sections: Account, Security, Privacy, Support
+- Logout button at bottom (red, destructive style)
 
-**Safe Area Insets**: 
-- Top: Spacing.xl (standard header)
-- Bottom: tabBarHeight + Spacing.xl
+**Safe Area Insets**: Top: Spacing.xl, Bottom: tabBarHeight + Spacing.xl
 
 ## Design System
 
-### Color Palette
-- **Primary**: #00A86B (Green - payment/money theme)
-- **Secondary**: #5B47E5 (Purple - accents)
-- **Success**: #10B981 (Paid status)
-- **Warning**: #F59E0B (Pending status)
-- **Danger**: #EF4444 (Declined status)
-- **Background**: #F9FAFB (Light gray)
-- **Surface**: #FFFFFF (Cards, modals)
-- **Text Primary**: #111827
-- **Text Secondary**: #6B7280
-- **Border**: #E5E7EB
+### Color Palette (Professional & Trustworthy)
+- **Primary**: #2563EB (Trust Blue)
+- **Primary Dark**: #1E40AF (Dark Blue)
+- **Success**: #10B981 (Green)
+- **Warning**: #F59E0B (Orange)
+- **Danger**: #EF4444 (Red)
+- **Background**: #F8FAFC (Light Blue-Gray)
+- **Surface**: #FFFFFF
+- **Text Primary**: #0F172A (Dark Slate)
+- **Text Secondary**: #64748B (Medium Slate)
+- **Border**: #E2E8F0
 
 ### Typography
-- **Headers**: SF Pro Display Bold (iOS), Roboto Bold (Android)
+- **Headers**: SF Pro Display Semibold (iOS), Roboto Medium (Android)
 - **Body**: SF Pro Text Regular (iOS), Roboto Regular (Android)
-- **Sizes**: 
-  - Hero: 32pt (Balance display)
-  - H1: 24pt (Screen titles)
-  - H2: 18pt (Card titles)
-  - Body: 16pt (Standard text)
-  - Caption: 14pt (Secondary info)
-  - Small: 12pt (Timestamps, hints)
-
-### Spacing Scale
-- xs: 4px
-- sm: 8px
-- md: 12px
-- lg: 16px
-- xl: 24px
-- 2xl: 32px
+- **Amounts**: SF Pro Display Bold (iOS), Roboto Bold (Android)
+- **Sizes**: Hero 36pt, H1 24pt, H2 18pt, Body 16pt, Caption 14pt, Small 12pt
 
 ### Component Specifications
 
 **Buttons**:
-- Primary: Green background, white text, rounded 8px, height 48px
-- Secondary: White background, green border, green text
-- All buttons have active state opacity 0.7
-- Disabled state opacity 0.4
+- Primary: Blue background (#2563EB), white text, 10px radius, 52px height
+- Secondary: White background, blue border, blue text
+- Press state: opacity 0.8
+- Disabled: opacity 0.5
 
 **Cards**:
-- Background: white
-- Border radius: 12px
-- Padding: 16px
-- Shadow: shadowOffset {width: 0, height: 2}, shadowOpacity: 0.10, shadowRadius: 4
+- White background, 16px border radius, padding 20px
+- Shadow: shadowOffset {width: 0, height: 2}, shadowOpacity: 0.08, shadowRadius: 8
 
 **Floating Action Button**:
-- Circular, 56px diameter
-- Primary green color
-- White plus icon
+- 60px diameter, primary blue, white plus icon
 - Positioned above tab bar center
 - Shadow: shadowOffset {width: 0, height: 2}, shadowOpacity: 0.10, shadowRadius: 2
 
-**Progress Bar**:
-- Height: 8px
-- Background: #E5E7EB
-- Fill: Primary green
-- Rounded ends
-- Animated transitions
-
 **Input Fields**:
-- Height: 48px
-- Border: 1px solid #E5E7EB
-- Rounded: 8px
-- Focus state: Primary green border
-- Padding: 12px horizontal
+- 52px height, 10px border radius, 1px border (#E2E8F0)
+- Focus: 2px blue border
+- Currency inputs: Large semibold font, right-aligned
 
-**Avatar Sizes**:
-- Small: 32px
-- Medium: 48px
-- Large: 80px
-- Profile Header: 120px
+**Avatars**: Small 32px, Medium 48px, Large 72px, Profile 120px - all circular with subtle border
 
 ### Required Assets
-1. **Default Profile Avatars** (8-10 variants):
-   - Geometric abstract patterns in app color scheme
-   - Minimalist money/finance themed icons
-   - Gender-neutral designs
-2. **Empty State Illustrations**:
-   - No friends yet illustration
-   - No transactions illustration
-   - No pending splits illustration
+**Default Avatars** (8 variants): Professional geometric patterns in blue gradient, abstract shapes, minimalist finance icons (dollar sign variations, bank symbols) - all conveying trust and professionalism
+
+**Empty State Illustrations**: Professional line art for no friends, no transactions, no splits - blue color scheme, simple and clean
 
 ### Interaction Design
-- All touchable elements have 0.7 opacity on press
-- Swipe gestures: Swipe notification cards to dismiss
-- Pull-to-refresh on Home and Wallet screens
-- Haptic feedback on payment acceptance/decline
-- Loading states for all async operations
-- Success animations after completing payment or withdrawal
+- All touches: 0.8 opacity feedback
+- Pull-to-refresh on Home and Wallet
+- Haptic feedback on payment confirmations
+- Smooth slide-in modals for sensitive actions
+- Loading states with skeleton screens
+- Success checkmark animations
+- Secure action confirmations with face/fingerprint biometrics where applicable
 
 ### Accessibility
-- Minimum touch target: 44x44px
-- Color contrast ratio: 4.5:1 minimum
+- 44x44px minimum touch targets
+- 4.5:1 color contrast minimum
 - Dynamic type support
-- VoiceOver labels on all interactive elements
-- Status announcements for payment updates
-- Alternative text for all icons
+- Complete VoiceOver labels
+- Security announcements for sensitive actions
+- Error states with clear messaging

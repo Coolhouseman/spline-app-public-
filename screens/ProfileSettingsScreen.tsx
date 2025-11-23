@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -9,17 +10,51 @@ import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { storageService } from '@/utils/storage';
 
 type Props = NativeStackScreenProps<any, 'ProfileSettings'>;
 
 export default function ProfileSettingsScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
+  const [uploading, setUploading] = useState(false);
 
   const copyToClipboard = async () => {
     if (user?.uniqueId) {
       await Clipboard.setStringAsync(user.uniqueId);
       Alert.alert('Copied!', 'Your unique ID has been copied');
+    }
+  };
+
+  const handleEditProfilePicture = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Not Available', 'Profile picture upload is not available on web');
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow access to your photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setUploading(true);
+      try {
+        await updateUser({ profilePicture: result.assets[0].uri });
+        Alert.alert('Success', 'Profile picture updated');
+      } catch (error) {
+        Alert.alert('Error', 'Failed to update profile picture');
+      } finally {
+        setUploading(false);
+      }
     }
   };
 
@@ -46,13 +81,22 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
     <ScreenScrollView contentContainerStyle={styles.container}>
       <ThemedView style={styles.content}>
         <View style={styles.profileHeader}>
-          <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-            {user.profilePicture ? (
-              <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />
-            ) : (
-              <Feather name="user" size={48} color={theme.textSecondary} />
-            )}
-          </View>
+          <Pressable 
+            style={[styles.avatarContainer]}
+            onPress={handleEditProfilePicture}
+            disabled={uploading}
+          >
+            <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+              {user.profilePicture ? (
+                <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />
+              ) : (
+                <Feather name="user" size={48} color={theme.textSecondary} />
+              )}
+            </View>
+            <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
+              <Feather name={uploading ? "loader" : "camera"} size={16} color="#FFFFFF" />
+            </View>
+          </Pressable>
 
           <ThemedText style={[Typography.h1, { color: theme.text, marginTop: Spacing.lg }]}>
             {user.firstName} {user.lastName}
@@ -143,6 +187,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.xl,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
   avatar: {
     width: Spacing.avatarXLarge,
     height: Spacing.avatarXLarge,
@@ -154,6 +201,18 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   idContainer: {
     flexDirection: 'row',

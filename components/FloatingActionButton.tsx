@@ -6,12 +6,16 @@ import { Spacing } from '@/constants/theme';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
 interface FloatingActionButtonProps {
-  onPress: () => void;
+  navigation: any;
 }
 
-export function FloatingActionButton({ onPress }: FloatingActionButtonProps) {
+export function FloatingActionButton({ navigation }: FloatingActionButtonProps) {
   const { theme } = useTheme();
   const tabBarHeight = useSafeBottomTabBarHeight();
+
+  const handlePress = () => {
+    navigation.navigate('CreateSplitSelectFriends');
+  };
 
   return (
     <Pressable
@@ -24,7 +28,7 @@ export function FloatingActionButton({ onPress }: FloatingActionButtonProps) {
           transform: [{ scale: pressed ? 0.95 : 1 }],
         }
       ]}
-      onPress={onPress}
+      onPress={handlePress}
     >
       <Feather name="plus" size={28} color="#FFFFFF" />
     </Pressable>

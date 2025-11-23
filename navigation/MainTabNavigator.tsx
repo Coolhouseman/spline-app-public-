@@ -1,18 +1,16 @@
 import React from "react";
+import { View, Platform, StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import HomeStackNavigator from "@/navigation/HomeStackNavigator";
+import RootStackNavigator from "@/navigation/RootStackNavigator";
 import FriendsStackNavigator from "@/navigation/FriendsStackNavigator";
 import WalletStackNavigator from "@/navigation/WalletStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { useTheme } from "@/hooks/useTheme";
 
 export type MainTabParamList = {
-  HomeTab: undefined;
+  HomeTab: { screen?: string } | undefined;
   FriendsTab: undefined;
   CreateTab: undefined;
   WalletTab: undefined;
@@ -23,11 +21,9 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
   const { theme, isDark } = useTheme();
-  const navigation = useNavigation<any>();
 
   return (
-    <View style={{ flex: 1 }}>
-      <Tab.Navigator
+    <Tab.Navigator
         initialRouteName="HomeTab"
         screenOptions={{
           tabBarActiveTintColor: theme.tabIconSelected,
@@ -54,7 +50,7 @@ export default function MainTabNavigator() {
       >
         <Tab.Screen
           name="HomeTab"
-          component={HomeStackNavigator}
+          component={RootStackNavigator}
           options={{
             title: "Home",
             tabBarIcon: ({ color, size }) => (
@@ -107,12 +103,5 @@ export default function MainTabNavigator() {
           }}
         />
       </Tab.Navigator>
-
-      <FloatingActionButton
-        onPress={() => navigation.navigate('HomeTab', {
-          screen: 'CreateSplitSelectFriends'
-        })}
-      />
-    </View>
   );
 }

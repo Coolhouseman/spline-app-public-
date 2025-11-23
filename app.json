@@ -4,7 +4,7 @@
     "slug": "split-payment-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon.png",
     "scheme": "splitpaymentapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,8 +15,8 @@
     "android": {
       "package": "com.splitpaymentapp.split",
       "adaptiveIcon": {
-        "backgroundColor": "#00A86B",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#2563EB",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
