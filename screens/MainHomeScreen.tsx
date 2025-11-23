@@ -22,12 +22,15 @@ export default function MainHomeScreen({ navigation }: Props) {
   const [events, setEvents] = useState<SplitEvent[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState<number>(0);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   const loadData = useCallback(async () => {
     const allEvents = await storageService.getEvents();
     setEvents(allEvents);
     const notifs = await storageService.getNotifications();
     setNotifications(notifs.length);
+    const wallet = await storageService.getWallet();
+    setWalletBalance(wallet.balance);
   }, []);
 
   useEffect(() => {
@@ -138,6 +141,51 @@ export default function MainHomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
+      <View style={[styles.walletCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.walletHeader}>
+          <View style={[styles.walletIconContainer, { backgroundColor: theme.primary + '20' }]}>
+            <Feather name="dollar-sign" size={20} color={theme.primary} />
+          </View>
+          <View style={styles.walletInfo}>
+            <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+              Available Funds
+            </ThemedText>
+            <ThemedText style={[Typography.h1, { color: theme.text, fontSize: 32 }]}>
+              ${walletBalance.toFixed(2)}
+            </ThemedText>
+          </View>
+        </View>
+        <View style={styles.walletActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.walletButton,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 }
+            ]}
+            onPress={() => navigation.navigate('WalletTab')}
+          >
+            <Feather name="plus" size={18} color="#FFFFFF" />
+            <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.xs }]}>
+              Add Funds
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.walletButton,
+              { 
+                backgroundColor: theme.backgroundSecondary,
+                opacity: pressed ? 0.8 : 1 
+              }
+            ]}
+            onPress={() => navigation.navigate('WalletTab')}
+          >
+            <Feather name="arrow-up-right" size={18} color={theme.text} />
+            <ThemedText style={[Typography.body, { color: theme.text, marginLeft: Spacing.xs }]}>
+              Withdraw
+            </ThemedText>
+          </Pressable>
+        </View>
+      </View>
+
       <View style={[styles.segmentedControl, { backgroundColor: theme.backgroundSecondary }]}>
         <Pressable
           style={[
@@ -210,6 +258,42 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: Spacing.sm,
+  },
+  walletCard: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+  },
+  walletHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  walletIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  walletInfo: {
+    flex: 1,
+  },
+  walletActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  walletButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xs,
   },
   segmentedControl: {
     flexDirection: 'row',

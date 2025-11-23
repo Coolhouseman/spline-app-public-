@@ -1,12 +1,12 @@
 import React from "react";
-import { View, Platform, StyleSheet } from "react-native";
+import { View } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import RootStackNavigator from "@/navigation/RootStackNavigator";
 import FriendsStackNavigator from "@/navigation/FriendsStackNavigator";
 import WalletStackNavigator from "@/navigation/WalletStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
+import { CustomTabBar } from "@/components/CustomTabBar";
 import { useTheme } from "@/hooks/useTheme";
 
 export type MainTabParamList = {
@@ -25,26 +25,8 @@ export default function MainTabNavigator() {
   return (
     <Tab.Navigator
         initialRouteName="HomeTab"
+        tabBar={(props) => <CustomTabBar {...props} />}
         screenOptions={{
-          tabBarActiveTintColor: theme.tabIconSelected,
-          tabBarInactiveTintColor: theme.tabIconDefault,
-          tabBarStyle: {
-            position: "absolute",
-            backgroundColor: Platform.select({
-              ios: "transparent",
-              android: theme.backgroundRoot,
-            }),
-            borderTopWidth: 0,
-            elevation: 0,
-          },
-          tabBarBackground: () =>
-            Platform.OS === "ios" ? (
-              <BlurView
-                intensity={100}
-                tint={isDark ? "dark" : "light"}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null,
           headerShown: false,
         }}
       >
@@ -74,7 +56,6 @@ export default function MainTabNavigator() {
           options={{
             title: "",
             tabBarIcon: () => null,
-            tabBarButton: () => null,
           }}
           listeners={{
             tabPress: (e) => {
