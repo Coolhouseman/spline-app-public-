@@ -20,12 +20,16 @@ Preferred communication style: Simple, everyday language.
 - **React Navigation**: Stack and tab-based navigation
   - Bottom tab navigator with 4 main tabs (Home, Friends, Wallet, Profile)
   - Custom tab bar component with blur effects (iOS) and fallback styling (Android/Web)
+  - **Centered Split Button**: Custom tab bar with centered + button for creating splits
+    - Two-step navigation pattern: First navigate to HomeTab, then use requestAnimationFrame to open modal
+    - Works reliably from any tab without race conditions
+    - Includes haptic feedback with error handling
   - Stack navigators nested within each tab for screen hierarchies
   - Modal presentations for certain flows (notifications, split creation)
 - **Screen Organization**:
   - Auth flow: Multi-step signup wizard (8 steps) and login
   - Main app: Tab-based navigation with nested stacks
-  - Floating Action Button (FAB) for quick split creation
+  - Split creation via centered tab bar button (no floating FAB)
 
 ### UI/UX Architecture
 - **Theming System**: 
@@ -84,6 +88,10 @@ Preferred communication style: Simple, everyday language.
 
 ### Wallet System
 - **Balance Management**: Track available funds
+  - **Available Funds Card**: Prominent card on home screen showing wallet balance
+    - Quick action buttons for Add Funds and Withdraw
+    - Persisted via AsyncStorage through centralized storage service
+    - Proper layout padding to prevent overlap with tab bar
 - **Transaction History**: Deposits, withdrawals, payments, transfers
 - **Bank Integration**: Mock Plaid-style bank connection (not implemented)
 - **Withdrawal Options**: Instant and standard withdrawal methods (UI only)
