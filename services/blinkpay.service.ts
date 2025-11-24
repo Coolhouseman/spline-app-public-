@@ -132,7 +132,7 @@ export class BlinkPayService {
     };
   }
 
-  static async revokeConsent(consentId: string): Promise<void> {
+  static async revokeEnduringConsent(consentId: string): Promise<void> {
     const client = this.getClient();
     await client.revokeEnduringConsent(consentId);
   }
