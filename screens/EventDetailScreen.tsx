@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
+import { WalletService } from '@/services/wallet.service';
+import { BlinkPayService } from '@/services/blinkpay.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
@@ -91,15 +94,54 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     if (!event || !user) return;
 
     try {
-      await SplitsService.paySplit(user.id, eventId);
-      Alert.alert('Payment Successful', 'Your payment has been processed');
-      loadEvent();
+      const wallet = await WalletService.getWallet(user.id);
+      
+      if (!wallet.bank_connected || !wallet.blinkpay_consent_id) {
+        Alert.alert(
+          'Bank Not Connected',
+          'You need to connect your bank account to make payments. Would you like to connect now?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Connect Bank',
+              onPress: async () => {
+                navigation.navigate('Wallet');
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      const myParticipant = event.participants?.find((p: any) => p.user_id === user.id);
+      if (!myParticipant) return;
+
+      const paymentAmount = parseFloat(myParticipant.amount);
+      
+      const payment = await BlinkPayService.createPayment(
+        wallet.blinkpay_consent_id,
+        paymentAmount.toFixed(2),
+        event.name.substring(0, 12),
+        eventId.substring(0, 12)
+      );
+
+      const paymentResult = await BlinkPayService.awaitSuccessfulPayment(payment.paymentId);
+      
+      if (paymentResult.status === 'completed' || paymentResult.status === 'AcceptedSettlementCompleted') {
+        await SplitsService.paySplit(user.id, eventId);
+        Alert.alert('Payment Successful', 'Your payment has been processed');
+        loadEvent();
+      } else {
+        throw new Error('Payment failed or was cancelled');
+      }
     } catch (error: any) {
       console.error('Payment failed:', error);
       if (error.message === 'Insufficient balance') {
         Alert.alert('Insufficient Funds', 'Please add funds to your wallet to make this payment');
+      } else if (error.message.includes('Bank Not Connected')) {
+        Alert.alert('Error', error.message);
       } else {
-        Alert.alert('Error', 'Payment failed. Please try again.');
+        Alert.alert('Error', error.message || 'Payment failed. Please try again.');
       }
     }
   };

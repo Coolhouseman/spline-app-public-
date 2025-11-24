@@ -58,15 +58,20 @@ Preferred communication style: Simple, everyday language.
 - **Security**: PIN-based friend connections, password strength validation
 
 ### Data Management
-- **Local Storage Service**: Centralized storage utility (`utils/storage.ts`)
+- **Backend**: Supabase PostgreSQL database for real-time data sync
+- **Service Layer**: Centralized service classes for API interactions:
+  - `AuthService`: User authentication and registration
+  - `SplitsService`: Split event creation and management
+  - `WalletService`: Balance, transactions, bank connections
+  - `BlinkPayService`: Payment processing integration
 - **Data Models**:
-  - Users: Full profile information
+  - Users: Full profile information with Supabase Auth integration
   - Friends: Connection list with unique IDs
   - Split Events: Bill details, participants, amounts, status tracking
-  - Wallet: Balance, transactions, bank connection status
+  - Wallet: Balance, transactions, BlinkPay consent tracking
   - Notifications: Event-based notifications for split requests
-- **Storage Keys**: Namespaced keys for different data types
-- **No Backend**: Fully client-side application with mock data generation
+- **RLS Policies**: Row-level security for data access control
+- **Real-time Sync**: Cross-device data synchronization via Supabase
 
 ### State Management
 - **Local State**: React hooks (useState, useEffect) for component-level state
@@ -87,14 +92,26 @@ Preferred communication style: Simple, everyday language.
 - **Settlement**: Wallet-based payment system
 - **Navigation**: Defensive guards prevent crashes from missing parameters during navigation
 
-### Wallet System
+### Wallet System & Payment Processing
 - **Balance Management**: Track available funds
   - Wallet balance displayed in dedicated Wallet tab
   - **Add Funds**: Quick action button in Wallet screen for depositing money
-  - Persisted via AsyncStorage through centralized storage service
-  - **Withdraw functionality removed** per user request (November 2025)
-- **Transaction History**: Deposits, payments, transfers
-- **Bank Integration**: Mock Plaid-style bank connection (not implemented)
+  - Persisted in Supabase database
+  - **Withdraw functionality**: Disabled for BlinkPay-connected accounts (funds remain in wallet)
+- **Transaction History**: Deposits, payments, transfers tracked in database
+- **BlinkPay Integration** (November 2025):
+  - **Bank Connection**: OAuth-based connection via BlinkPay Gateway
+  - **Enduring Consent**: One-time authorization for future payments without re-auth
+  - **Direct Debit**: Payments processed directly from user's bank account
+  - **Required for Payments**: Users must connect bank via BlinkPay to pay splits
+  - **Credentials**: Stored as Replit secrets (BLINKPAY_CLIENT_ID, BLINKPAY_CLIENT_SECRET)
+  - **Sandbox Environment**: Using BlinkPay sandbox for testing
+- **Payment Flow**:
+  1. User clicks "Connect Bank" in Wallet screen
+  2. Opens BlinkPay OAuth in browser (WebBrowser.openAuthSessionAsync)
+  3. User authorizes enduring consent at their bank
+  4. Consent ID stored in wallet for future payments
+  5. Split payments use stored consent for seamless transactions
 - **Home Screen**: Available Funds card removed per user request (November 2025)
 
 ### Media Handling
