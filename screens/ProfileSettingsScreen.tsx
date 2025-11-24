@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,18 +10,23 @@ import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService } from '@/utils/storage';
+import { AuthService } from '@/services/auth.service';
+import { supabase } from '@/services/supabase';
+import { User } from '@/shared/types';
 
 type Props = NativeStackScreenProps<any, 'ProfileSettings'>;
 
 export default function ProfileSettingsScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, refreshUser } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioText, setBioText] = useState(user?.bio || '');
+  const [savingBio, setSavingBio] = useState(false);
 
   const copyToClipboard = async () => {
-    if (user?.uniqueId) {
-      await Clipboard.setStringAsync(user.uniqueId);
+    if (user?.unique_id) {
+      await Clipboard.setStringAsync(user.unique_id);
       Alert.alert('Copied!', 'Your unique ID has been copied');
     }
   };
@@ -45,17 +50,41 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
       quality: 0.8,
     });
 
-    if (!result.canceled && result.assets[0]) {
+    if (!result.canceled && result.assets[0] && user) {
       setUploading(true);
       try {
-        await updateUser({ profilePicture: result.assets[0].uri });
+        await AuthService.uploadProfilePicture(user.id, result.assets[0].uri);
+        await refreshUser();
         Alert.alert('Success', 'Profile picture updated');
       } catch (error) {
+        console.error('Profile picture upload error:', error);
         Alert.alert('Error', 'Failed to update profile picture');
       } finally {
         setUploading(false);
       }
     }
+  };
+
+  const handleSaveBio = async () => {
+    if (!user) return;
+
+    setSavingBio(true);
+    try {
+      await AuthService.updateProfile(user.id, { bio: bioText });
+      await updateUser({ bio: bioText });
+      setIsEditingBio(false);
+      Alert.alert('Success', 'Bio updated');
+    } catch (error) {
+      console.error('Bio update error:', error);
+      Alert.alert('Error', 'Failed to update bio');
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  const handleCancelEditBio = () => {
+    setBioText(user?.bio || '');
+    setIsEditingBio(false);
   };
 
   const handleLogout = () => {
@@ -87,19 +116,23 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
             disabled={uploading}
           >
             <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-              {user.profilePicture ? (
-                <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />
+              {user.profile_picture ? (
+                <Image source={{ uri: user.profile_picture }} style={styles.avatarImage} />
               ) : (
                 <Feather name="user" size={48} color={theme.textSecondary} />
               )}
             </View>
             <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
-              <Feather name={uploading ? "loader" : "camera"} size={16} color="#FFFFFF" />
+              {uploading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Feather name="camera" size={16} color="#FFFFFF" />
+              )}
             </View>
           </Pressable>
 
           <ThemedText style={[Typography.h1, { color: theme.text, marginTop: Spacing.lg }]}>
-            {user.firstName} {user.lastName}
+            {user.name}
           </ThemedText>
 
           <Pressable
@@ -107,16 +140,91 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
             onPress={copyToClipboard}
           >
             <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-              ID: {user.uniqueId}
+              ID: {user.unique_id}
             </ThemedText>
             <Feather name="copy" size={16} color={theme.primary} />
           </Pressable>
 
-          {user.bio ? (
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.lg }]}>
-              {user.bio}
-            </ThemedText>
-          ) : null}
+          <View style={styles.bioSection}>
+            {isEditingBio ? (
+              <>
+                <TextInput
+                  style={[
+                    styles.bioInput,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                  value={bioText}
+                  onChangeText={setBioText}
+                  placeholder="Tell us about yourself..."
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                  maxLength={150}
+                  editable={!savingBio}
+                />
+                <View style={styles.bioActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.bioButton,
+                      { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                    onPress={handleCancelEditBio}
+                    disabled={savingBio}
+                  >
+                    <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                      Cancel
+                    </ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.bioButton,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                    onPress={handleSaveBio}
+                    disabled={savingBio}
+                  >
+                    {savingBio ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <ThemedText style={[Typography.small, { color: '#FFFFFF', fontWeight: '600' }]}>
+                        Save
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <ThemedText
+                  style={[
+                    Typography.body,
+                    {
+                      color: user.bio ? theme.text : theme.textSecondary,
+                      textAlign: 'center',
+                      fontStyle: user.bio ? 'normal' : 'italic',
+                    },
+                  ]}
+                >
+                  {user.bio || 'No bio yet'}
+                </ThemedText>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.editBioButton,
+                    { opacity: pressed ? 0.7 : 1 },
+                  ]}
+                  onPress={() => setIsEditingBio(true)}
+                >
+                  <Feather name="edit-2" size={16} color={theme.primary} />
+                  <ThemedText style={[Typography.small, { color: theme.primary, marginLeft: Spacing.xs }]}>
+                    Edit Bio
+                  </ThemedText>
+                </Pressable>
+              </>
+            )}
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -134,27 +242,33 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
               </ThemedText>
             </View>
 
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            {user.phone ? (
+              <>
+                <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                <View style={styles.infoRow}>
+                  <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                    Phone
+                  </ThemedText>
+                  <ThemedText style={[Typography.body, { color: theme.text }]}>
+                    {user.phone}
+                  </ThemedText>
+                </View>
+              </>
+            ) : null}
 
-            <View style={styles.infoRow}>
-              <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                Phone
-              </ThemedText>
-              <ThemedText style={[Typography.body, { color: theme.text }]}>
-                {user.phone}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-            <View style={styles.infoRow}>
-              <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                Date of Birth
-              </ThemedText>
-              <ThemedText style={[Typography.body, { color: theme.text }]}>
-                {new Date(user.dateOfBirth).toLocaleDateString()}
-              </ThemedText>
-            </View>
+            {user.date_of_birth ? (
+              <>
+                <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                <View style={styles.infoRow}>
+                  <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                    Date of Birth
+                  </ThemedText>
+                  <ThemedText style={[Typography.body, { color: theme.text }]}>
+                    {new Date(user.date_of_birth).toLocaleDateString()}
+                  </ThemedText>
+                </View>
+              </>
+            ) : null}
           </View>
         </View>
 
@@ -245,5 +359,37 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.xs,
     marginTop: Spacing['2xl'],
+  },
+  bioSection: {
+    marginTop: Spacing.lg,
+    width: '100%',
+    alignItems: 'center',
+  },
+  bioInput: {
+    width: '100%',
+    minHeight: 80,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+    fontSize: 15,
+    textAlignVertical: 'top',
+  },
+  bioActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  bioButton: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  editBioButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
   },
 });
