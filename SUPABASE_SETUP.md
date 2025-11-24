@@ -168,6 +168,17 @@ To make signup easier during development:
 
 This allows users to signup and login immediately without email verification.
 
+### ⚠️ Rate Limit Issues
+
+If you see the error `over_email_send_rate_limit` during signup:
+
+**Cause**: Supabase limits how many emails can be sent in a short time period (protection against spam).
+
+**Solutions**:
+1. **Wait** 10-15 minutes for the rate limit to reset, then try again
+2. **Disable email confirmation** (see steps above) - this completely bypasses email sending during development
+3. **Delete previous signups** - Go to Authentication > Users in Supabase dashboard and delete test accounts to free up your email quota
+
 ## Step 6: Configure Row Level Security (RLS)
 
 For security, we need to set up RLS policies:
