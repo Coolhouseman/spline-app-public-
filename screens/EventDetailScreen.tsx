@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal } from 'react-native';
+import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -7,7 +7,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService, SplitEvent, Participant } from '@/utils/storage';
+import { SplitsService } from '@/services/splits.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
@@ -19,7 +19,8 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
   const { eventId } = route.params as { eventId: string };
-  const [event, setEvent] = useState<SplitEvent | null>(null);
+  const [event, setEvent] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [imageVisible, setImageVisible] = useState(false);
 
   useEffect(() => {
@@ -27,44 +28,71 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   }, [eventId]);
 
   const loadEvent = async () => {
-    const events = await storageService.getEvents();
-    const found = events.find(e => e.id === eventId);
-    if (found) {
-      setEvent(found);
+    try {
+      const data = await SplitsService.getSplitDetails(eventId);
+      setEvent(data);
+    } catch (error) {
+      console.error('Failed to load event:', error);
+      Alert.alert('Error', 'Failed to load event details');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleAccept = async () => {
+    if (!user || !event) return;
+    
+    try {
+      await SplitsService.respondToSplit(user.id, eventId, 'accepted');
+      Alert.alert('Success', 'You accepted this split request');
+      loadEvent();
+    } catch (error) {
+      console.error('Failed to accept split:', error);
+      Alert.alert('Error', 'Failed to accept split');
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!user || !event) return;
+    
+    Alert.alert(
+      'Decline Split',
+      'Are you sure you want to decline this split?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await SplitsService.respondToSplit(user.id, eventId, 'declined');
+              Alert.alert('Declined', 'You declined this split request');
+              navigation.goBack();
+            } catch (error) {
+              console.error('Failed to decline split:', error);
+              Alert.alert('Error', 'Failed to decline split');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handlePayment = async () => {
     if (!event || !user) return;
 
-    const wallet = await storageService.getWallet();
-    if (wallet.balance < event.myShare) {
-      Alert.alert('Insufficient funds', 'Please add funds to your wallet to make this payment');
-      return;
+    try {
+      await SplitsService.paySplit(user.id, eventId);
+      Alert.alert('Payment Successful', 'Your payment has been processed');
+      loadEvent();
+    } catch (error: any) {
+      console.error('Payment failed:', error);
+      if (error.message === 'Insufficient balance') {
+        Alert.alert('Insufficient Funds', 'Please add funds to your wallet to make this payment');
+      } else {
+        Alert.alert('Error', 'Payment failed. Please try again.');
+      }
     }
-
-    const updatedParticipants = event.participants.map(p =>
-      p.uniqueId === user.uniqueId ? { ...p, status: 'paid' as const } : p
-    );
-
-    const allPaid = updatedParticipants.every(p => p.status === 'paid');
-
-    await storageService.updateEvent(eventId, {
-      participants: updatedParticipants,
-      status: allPaid ? 'completed' : 'in_progress',
-    });
-
-    await storageService.addTransaction({
-      id: Date.now().toString(),
-      type: 'payment',
-      amount: event.myShare,
-      description: `Payment for ${event.name}`,
-      date: new Date().toISOString(),
-      eventId: event.id,
-    });
-
-    Alert.alert('Payment successful', `You paid $${event.myShare.toFixed(2)} for ${event.name}`);
-    loadEvent();
   };
 
   const getStatusColor = (status: string) => {
@@ -79,19 +107,30 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
+  if (loading) {
+    return (
+      <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </ThemedView>
+    );
+  }
+
   if (!event) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+      <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }]}>
+        <Feather name="alert-circle" size={48} color={theme.textSecondary} style={{ marginBottom: Spacing.lg }} />
+        <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center' }]}>
           Event not found
         </ThemedText>
       </ThemedView>
     );
   }
 
-  const isInitiator = event.initiatorId === user?.id;
-  const myParticipation = event.participants.find(p => p.uniqueId === user?.uniqueId);
-  const canPay = myParticipation && myParticipation.status === 'pending';
+  const isCreator = event.creator_id === user?.id;
+  const myParticipation = event.participants?.find((p: any) => p.user_id === user?.id);
+  const myAmount = myParticipation?.amount || 0;
+  const canPay = myParticipation && (myParticipation.status === 'accepted' || myParticipation.status === 'pending') && myParticipation.status !== 'paid' && !isCreator;
+  const canRespond = myParticipation && myParticipation.status === 'pending' && !isCreator;
 
   return (
     <ThemedView style={styles.container}>
@@ -103,34 +142,38 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         ]}
       >
         <View style={[styles.summary, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          {isInitiator ? (
+          {isCreator ? (
             <View style={[styles.initiatorBadge, { backgroundColor: theme.primary }]}>
               <ThemedText style={[Typography.caption, { color: '#FFFFFF' }]}>
-                You are the initiator
+                You are the creator
               </ThemedText>
             </View>
           ) : (
             <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-              Initiated by {event.initiatorName}
+              Created by {event.creator?.name || 'Unknown'}
             </ThemedText>
           )}
 
-          <ThemedText style={[Typography.hero, { color: theme.text, marginTop: Spacing.sm }]}>
-            ${event.totalAmount.toFixed(2)}
+          <ThemedText style={[Typography.h1, { color: theme.text, marginTop: Spacing.md, marginBottom: Spacing.sm }]}>
+            {event.name}
+          </ThemedText>
+
+          <ThemedText style={[Typography.hero, { color: theme.text }]}>
+            ${parseFloat(event.total_amount).toFixed(2)}
           </ThemedText>
           <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-            Your share: ${event.myShare.toFixed(2)}
+            Your share: ${parseFloat(myAmount).toFixed(2)}
           </ThemedText>
         </View>
 
-        {event.receiptImage ? (
+        {event.receipt_image ? (
           <View style={styles.receiptSection}>
             <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
               Receipt
             </ThemedText>
             <Pressable onPress={() => setImageVisible(true)}>
               <Image 
-                source={{ uri: event.receiptImage }} 
+                source={{ uri: event.receipt_image }} 
                 style={[styles.receiptImage, { borderColor: theme.border }]}
               />
               <View style={styles.zoomHint}>
@@ -148,24 +191,24 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             Participants
           </ThemedText>
 
-          {event.participants.map((participant) => (
+          {event.participants?.map((participant: any) => (
             <View
-              key={participant.uniqueId}
+              key={participant.user_id}
               style={[styles.participantCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
             >
               <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-                {participant.profilePicture ? (
-                  <Image source={{ uri: participant.profilePicture }} style={styles.avatarImage} />
+                {participant.user?.profile_picture ? (
+                  <Image source={{ uri: participant.user.profile_picture }} style={styles.avatarImage} />
                 ) : (
                   <Feather name="user" size={20} color={theme.textSecondary} />
                 )}
               </View>
               <View style={styles.participantInfo}>
                 <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                  {participant.firstName} {participant.lastName}
+                  {participant.user?.name || 'Unknown'}
                 </ThemedText>
                 <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                  ${participant.amount.toFixed(2)}
+                  ${parseFloat(participant.amount).toFixed(2)}
                 </ThemedText>
               </View>
               <View 
@@ -182,7 +225,32 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           ))}
         </View>
 
-        {canPay ? (
+        {canRespond ? (
+          <View style={styles.actionButtons}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.declineButton,
+                { borderColor: theme.danger, opacity: pressed ? 0.7 : 1 }
+              ]}
+              onPress={handleDecline}
+            >
+              <ThemedText style={[Typography.body, { color: theme.danger, fontWeight: '600' }]}>
+                Decline
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.acceptButton,
+                { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
+              ]}
+              onPress={handleAccept}
+            >
+              <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                Accept
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : canPay ? (
           <Pressable
             style={({ pressed }) => [
               styles.payButton,
@@ -191,7 +259,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             onPress={handlePayment}
           >
             <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-              Pay ${event.myShare.toFixed(2)}
+              Pay ${parseFloat(myAmount).toFixed(2)}
             </ThemedText>
           </Pressable>
         ) : null}
@@ -214,9 +282,9 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             >
               <Feather name="x" size={24} color={theme.text} />
             </Pressable>
-            {event?.receiptImage ? (
+            {event?.receipt_image ? (
               <Image 
-                source={{ uri: event.receiptImage }} 
+                source={{ uri: event.receipt_image }} 
                 style={styles.fullImage}
                 resizeMode="contain"
               />
@@ -296,6 +364,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.xs,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  declineButton: {
+    flex: 1,
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  acceptButton: {
+    flex: 1,
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   payButton: {
     height: Spacing.buttonHeight,

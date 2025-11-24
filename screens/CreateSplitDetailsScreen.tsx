@@ -77,66 +77,39 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
 
     setLoading(true);
 
-    const participantCount = selectedFriends.length + 1;
-    const shareAmount = splitType === 'equal' 
-      ? amount / participantCount 
-      : (amount - parseFloat(myShare || '0')) / selectedFriends.length;
+    try {
+      const participantCount = selectedFriends.length + 1;
+      const shareAmount = splitType === 'equal' 
+        ? amount / participantCount 
+        : (amount - parseFloat(myShare || '0')) / selectedFriends.length;
 
-    const participants: Participant[] = [
-      {
-        uniqueId: user.uniqueId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        profilePicture: user.profilePicture,
-        status: 'pending',
-        amount: splitType === 'equal' ? shareAmount : parseFloat(myShare || '0'),
-      },
-      ...selectedFriends.map(friend => ({
-        uniqueId: friend.uniqueId,
-        firstName: friend.firstName,
-        lastName: friend.lastName,
-        profilePicture: friend.profilePicture,
-        status: 'pending' as const,
-        amount: shareAmount,
-      })),
-    ];
+      const participants = [
+        {
+          userId: user.id,
+          amount: splitType === 'equal' ? shareAmount : parseFloat(myShare || '0'),
+        },
+        ...selectedFriends.map(friend => ({
+          userId: friend.id,
+          amount: shareAmount,
+        })),
+      ];
 
-    const event = {
-      id: generateId(),
-      name: eventName.trim(),
-      initiatorId: user.id,
-      initiatorName: `${user.firstName} ${user.lastName}`,
-      initiatorPicture: user.profilePicture,
-      totalAmount: amount,
-      myShare: participants[0].amount,
-      splitType,
-      receiptImage,
-      participants,
-      createdAt: new Date().toISOString(),
-      status: 'in_progress' as const,
-    };
-
-    await storageService.addEvent(event);
-
-    for (const friend of selectedFriends) {
-      await storageService.addNotification({
-        id: generateId(),
-        eventId: event.id,
-        eventName: event.name,
-        initiatorName: `${user.firstName} ${user.lastName}`,
-        amount: shareAmount,
-        type: 'split_invite',
-        timestamp: new Date().toISOString(),
+      await SplitsService.createSplit({
+        name: eventName.trim(),
+        totalAmount: amount,
+        splitType,
+        creatorId: user.id,
+        participants,
+        receiptUri: receiptImage,
       });
+
+      navigation.navigate('HomeTab', { screen: 'MainHome' });
+    } catch (error) {
+      console.error('Failed to create split:', error);
+      Alert.alert('Error', 'Failed to create split. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-
-    Alert.alert(
-      'Event Created!',
-      `${eventName} has been created successfully`,
-      [{ text: 'OK', onPress: () => navigation.navigate('MainHome') }]
-    );
   };
 
   const calculatedShare = splitType === 'equal' && totalAmount
