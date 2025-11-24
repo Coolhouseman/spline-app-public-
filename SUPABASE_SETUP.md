@@ -156,7 +156,19 @@ CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 4. Make it **Public** (check the box)
 5. Click **Create bucket**
 
-## Step 5: Configure Row Level Security (RLS)
+## Step 5: Disable Email Confirmation (For Development)
+
+To make signup easier during development:
+
+1. Go to **Authentication** > **Providers** in the sidebar
+2. Click on **Email** provider
+3. Scroll down to **Email Confirmation**
+4. **Disable** "Confirm email"
+5. Click **Save**
+
+This allows users to signup and login immediately without email verification.
+
+## Step 6: Configure Row Level Security (RLS)
 
 For security, we need to set up RLS policies:
 
@@ -210,7 +222,7 @@ CREATE POLICY "Users can delete own notifications" ON notifications FOR DELETE U
 CREATE POLICY "System can create notifications" ON notifications FOR INSERT WITH CHECK (true);
 ```
 
-## Step 6: Provide Credentials to the App
+## Step 7: Provide Credentials to the App
 
 You'll need to add these as environment variables:
 - `EXPO_PUBLIC_SUPABASE_URL` = Your Project URL
@@ -221,3 +233,10 @@ The agent will request these from you next!
 ## Done!
 
 Your Supabase backend is now ready to sync data across all devices where users install your app!
+
+## Important Notes
+
+- **Email Confirmation**: We disabled this for development. For production, re-enable it and implement email verification flow.
+- **Security**: The RLS policies ensure users can only access their own data.
+- **Session Persistence**: Sessions are automatically saved and restored using AsyncStorage.
+- **Token Refresh**: Supabase automatically refreshes auth tokens in the background.

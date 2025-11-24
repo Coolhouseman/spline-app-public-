@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { storageService, User, generateUniqueId, generateId } from '@/utils/storage';
+import { User } from '@/shared/types';
+import { AuthService, SignupData } from '@/services/auth.service';
+import { generateUniqueId } from '@/utils/storage';
+import { supabase } from '@/services/supabase';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (userData: Omit<User, 'id' | 'uniqueId'>) => Promise<string>;
+  signup: (userData: SignupData) => Promise<string>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
 }
@@ -18,12 +21,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadUser();
+    
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          setUser(profile as User);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          setUser(profile as User);
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   const loadUser = async () => {
     try {
-      const savedUser = await storageService.getUser();
-      setUser(savedUser);
+      const session = await AuthService.restoreSession();
+      if (session) {
+        setUser(session.user);
+      }
     } catch (error) {
       console.error('Failed to load user:', error);
     } finally {
@@ -32,36 +69,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    const savedUser = await storageService.getUser();
-    if (savedUser && savedUser.email === email && savedUser.password === password) {
-      setUser(savedUser);
+    try {
+      const { user: loggedInUser } = await AuthService.login(email, password);
+      setUser(loggedInUser);
       return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
     }
-    return false;
   };
 
-  const signup = async (userData: Omit<User, 'id' | 'uniqueId'>): Promise<string> => {
-    const uniqueId = generateUniqueId();
-    const newUser: User = {
-      ...userData,
-      id: generateId(),
-      uniqueId,
-    };
-    await storageService.saveUser(newUser);
-    setUser(newUser);
-    return uniqueId;
+  const signup = async (userData: SignupData): Promise<string> => {
+    try {
+      const { user: newUser } = await AuthService.signup(userData);
+      setUser(newUser);
+      return newUser.unique_id;
+    } catch (error) {
+      console.error('Signup failed:', error);
+      throw error;
+    }
   };
 
   const logout = async () => {
-    await storageService.clearAll();
-    setUser(null);
+    try {
+      await AuthService.logout();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   const updateUser = async (updates: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...updates };
-      await storageService.saveUser(updatedUser);
-      setUser(updatedUser);
+      try {
+        const updatedUser = await AuthService.updateProfile(user.id, updates);
+        setUser(updatedUser);
+      } catch (error) {
+        console.error('Update user failed:', error);
+        throw error;
+      }
     }
   };
 

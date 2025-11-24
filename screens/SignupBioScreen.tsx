@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { generateUniqueId } from '@/utils/storage';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 
 type Props = NativeStackScreenProps<any, 'SignupBio'>;
@@ -30,13 +31,23 @@ export default function SignupBioScreen({ navigation, route }: Props) {
   const handleComplete = async () => {
     setLoading(true);
     try {
-      const uniqueId = await signup({
-        ...params,
+      const uniqueId = generateUniqueId();
+      const fullName = `${params.firstName} ${params.lastName}`.trim();
+      
+      await signup({
+        name: fullName,
+        email: params.email,
+        password: params.password,
+        phone: params.phone,
+        dateOfBirth: params.dateOfBirth,
         bio: bio.trim(),
+        uniqueId: uniqueId,
       });
+      
       navigation.navigate('SignupComplete', { uniqueId });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signup error:', error);
+      Alert.alert('Signup Failed', error.message || 'An error occurred during signup');
     } finally {
       setLoading(false);
     }

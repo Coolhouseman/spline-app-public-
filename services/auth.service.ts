@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import type { User } from '@/shared/types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface SignupData {
   name: string;
@@ -18,6 +17,7 @@ export class AuthService {
       email: data.email,
       password: data.password,
       options: {
+        emailRedirectTo: undefined,
         data: {
           name: data.name,
           unique_id: data.uniqueId,
@@ -30,6 +30,10 @@ export class AuthService {
 
     if (authError) throw authError;
     if (!authData.user) throw new Error('User creation failed');
+
+    if (!authData.session) {
+      throw new Error('Email confirmation required. Please check your email and confirm your account before logging in.');
+    }
 
     const { data: profile, error: profileError } = await supabase
       .from('users')
@@ -57,8 +61,6 @@ export class AuthService {
 
     if (walletError) throw walletError;
 
-    await AsyncStorage.setItem('supabase_session', JSON.stringify(authData.session));
-
     return { user: profile as User, session: authData.session };
   }
 
@@ -79,15 +81,11 @@ export class AuthService {
 
     if (profileError) throw profileError;
 
-    await AsyncStorage.setItem('supabase_session', JSON.stringify(authData.session));
-
     return { user: profile as User, session: authData.session };
   }
 
   static async logout(): Promise<void> {
     await supabase.auth.signOut();
-    await AsyncStorage.removeItem('supabase_session');
-    await AsyncStorage.removeItem('currentUser');
   }
 
   static async getCurrentUser(): Promise<User | null> {
@@ -106,26 +104,21 @@ export class AuthService {
 
   static async restoreSession(): Promise<{ user: User; session: any } | null> {
     try {
-      const sessionStr = await AsyncStorage.getItem('supabase_session');
-      if (!sessionStr) return null;
-
-      const session = JSON.parse(sessionStr);
-      const { data, error } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-
-      if (error || !data.user) return null;
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error || !session || !session.user) {
+        return null;
+      }
 
       const { data: profile } = await supabase
         .from('users')
         .select('*')
-        .eq('id', data.user.id)
+        .eq('id', session.user.id)
         .single();
 
       if (!profile) return null;
 
-      return { user: profile as User, session: data.session };
+      return { user: profile as User, session };
     } catch (error) {
       console.error('Session restore failed:', error);
       return null;
