@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
@@ -27,15 +28,9 @@ export default function WalletScreen({ navigation }: Props) {
   
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
   
   const [amount, setAmount] = useState('');
   const [processing, setProcessing] = useState(false);
-  
-  const [bankName, setBankName] = useState('');
-  const [accountLast4, setAccountLast4] = useState('');
-  const [accountType, setAccountType] = useState('Checking');
 
   useEffect(() => {
     loadWalletData();
@@ -83,7 +78,6 @@ export default function WalletScreen({ navigation }: Props) {
         user_id: user?.id || '', 
         balance: 0, 
         bank_connected: false,
-        bank_details: null,
         created_at: new Date().toISOString(), 
         updated_at: new Date().toISOString() 
       });
@@ -146,58 +140,61 @@ export default function WalletScreen({ navigation }: Props) {
     }
   };
 
-  const handleConnectBank = () => {
-    setBankName('');
-    setAccountLast4('');
-    setAccountType('Checking');
-    setIsEditMode(false);
-    setShowBankModal(true);
-  };
-
-  const handleEditBank = () => {
-    if (wallet?.bank_details) {
-      setBankName(wallet.bank_details.bank_name || '');
-      setAccountLast4(wallet.bank_details.account_last4 || '');
-      setAccountType(wallet.bank_details.account_type || 'Checking');
-    }
-    setIsEditMode(true);
-    setShowBankModal(true);
-  };
-
-  const handleSaveBank = async () => {
-    if (!user || !bankName || !accountLast4) {
-      Alert.alert('Missing Information', 'Please fill in all fields');
-      return;
-    }
-    
-    if (accountLast4.length !== 4 || !/^\d+$/.test(accountLast4)) {
-      Alert.alert('Invalid Account Number', 'Last 4 digits must be 4 numbers');
-      return;
-    }
+  const handleConnectBank = async () => {
+    if (!user) return;
     
     setProcessing(true);
     try {
-      const bankDetails: BankDetails = {
-        bank_name: bankName,
-        account_last4: accountLast4,
-        account_type: accountType,
-      };
+      const redirectUri = 'split://blinkpay-callback';
+      const result = await WalletService.initiateBlinkPayConsent(user.id, redirectUri);
       
-      if (isEditMode) {
-        await WalletService.updateBank(user.id, bankDetails);
-      } else {
-        await WalletService.connectBank(user.id, bankDetails);
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        result.redirectUri,
+        redirectUri
+      );
+      
+      if (browserResult.type === 'success') {
+        await WalletService.completeBlinkPayConsent(user.id);
+        await loadWalletData();
+        Alert.alert('Success', 'Bank account connected successfully');
+      } else if (browserResult.type === 'cancel') {
+        Alert.alert('Cancelled', 'Bank connection was cancelled');
       }
-      
-      await loadWalletData();
-      setShowBankModal(false);
-      Alert.alert('Success', isEditMode ? 'Bank details updated' : 'Bank account connected');
-    } catch (error) {
-      console.error('Bank save error:', error);
-      Alert.alert('Error', 'Failed to save bank details');
+    } catch (error: any) {
+      console.error('Connect bank error:', error);
+      Alert.alert('Error', error.message || 'Failed to connect bank account');
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleDisconnectBank = async () => {
+    if (!user) return;
+    
+    Alert.alert(
+      'Disconnect Bank',
+      'Are you sure you want to disconnect your bank account? You will need to reconnect to make payments or withdrawals.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessing(true);
+            try {
+              await WalletService.disconnectBank(user.id);
+              await loadWalletData();
+              Alert.alert('Success', 'Bank account disconnected');
+            } catch (error) {
+              console.error('Disconnect bank error:', error);
+              Alert.alert('Error', 'Failed to disconnect bank account');
+            } finally {
+              setProcessing(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const getTransactionIcon = (type: string) => {
@@ -316,10 +313,11 @@ export default function WalletScreen({ navigation }: Props) {
             </View>
             <Pressable
               style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-              onPress={handleEditBank}
+              onPress={handleDisconnectBank}
+              disabled={processing}
             >
               <ThemedText style={[Typography.small, { color: '#FFFFFF', fontWeight: '600' }]}>
-                Edit
+                Disconnect
               </ThemedText>
             </Pressable>
           </View>
@@ -462,92 +460,6 @@ export default function WalletScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      <Modal visible={showBankModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.lg }]}>
-              {isEditMode ? 'Edit' : 'Connect'} Bank Account
-            </ThemedText>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
-              value={bankName}
-              onChangeText={setBankName}
-              placeholder="Bank Name"
-              placeholderTextColor={theme.textSecondary}
-              editable={!processing}
-            />
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text, marginTop: Spacing.md }]}
-              value={accountLast4}
-              onChangeText={setAccountLast4}
-              placeholder="Last 4 digits of account"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-              maxLength={4}
-              editable={!processing}
-            />
-            <View style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, marginTop: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-              <ThemedText style={[Typography.body, { color: theme.text }]}>Account Type:</ThemedText>
-              <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.accountTypeButton,
-                    { backgroundColor: accountType === 'Checking' ? theme.primary : theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
-                  ]}
-                  onPress={() => setAccountType('Checking')}
-                  disabled={processing}
-                >
-                  <ThemedText style={[Typography.small, { color: accountType === 'Checking' ? '#FFFFFF' : theme.text }]}>
-                    Checking
-                  </ThemedText>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.accountTypeButton,
-                    { backgroundColor: accountType === 'Savings' ? theme.primary : theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
-                  ]}
-                  onPress={() => setAccountType('Savings')}
-                  disabled={processing}
-                >
-                  <ThemedText style={[Typography.small, { color: accountType === 'Savings' ? '#FFFFFF' : theme.text }]}>
-                    Savings
-                  </ThemedText>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
-                ]}
-                onPress={() => setShowBankModal(false)}
-                disabled={processing}
-              >
-                <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-                  Cancel
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 }
-                ]}
-                onPress={handleSaveBank}
-                disabled={processing}
-              >
-                {processing ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-                    Save
-                  </ThemedText>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ThemedView>
   );
 }
