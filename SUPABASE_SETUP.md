@@ -208,9 +208,13 @@ CREATE POLICY "Users can create splits" ON split_events FOR INSERT
 
 -- Split participants: Users can view and update their participations
 CREATE POLICY "Users can view split participants" ON split_participants FOR SELECT
-  USING (auth.uid() IN (
-    SELECT user_id FROM split_participants WHERE split_event_id = split_event_id
-  ));
+  USING (
+    EXISTS (
+      SELECT 1 FROM split_participants sp2
+      WHERE sp2.split_event_id = split_participants.split_event_id
+      AND sp2.user_id = auth.uid()
+    )
+  );
 CREATE POLICY "Creators can add participants" ON split_participants FOR INSERT
   WITH CHECK (auth.uid() IN (
     SELECT creator_id FROM split_events WHERE id = split_event_id
