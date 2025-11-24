@@ -9,7 +9,14 @@ import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareS
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService, Friend, generateId, Participant } from '@/utils/storage';
+import { SplitsService } from '@/services/splits.service';
+
+type Friend = {
+  id: string;
+  unique_id: string;
+  name: string;
+  profile_picture: string | null;
+};
 
 type Props = NativeStackScreenProps<any, 'CreateSplitDetails'>;
 

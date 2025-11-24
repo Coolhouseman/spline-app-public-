@@ -188,8 +188,9 @@ For security, we need to set up RLS policies:
 3. Add these policies (copy-paste into SQL Editor):
 
 ```sql
--- Users: Users can read all, update their own
+-- Users: Users can read all, insert and update their own
 CREATE POLICY "Users can view all users" ON users FOR SELECT USING (true);
+CREATE POLICY "Users can insert own profile" ON users FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 
 -- Friends: Users can manage their own friendships
