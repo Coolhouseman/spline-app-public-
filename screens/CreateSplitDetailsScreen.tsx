@@ -78,21 +78,43 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
     setLoading(true);
 
     try {
+      if (selectedFriends.length === 0) {
+        Alert.alert('Error', 'Please select at least one friend to split with');
+        setLoading(false);
+        return;
+      }
+
       const participantCount = selectedFriends.length + 1;
-      const shareAmount = splitType === 'equal' 
-        ? amount / participantCount 
-        : (amount - parseFloat(myShare || '0')) / selectedFriends.length;
+      let creatorAmount = 0;
+      let friendAmount = 0;
+
+      if (splitType === 'equal') {
+        const equalShare = amount / participantCount;
+        creatorAmount = equalShare;
+        friendAmount = equalShare;
+      } else {
+        creatorAmount = parseFloat(myShare || '0');
+        const remainingAmount = amount - creatorAmount;
+        friendAmount = remainingAmount / selectedFriends.length;
+      }
 
       const participants = [
         {
           userId: user.id,
-          amount: splitType === 'equal' ? shareAmount : parseFloat(myShare || '0'),
+          amount: creatorAmount,
         },
         ...selectedFriends.map(friend => ({
           userId: friend.id,
-          amount: shareAmount,
+          amount: friendAmount,
         })),
       ];
+
+      const totalShares = participants.reduce((sum, p) => sum + p.amount, 0);
+      if (Math.abs(totalShares - amount) > 0.01) {
+        Alert.alert('Error', `Participant shares ($${totalShares.toFixed(2)}) must equal total amount ($${amount.toFixed(2)})`);
+        setLoading(false);
+        return;
+      }
 
       await SplitsService.createSplit({
         name: eventName.trim(),

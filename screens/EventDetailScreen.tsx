@@ -29,11 +29,20 @@ export default function EventDetailScreen({ route, navigation }: Props) {
 
   const loadEvent = async () => {
     try {
+      setLoading(true);
       const data = await SplitsService.getSplitDetails(eventId);
       setEvent(data);
     } catch (error) {
       console.error('Failed to load event:', error);
-      Alert.alert('Error', 'Failed to load event details');
+      setEvent(null);
+      Alert.alert(
+        'Error', 
+        'Failed to load event details. Please try again.',
+        [
+          { text: 'Retry', onPress: loadEvent },
+          { text: 'Go Back', onPress: () => navigation.goBack() }
+        ]
+      );
     } finally {
       setLoading(false);
     }
@@ -129,8 +138,8 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const isCreator = event.creator_id === user?.id;
   const myParticipation = event.participants?.find((p: any) => p.user_id === user?.id);
   const myAmount = myParticipation?.amount || 0;
-  const canPay = myParticipation && (myParticipation.status === 'accepted' || myParticipation.status === 'pending') && myParticipation.status !== 'paid' && !isCreator;
   const canRespond = myParticipation && myParticipation.status === 'pending' && !isCreator;
+  const canPay = myParticipation && myParticipation.status === 'accepted' && !isCreator;
 
   return (
     <ThemedView style={styles.container}>
