@@ -117,38 +117,44 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
       <ThemedView style={styles.content}>
         <View style={styles.profileHeader}>
           <Pressable 
-            style={[styles.avatarContainer]}
+            style={styles.avatarContainer}
             onPress={handleEditProfilePicture}
             disabled={uploading}
           >
-            <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+            <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary, borderWidth: 3, borderColor: theme.primary }]}>
               {user.profile_picture ? (
                 <Image source={{ uri: user.profile_picture }} style={styles.avatarImage} />
               ) : (
-                <Feather name="user" size={48} color={theme.textSecondary} />
+                <Feather name="user" size={56} color={theme.textSecondary} />
               )}
             </View>
             <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
               {uploading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Feather name="camera" size={16} color="#FFFFFF" />
+                <Feather name="camera" size={18} color="#FFFFFF" />
               )}
             </View>
           </Pressable>
 
-          <ThemedText style={[Typography.h1, { color: theme.text, marginTop: Spacing.lg }]}>
+          <ThemedText style={[Typography.h1, { color: theme.text, marginTop: Spacing.xl, fontSize: 28, fontWeight: '700' }]}>
             {user.name}
+          </ThemedText>
+          
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.xs }]}>
+            {user.email}
           </ThemedText>
 
           <Pressable
-            style={[styles.idContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            style={[styles.idContainer, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}
             onPress={copyToClipboard}
           >
-            <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-              ID: {user.unique_id}
+            <Feather name="hash" size={14} color={theme.primary} />
+            <ThemedText style={[Typography.caption, { color: theme.text, fontWeight: '600', marginLeft: Spacing.xs }]}>
+              {user.unique_id}
             </ThemedText>
-            <Feather name="copy" size={16} color={theme.primary} />
+            <View style={{ flex: 1 }} />
+            <Feather name="copy" size={14} color={theme.primary} />
           </Pressable>
 
           <View style={styles.bioSection}>
@@ -281,18 +287,22 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
         <Pressable
           style={({ pressed }) => [
             styles.logoutButton,
-            { backgroundColor: theme.danger, opacity: pressed ? 0.7 : 1 }
+            { 
+              backgroundColor: theme.surface, 
+              borderColor: theme.border,
+              opacity: pressed ? 0.7 : 1 
+            }
           ]}
           onPress={handleLogout}
           disabled={loggingOut}
         >
           {loggingOut ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={theme.textSecondary} />
           ) : (
             <>
-              <Feather name="log-out" size={20} color="#FFFFFF" />
-              <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.md, fontWeight: '600' }]}>
-                Logout
+              <Feather name="log-out" size={20} color={theme.textSecondary} />
+              <ThemedText style={[Typography.body, { color: theme.textSecondary, marginLeft: Spacing.md, fontWeight: '600' }]}>
+                Sign Out
               </ThemedText>
             </>
           )}
@@ -312,15 +322,16 @@ const styles = StyleSheet.create({
   },
   profileHeader: {
     alignItems: 'center',
-    paddingVertical: Spacing.xl,
+    paddingTop: Spacing['2xl'],
+    paddingBottom: Spacing.xl,
   },
   avatarContainer: {
     position: 'relative',
   },
   avatar: {
-    width: Spacing.avatarXLarge,
-    height: Spacing.avatarXLarge,
-    borderRadius: Spacing.avatarXLarge / 2,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
@@ -331,25 +342,24 @@ const styles = StyleSheet.create({
   },
   editBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    bottom: 8,
+    right: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
   },
   idContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.xs,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    marginTop: Spacing.md,
+    marginTop: Spacing.lg,
   },
   section: {
     marginTop: Spacing.xl,
@@ -371,7 +381,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.xs,
+    borderWidth: 1,
     marginTop: Spacing['2xl'],
+    marginBottom: Spacing.xl,
   },
   bioSection: {
     marginTop: Spacing.lg,

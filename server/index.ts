@@ -6,7 +6,7 @@ import blinkpayRouter from './routes/blinkpay.routes';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8082;
+const PORT = parseInt(process.env.PORT || '8082', 10);
 
 app.use(cors());
 app.use(express.json());
