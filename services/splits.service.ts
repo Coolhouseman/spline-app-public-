@@ -94,37 +94,39 @@ export class SplitsService {
   }
 
   static async getSplits(userId: string): Promise<SplitEvent[]> {
-    const { data, error } = await supabase
+    const { data: participantIds, error: participantError } = await supabase
       .from('split_participants')
+      .select('split_event_id')
+      .eq('user_id', userId);
+
+    if (participantError) throw participantError;
+    if (!participantIds || participantIds.length === 0) return [];
+
+    const splitIds = participantIds.map(p => p.split_event_id);
+
+    const { data, error } = await supabase
+      .from('split_events')
       .select(`
-        split_event_id,
-        split_events (
+        *,
+        creator:creator_id (
+          id,
+          name,
+          profile_picture
+        ),
+        participants:split_participants (
           *,
-          creator:creator_id (
+          user:user_id (
             id,
             name,
             profile_picture
-          ),
-          participants:split_participants (
-            *,
-            user:user_id (
-              id,
-              name,
-              profile_picture
-            )
           )
         )
       `)
-      .eq('user_id', userId);
+      .in('id', splitIds);
 
     if (error) throw error;
 
-    const splits = data
-      .map(item => item.split_events)
-      .filter(Boolean)
-      .flat() as unknown as SplitEvent[];
-
-    return splits;
+    return data as SplitEvent[];
   }
 
   static async getSplitDetails(splitId: string): Promise<SplitEvent> {

@@ -8,6 +8,43 @@ Split is a React Native mobile application built with Expo that enables users to
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (November 2025)
+
+### Database Query Fix - Split Participants Infinite Recursion
+**Issue**: App was crashing on signup/login with "infinite recursion detected in policy for relation split_participants" error.
+
+**Root Cause**: The `getSplits()` query in `SplitsService` was creating a circular reference:
+- Query from `split_participants` → join to `split_events` → join back to `split_participants` (circular!)
+- This triggered the RLS policy to check itself recursively, causing infinite recursion
+
+**Solution**: Split the query into two sequential queries:
+1. First query: Get `split_event_ids` where user is a participant
+2. Second query: Get full split events data using those IDs
+3. This avoids the circular reference while achieving the same result
+
+**Files Modified**:
+- `services/splits.service.ts` - Updated `getSplits()` method
+
+### Backend Server Architecture for BlinkPay
+**Issue**: BlinkPay Node.js SDK incompatible with React Native (requires Node.js-specific modules)
+
+**Solution**: Created Express backend server to handle BlinkPay operations:
+- Backend runs on port 8082 (external port 3000 in Replit)
+- Expo dev server runs on port 8081 (external port 80)
+- Client apps make HTTP requests to backend APIs
+- Backend handles all BlinkPay SDK interactions
+
+**Files Added**:
+- `server/index.ts` - Express server entry point
+- `server/routes/blinkpay.routes.ts` - BlinkPay API endpoints
+- `server/services/blinkpay.service.ts` - BlinkPay SDK wrapper
+- `start-all.sh` - Script to run both servers
+- `BLINKPAY_BACKEND_SETUP.md` - Complete documentation
+
+**Files Modified**:
+- `services/wallet.service.ts` - Updated to call backend APIs
+- `screens/EventDetailScreen.tsx` - Updated to call backend APIs for payments
+
 ## System Architecture
 
 ### Frontend Framework
@@ -15,6 +52,12 @@ Preferred communication style: Simple, everyday language.
 - **React 19.1.0**: Latest React version with new compiler features enabled
 - **TypeScript**: Type-safe development with strict mode enabled
 - **Expo Router**: File-based navigation (not currently used, but available)
+
+### Backend Architecture (New)
+- **Express Server**: Handles BlinkPay payment processing
+- **Port Configuration**: Backend on 8082 (ext: 3000), Expo on 8081 (ext: 80)
+- **API Endpoints**: RESTful APIs for consent creation, payment processing
+- **Security**: BlinkPay credentials stored server-side only
 
 ### Navigation Architecture
 - **React Navigation**: Stack and tab-based navigation
@@ -63,7 +106,7 @@ Preferred communication style: Simple, everyday language.
   - `AuthService`: User authentication and registration
   - `SplitsService`: Split event creation and management
   - `WalletService`: Balance, transactions, bank connections
-  - `BlinkPayService`: Payment processing integration
+  - `BlinkPayService`: Payment processing integration (server-side)
 - **Data Models**:
   - Users: Full profile information with Supabase Auth integration
   - Friends: Connection list with unique IDs
@@ -71,6 +114,7 @@ Preferred communication style: Simple, everyday language.
   - Wallet: Balance, transactions, BlinkPay consent tracking
   - Notifications: Event-based notifications for split requests
 - **RLS Policies**: Row-level security for data access control
+- **Query Optimization**: Fixed circular references to prevent infinite recursion
 - **Real-time Sync**: Cross-device data synchronization via Supabase
 
 ### State Management
@@ -106,6 +150,7 @@ Preferred communication style: Simple, everyday language.
   - **Required for Payments**: Users must connect bank via BlinkPay to pay splits
   - **Credentials**: Stored as Replit secrets (BLINKPAY_CLIENT_ID, BLINKPAY_CLIENT_SECRET)
   - **Sandbox Environment**: Using BlinkPay sandbox for testing
+  - **Backend Processing**: All BlinkPay operations handled by Express backend
 - **Payment Flow**:
   1. User clicks "Connect Bank" in Wallet screen
   2. Opens BlinkPay OAuth in browser (WebBrowser.openAuthSessionAsync)
@@ -175,14 +220,22 @@ Preferred communication style: Simple, everyday language.
 - **expo-clipboard**: Clipboard operations
 - **expo-web-browser**: In-app browser for external links
 
-### Storage
+### Storage & Backend
 - **@react-native-async-storage/async-storage**: Persistent key-value storage
+- **@supabase/supabase-js**: Supabase client for database and auth
+- **express**: Backend server framework
+- **cors**: Cross-origin resource sharing for backend
+- **dotenv**: Environment variable management
+- **blink-debit-api-client-node**: BlinkPay payment processing SDK (server-side only)
 
 ### Development Tools
 - **babel-plugin-module-resolver**: Path alias support
 - **eslint-config-expo**: Expo-specific linting rules
 - **prettier**: Code formatting
 - **TypeScript**: Static type checking
+- **nodemon**: Auto-restart backend server on changes
+- **ts-node**: TypeScript execution for backend
+- **concurrently**: Run multiple servers simultaneously
 
 ### Platform Support
 - **react-native-web**: Web platform rendering
@@ -190,3 +243,15 @@ Preferred communication style: Simple, everyday language.
 - **expo-splash-screen**: Native splash screen
 - **expo-status-bar**: Status bar customization
 - **expo-system-ui**: System UI configuration
+
+## Known Issues & Fixes
+
+### Fixed: Infinite Recursion in RLS Policies (November 2025)
+- **Error**: `42P17: infinite recursion detected in policy for relation "split_participants"`
+- **Fix**: Modified `getSplits()` query to avoid circular reference
+- **Status**: ✅ Resolved
+
+### Fixed: BlinkPay SDK Incompatibility (November 2025)
+- **Error**: `Unable to resolve module path` when importing BlinkPay SDK
+- **Fix**: Created Express backend server to handle BlinkPay operations
+- **Status**: ✅ Resolved
