@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
+import { PushNotificationsService } from './pushNotifications.service';
 
 export interface CreateSplitData {
   name: string;
@@ -88,6 +89,22 @@ export class SplitsService {
 
     if (notificationsToCreate.length > 0) {
       await supabase.from('notifications').insert(notificationsToCreate);
+
+      const inviteeIds = data.participants
+        .filter(p => p.userId !== data.creatorId)
+        .map(p => p.userId);
+      
+      for (const userId of inviteeIds) {
+        const participant = data.participants.find(p => p.userId === userId);
+        await PushNotificationsService.sendPushToUser(userId, {
+          title: 'New Split Request',
+          body: `${creator?.name || 'Someone'} invited you to split $${participant?.amount.toFixed(2)} for ${data.name}`,
+          data: {
+            type: 'split_invite',
+            splitEventId: split.id,
+          },
+        });
+      }
     }
 
     return split as SplitEvent;
@@ -207,17 +224,6 @@ export class SplitsService {
 
     if (fetchError) throw fetchError;
 
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
-
-    if (walletError) throw walletError;
-    if (wallet.balance < participant.amount) {
-      throw new Error('Insufficient balance');
-    }
-
     const { error: participantError } = await supabase
       .from('split_participants')
       .update({ status: 'paid' })
@@ -227,31 +233,7 @@ export class SplitsService {
     if (participantError) throw participantError;
 
     const creatorId = (participant as any).split_events.creator_id;
-
-    await supabase.rpc('process_split_payment', {
-      payer_id: userId,
-      recipient_id: creatorId,
-      amount: participant.amount,
-    });
-
-    await supabase.from('transactions').insert([
-      {
-        user_id: userId,
-        type: 'split_payment',
-        amount: participant.amount,
-        description: `Payment for ${(participant as any).split_events.name}`,
-        direction: 'out',
-        split_event_id: splitId,
-      },
-      {
-        user_id: creatorId,
-        type: 'split_received',
-        amount: participant.amount,
-        description: `Received from ${(participant as any).split_events.name}`,
-        direction: 'in',
-        split_event_id: splitId,
-      },
-    ]);
+    const splitName = (participant as any).split_events.name;
 
     const { data: user } = await supabase
       .from('users')
@@ -263,9 +245,70 @@ export class SplitsService {
       user_id: creatorId,
       type: 'split_paid',
       title: 'Payment Received',
-      message: `${user?.name || 'Someone'} paid their share for ${(participant as any).split_events.name}`,
+      message: `${user?.name || 'Someone'} paid their share for ${splitName}`,
       split_event_id: splitId,
       read: false,
     });
+
+    await PushNotificationsService.sendPushToUser(creatorId, {
+      title: 'Payment Received',
+      body: `${user?.name || 'Someone'} paid $${participant.amount.toFixed(2)} for ${splitName}`,
+      data: {
+        type: 'split_paid',
+        splitEventId: splitId,
+      },
+    });
+
+    await this.checkAndNotifySplitCompletion(splitId);
+  }
+
+  static async checkAndNotifySplitCompletion(splitId: string): Promise<void> {
+    try {
+      const { data: participants, error } = await supabase
+        .from('split_participants')
+        .select('user_id, status, is_creator, split_events(creator_id, name, total_amount)')
+        .eq('split_event_id', splitId);
+
+      if (error || !participants || participants.length === 0) return;
+
+      const nonCreatorParticipants = participants.filter(p => !p.is_creator);
+      const allPaid = nonCreatorParticipants.every(p => p.status === 'paid');
+
+      if (allPaid && nonCreatorParticipants.length > 0) {
+        const creatorId = (participants[0] as any).split_events.creator_id;
+        const splitName = (participants[0] as any).split_events.name;
+        const totalAmount = (participants[0] as any).split_events.total_amount;
+
+        const { data: existingNotification } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', creatorId)
+          .eq('split_event_id', splitId)
+          .eq('type', 'split_completed')
+          .single();
+
+        if (!existingNotification) {
+          await supabase.from('notifications').insert({
+            user_id: creatorId,
+            type: 'split_completed',
+            title: 'Split Complete!',
+            message: `Everyone has paid for ${splitName}. You collected $${parseFloat(totalAmount).toFixed(2)}!`,
+            split_event_id: splitId,
+            read: false,
+          });
+
+          await PushNotificationsService.sendPushToUser(creatorId, {
+            title: 'Split Complete!',
+            body: `Everyone has paid for ${splitName}. You collected $${parseFloat(totalAmount).toFixed(2)}!`,
+            data: {
+              type: 'split_completed',
+              splitEventId: splitId,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error checking split completion:', error);
+    }
   }
 }
