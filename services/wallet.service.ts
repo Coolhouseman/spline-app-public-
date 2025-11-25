@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
-import { BlinkPayService } from './blinkpay.service';
 import type { Wallet, Transaction } from '@/shared/types';
+
+const BACKEND_URL = 'http://localhost:3000';
 
 export interface BankDetails {
   bank_name: string;
@@ -11,6 +12,14 @@ export interface BankDetails {
 export interface BlinkPayConsentResponse {
   consentId: string;
   redirectUri: string;
+}
+
+interface BlinkPayBankDetails {
+  consent_id: string;
+  bank_name: string;
+  account_reference: string;
+  status: string;
+  expires_at: string;
 }
 
 export class WalletService {
@@ -29,7 +38,19 @@ export class WalletService {
     userId: string, 
     redirectUri: string
   ): Promise<BlinkPayConsentResponse> {
-    const result = await BlinkPayService.createEnduringConsent(redirectUri);
+    const response = await fetch(`${BACKEND_URL}/api/blinkpay/consent/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ redirectUri }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create BlinkPay consent');
+    }
+
+    const result = await response.json();
     
     await supabase
       .from('wallets')
@@ -53,7 +74,13 @@ export class WalletService {
       throw new Error('No BlinkPay consent found');
     }
 
-    const bankDetails = await BlinkPayService.getEnduringConsent(wallet.blinkpay_consent_id);
+    const response = await fetch(`${BACKEND_URL}/api/blinkpay/consent/${wallet.blinkpay_consent_id}`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to get BlinkPay consent details');
+    }
+
+    const bankDetails: BlinkPayBankDetails = await response.json();
 
     const { data, error } = await supabase
       .from('wallets')
@@ -113,7 +140,13 @@ export class WalletService {
 
     if (wallet?.blinkpay_consent_id) {
       try {
-        await BlinkPayService.revokeEnduringConsent(wallet.blinkpay_consent_id);
+        await fetch(`${BACKEND_URL}/api/blinkpay/consent/revoke`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ consentId: wallet.blinkpay_consent_id }),
+        });
       } catch (error) {
         console.error('Failed to revoke BlinkPay consent:', error);
       }

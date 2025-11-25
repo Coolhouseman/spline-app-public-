@@ -10,9 +10,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 import { WalletService } from '@/services/wallet.service';
-import { BlinkPayService } from '@/services/blinkpay.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
+
+const BACKEND_URL = 'http://localhost:3000';
 
 type Props = NativeStackScreenProps<any, 'EventDetail'>;
 
@@ -118,14 +119,32 @@ export default function EventDetailScreen({ route, navigation }: Props) {
 
       const paymentAmount = parseFloat(myParticipant.amount);
       
-      const payment = await BlinkPayService.createPayment(
-        wallet.blinkpay_consent_id,
-        paymentAmount.toFixed(2),
-        event.name.substring(0, 12),
-        eventId.substring(0, 12)
-      );
+      const paymentResponse = await fetch(`${BACKEND_URL}/api/blinkpay/payment/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          consentId: wallet.blinkpay_consent_id,
+          amount: paymentAmount.toFixed(2),
+          particulars: event.name.substring(0, 12),
+          reference: eventId.substring(0, 12)
+        }),
+      });
 
-      const paymentResult = await BlinkPayService.awaitSuccessfulPayment(payment.paymentId);
+      if (!paymentResponse.ok) {
+        throw new Error('Failed to create payment');
+      }
+
+      const payment = await paymentResponse.json();
+
+      const statusResponse = await fetch(`${BACKEND_URL}/api/blinkpay/payment/${payment.paymentId}/status?maxWaitSeconds=30`);
+      
+      if (!statusResponse.ok) {
+        throw new Error('Failed to check payment status');
+      }
+
+      const paymentResult = await statusResponse.json();
       
       if (paymentResult.status === 'completed' || paymentResult.status === 'AcceptedSettlementCompleted') {
         await SplitsService.paySplit(user.id, eventId);

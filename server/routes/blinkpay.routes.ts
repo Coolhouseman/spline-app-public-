@@ -55,7 +55,7 @@ router.post('/consent/revoke', async (req, res) => {
 
 router.post('/payment/create', async (req, res) => {
   try {
-    const { consentId, amount, reference } = req.body;
+    const { consentId, amount, particulars, reference } = req.body;
     
     if (!consentId || !amount) {
       return res.status(400).json({ error: 'consentId and amount are required' });
@@ -64,7 +64,8 @@ router.post('/payment/create', async (req, res) => {
     const result = await BlinkPayService.createPayment(
       consentId,
       amount,
-      reference
+      particulars || 'Split Payment',
+      reference || 'SPLIT'
     );
     
     res.json(result);
