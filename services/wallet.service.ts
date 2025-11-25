@@ -53,14 +53,46 @@ export class WalletService {
 
     const result = await response.json();
     
-    await supabase
+    console.log('Saving consent ID to wallet:', result.consentId);
+    
+    const { data: existingWallet } = await supabase
       .from('wallets')
-      .update({
-        blinkpay_consent_id: result.consentId,
-        blinkpay_consent_status: 'pending'
-      })
-      .eq('user_id', userId);
+      .select('id')
+      .eq('user_id', userId)
+      .single();
 
+    if (existingWallet) {
+      const { error: updateError } = await supabase
+        .from('wallets')
+        .update({
+          blinkpay_consent_id: result.consentId,
+          blinkpay_consent_status: 'pending'
+        })
+        .eq('user_id', userId);
+      
+      if (updateError) {
+        console.error('Failed to update wallet with consent ID:', updateError);
+        throw new Error('Failed to save consent to wallet');
+      }
+    } else {
+      console.log('No wallet found, creating one for user:', userId);
+      const { error: insertError } = await supabase
+        .from('wallets')
+        .insert({
+          user_id: userId,
+          balance: 0,
+          bank_connected: false,
+          blinkpay_consent_id: result.consentId,
+          blinkpay_consent_status: 'pending'
+        });
+      
+      if (insertError) {
+        console.error('Failed to create wallet with consent ID:', insertError);
+        throw new Error('Failed to create wallet');
+      }
+    }
+
+    console.log('Consent ID saved successfully');
     return result;
   }
 
