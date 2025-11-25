@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -13,7 +13,6 @@ import { WalletService, BankDetails } from '@/services/wallet.service';
 import { supabase } from '@/services/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
-import { resolveBackendOrigin } from '@/utils/backend';
 
 type Props = NativeStackScreenProps<any, 'Wallet'>;
 
@@ -160,47 +159,12 @@ export default function WalletScreen({ navigation }: Props) {
     }
   };
 
-  const checkBackendReachable = async (): Promise<boolean> => {
-    try {
-      const backendUrl = resolveBackendOrigin();
-      const response = await fetch(`${backendUrl}/api/blinkpay/health`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return response.ok;
-    } catch (error) {
-      console.log('Backend health check failed:', error);
-      return false;
-    }
-  };
-
   const handleConnectBank = async () => {
     if (!user) return;
     
     setProcessing(true);
     try {
-      const isReachable = await checkBackendReachable();
-      
-      if (!isReachable) {
-        const isWeb = Platform.OS === 'web';
-        if (isWeb) {
-          Alert.alert(
-            'Backend Unavailable',
-            'The payment server is not responding. Please make sure the development server is running and try again.'
-          );
-        } else {
-          Alert.alert(
-            'Development Mode Notice',
-            'Bank connection via BlinkPay requires access to the payment server, which is only available on web during development.\n\nPlease use the web version of the app to connect your bank account. Your bank connection will sync across all devices once connected.',
-            [
-              { text: 'OK', style: 'default' }
-            ]
-          );
-        }
-        return;
-      }
-      
-      const redirectUri = 'split://blinkpay-callback';
+      const redirectUri = 'splitpaymentapp://blinkpay-callback';
       const result = await WalletService.initiateBlinkPayConsent(user.id, redirectUri);
       
       const browserResult = await WebBrowser.openAuthSessionAsync(
@@ -223,21 +187,7 @@ export default function WalletScreen({ navigation }: Props) {
         name: error.name,
         ...error
       });
-      
-      if (error.message?.includes('Network request failed') || error.message?.includes('Failed to fetch')) {
-        const isWeb = Platform.OS === 'web';
-        if (!isWeb) {
-          Alert.alert(
-            'Connection Issue',
-            'Cannot reach the payment server from this device. Please use the web version to connect your bank account.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Error', 'Network error. Please check your connection and try again.');
-        }
-      } else {
-        Alert.alert('Error', error.message || 'Failed to connect bank account');
-      }
+      Alert.alert('Error', error.message || 'Failed to connect bank account');
     } finally {
       setProcessing(false);
     }
