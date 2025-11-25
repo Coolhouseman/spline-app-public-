@@ -1,59 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, Image, TextInput } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, Image, TextInput, RefreshControl } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService, Friend } from '@/utils/storage';
+import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
 type Props = NativeStackScreenProps<any, 'Friends'>;
 
+interface FriendWithDetails {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  friend_details: {
+    id: string;
+    unique_id: string;
+    name: string;
+    email: string;
+    profile_picture?: string;
+    bio?: string;
+  };
+}
+
 export default function FriendsScreen({ navigation }: Props) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadFriends();
     const unsubscribe = navigation.addListener('focus', loadFriends);
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, user?.id]);
 
   const loadFriends = async () => {
-    const allFriends = await storageService.getFriends();
-    setFriends(allFriends);
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      const data = await FriendsService.getFriends(user.id);
+      setFriends(data as FriendWithDetails[]);
+    } catch (error) {
+      console.error('Failed to load friends:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filteredFriends = friends.filter(f =>
-    `${f.firstName} ${f.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    f.uniqueId.includes(searchQuery)
-  );
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadFriends();
+    setRefreshing(false);
+  };
 
-  const renderFriend = ({ item }: { item: Friend }) => (
-    <View style={[styles.friendCard, { borderBottomColor: theme.border }]}>
-      <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-        {item.profilePicture ? (
-          <Image source={{ uri: item.profilePicture }} style={styles.avatarImage} />
-        ) : (
-          <Feather name="user" size={24} color={theme.textSecondary} />
-        )}
+  const filteredFriends = friends.filter(f => {
+    const name = f.friend_details?.name || '';
+    const uniqueId = f.friend_details?.unique_id || '';
+    return name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      uniqueId.includes(searchQuery);
+  });
+
+  const renderFriend = ({ item }: { item: FriendWithDetails }) => {
+    const details = item.friend_details;
+    if (!details) return null;
+    
+    return (
+      <View style={[styles.friendCard, { borderBottomColor: theme.border }]}>
+        <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+          {details.profile_picture ? (
+            <Image source={{ uri: details.profile_picture }} style={styles.avatarImage} />
+          ) : (
+            <Feather name="user" size={24} color={theme.textSecondary} />
+          )}
+        </View>
+        <View style={styles.friendInfo}>
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+            {details.name}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            ID: {details.unique_id}
+          </ThemedText>
+        </View>
       </View>
-      <View style={styles.friendInfo}>
-        <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-          {item.firstName} {item.lastName}
-        </ThemedText>
-        <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-          ID: {item.uniqueId}
-        </ThemedText>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
@@ -84,7 +125,10 @@ export default function FriendsScreen({ navigation }: Props) {
       <FlatList
         data={filteredFriends}
         renderItem={renderFriend}
-        keyExtractor={(item) => item.uniqueId}
+        keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }

@@ -7,7 +7,7 @@ import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareS
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService } from '@/utils/storage';
+import { FriendsService } from '@/services/friends.service';
 
 type Props = NativeStackScreenProps<any, 'AddFriend'>;
 
@@ -18,42 +18,37 @@ export default function AddFriendScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
 
   const handleAddFriend = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'Please log in to add friends');
+      return;
+    }
+
     if (uniqueId.length < 5 || uniqueId.length > 10) {
       Alert.alert('Invalid ID', 'Unique ID must be between 5-10 digits');
       return;
     }
 
-    if (uniqueId === user?.uniqueId) {
+    if (uniqueId === user?.unique_id) {
       Alert.alert('Invalid ID', 'You cannot add yourself as a friend');
       return;
     }
 
     setLoading(true);
 
-    const friends = await storageService.getFriends();
-    const alreadyAdded = friends.find(f => f.uniqueId === uniqueId);
-    
-    if (alreadyAdded) {
-      Alert.alert('Already friends', `You are already friends with ${alreadyAdded.firstName} ${alreadyAdded.lastName}`);
+    try {
+      await FriendsService.addFriend(user.id, uniqueId);
       setLoading(false);
-      return;
+
+      Alert.alert(
+        'Friend added!',
+        'Friend has been added to your friends list',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    } catch (error: any) {
+      setLoading(false);
+      const message = error?.message || 'Failed to add friend';
+      Alert.alert('Error', message);
     }
-
-    const newFriend = {
-      uniqueId,
-      firstName: 'Friend',
-      lastName: uniqueId.substring(0, 3),
-      profilePicture: undefined,
-    };
-
-    await storageService.addFriend(newFriend);
-    setLoading(false);
-
-    Alert.alert(
-      'Friend added!',
-      `${newFriend.firstName} ${newFriend.lastName} has been added to your friends list`,
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
-    );
   };
 
   const isValidId = /^\d{5,10}$/.test(uniqueId);
