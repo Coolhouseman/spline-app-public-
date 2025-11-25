@@ -156,6 +156,54 @@ CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 4. Make it **Public** (check the box)
 5. Click **Create bucket**
 
+### Storage Policies for Uploads
+
+After creating the bucket, add these storage policies to allow authenticated users to upload files:
+
+1. Go to **Storage** > **Policies** tab
+2. Click **New Policy** for the `user-uploads` bucket
+3. Add these policies (you can use the "For full customization" option and paste):
+
+```sql
+-- Allow authenticated users to upload files to their profile folder
+CREATE POLICY "Allow authenticated users to upload profile pictures"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'user-uploads' AND
+  (storage.foldername(name))[1] = 'profile-pictures'
+);
+
+-- Allow authenticated users to upload receipt images
+CREATE POLICY "Allow authenticated users to upload receipts"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'user-uploads' AND
+  (storage.foldername(name))[1] = 'receipts'
+);
+
+-- Allow anyone to view uploaded files (bucket is public)
+CREATE POLICY "Allow public read access"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'user-uploads');
+
+-- Allow users to update their own uploads
+CREATE POLICY "Allow users to update own uploads"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (bucket_id = 'user-uploads');
+
+-- Allow users to delete their own uploads
+CREATE POLICY "Allow users to delete own uploads"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (bucket_id = 'user-uploads');
+```
+
+**Note**: If the bucket is marked as "Public" in Supabase, read access is allowed by default. The INSERT policies are what control who can upload files.
+
 ## Step 5: Disable Email Confirmation (For Development)
 
 To make signup easier during development:
