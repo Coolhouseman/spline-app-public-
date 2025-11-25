@@ -13,7 +13,7 @@ router.post('/consent/create', async (req, res) => {
 
     const result = await BlinkPayService.createEnduringConsent(
       redirectUri,
-      maxAmountPerPeriod
+      maxAmountPerPeriod || '1000.00'
     );
     
     res.json(result);

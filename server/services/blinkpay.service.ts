@@ -50,7 +50,6 @@ export class BlinkPayService {
   }
 
   static async createEnduringConsent(
-    userId: string,
     redirectUri: string,
     maxAmountPerPeriod: string = '1000.00'
   ): Promise<{ consentId: string; redirectUri: string }> {
