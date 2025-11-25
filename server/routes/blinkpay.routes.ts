@@ -3,6 +3,14 @@ import { BlinkPayService } from '../services/blinkpay.service';
 
 const router = express.Router();
 
+router.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    service: 'blinkpay',
+    timestamp: new Date().toISOString()
+  });
+});
+
 router.post('/consent/create', async (req, res) => {
   try {
     const { redirectUri, maxAmountPerPeriod } = req.body;
