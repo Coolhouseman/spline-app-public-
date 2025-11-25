@@ -34,7 +34,36 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
 
   const handleEditProfilePicture = async () => {
     if (Platform.OS === 'web') {
-      Alert.alert('Not Available', 'Profile picture upload is not available on web');
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file && user) {
+          setUploading(true);
+          try {
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64 = reader.result as string;
+              await AuthService.uploadProfilePictureWeb(user.id, file, file.name);
+              await refreshUser();
+              Alert.alert('Success', 'Profile picture updated');
+              setUploading(false);
+            };
+            reader.onerror = () => {
+              console.error('File read error');
+              Alert.alert('Error', 'Failed to read file');
+              setUploading(false);
+            };
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error('Profile picture upload error:', error);
+            Alert.alert('Error', 'Failed to update profile picture');
+            setUploading(false);
+          }
+        }
+      };
+      input.click();
       return;
     }
 
@@ -88,7 +117,20 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
     setIsEditingBio(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to logout?');
+      if (confirmed) {
+        setLoggingOut(true);
+        try {
+          await logout();
+        } finally {
+          setLoggingOut(false);
+        }
+      }
+      return;
+    }
+    
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',

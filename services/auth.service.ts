@@ -161,4 +161,27 @@ export class AuthService {
 
     return publicUrl;
   }
+
+  static async uploadProfilePictureWeb(userId: string, file: File, fileName: string): Promise<string> {
+    const fileExt = fileName.split('.').pop() || 'jpg';
+    const newFileName = `${userId}-${Date.now()}.${fileExt}`;
+    const filePath = `profile-pictures/${newFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('user-uploads')
+      .upload(filePath, file, {
+        contentType: file.type || `image/${fileExt}`,
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('user-uploads')
+      .getPublicUrl(filePath);
+
+    await this.updateProfile(userId, { profile_picture: publicUrl });
+
+    return publicUrl;
+  }
 }
