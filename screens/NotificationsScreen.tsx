@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
@@ -8,8 +8,10 @@ import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService, Notification, generateId } from '@/utils/storage';
+import { NotificationsService } from '@/services/notifications.service';
+import { SplitsService } from '@/services/splits.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Notification } from '@/shared/types';
 
 type Props = NativeStackScreenProps<any, 'Notifications'>;
 
@@ -18,103 +20,189 @@ export default function NotificationsScreen({ navigation }: Props) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const notifs = await NotificationsService.getNotifications(user.id);
+      setNotifications(notifs);
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [loadNotifications]);
 
-  const loadNotifications = async () => {
-    const notifs = await storageService.getNotifications();
-    setNotifications(notifs);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadNotifications();
+    setRefreshing(false);
   };
 
   const handleAccept = async (notification: Notification) => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    const events = await storageService.getEvents();
-    const event = events.find(e => e.id === notification.eventId);
-
-    if (event && user) {
-      const updatedParticipants = event.participants.map(p =>
-        p.uniqueId === user.uniqueId ? { ...p, status: 'paid' as const } : p
-      );
-
-      await storageService.updateEvent(notification.eventId, {
-        participants: updatedParticipants,
-      });
+    if (!user || !notification.split_event_id) return;
+    
+    setProcessingId(notification.id);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await SplitsService.respondToSplit(user.id, notification.split_event_id, 'accepted');
+      await NotificationsService.markAsRead(notification.id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to accept split:', error);
+    } finally {
+      setProcessingId(null);
     }
-
-    await storageService.removeNotification(notification.id);
-    loadNotifications();
   };
 
   const handleDecline = async (notification: Notification) => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-
-    const events = await storageService.getEvents();
-    const event = events.find(e => e.id === notification.eventId);
-
-    if (event && user) {
-      const updatedParticipants = event.participants.map(p =>
-        p.uniqueId === user.uniqueId ? { ...p, status: 'declined' as const } : p
-      );
-
-      await storageService.updateEvent(notification.eventId, {
-        participants: updatedParticipants,
-      });
+    if (!user || !notification.split_event_id) return;
+    
+    setProcessingId(notification.id);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await SplitsService.respondToSplit(user.id, notification.split_event_id, 'declined');
+      await NotificationsService.markAsRead(notification.id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to decline split:', error);
+    } finally {
+      setProcessingId(null);
     }
-
-    await storageService.removeNotification(notification.id);
-    loadNotifications();
   };
 
-  const renderNotification = ({ item }: { item: Notification }) => (
-    <View style={[styles.notificationCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <View style={[styles.iconContainer, { backgroundColor: theme.primary + '20' }]}>
-        <Feather name="users" size={24} color={theme.primary} />
-      </View>
+  const handleDismiss = async (notification: Notification) => {
+    setProcessingId(notification.id);
+    try {
+      await NotificationsService.markAsRead(notification.id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to dismiss notification:', error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
-      <View style={styles.notificationContent}>
-        <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600', marginBottom: Spacing.xs }]}>
-          {item.eventName}
-        </ThemedText>
-        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing.xs }]}>
-          {item.initiatorName} invited you to split ${item.amount.toFixed(2)}
-        </ThemedText>
-        <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
-          {new Date(item.timestamp).toLocaleDateString()}
-        </ThemedText>
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'split_invite':
+        return 'users';
+      case 'split_accepted':
+        return 'check-circle';
+      case 'split_declined':
+        return 'x-circle';
+      case 'split_paid':
+        return 'dollar-sign';
+      default:
+        return 'bell';
+    }
+  };
 
-        <View style={styles.actions}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.acceptButton,
-              { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
-            ]}
-            onPress={() => handleAccept(item)}
-          >
-            <ThemedText style={[Typography.body, { color: '#FFFFFF' }]}>
-              Accept
-            </ThemedText>
-          </Pressable>
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'split_accepted':
+      case 'split_paid':
+        return theme.success;
+      case 'split_declined':
+        return theme.danger;
+      default:
+        return theme.primary;
+    }
+  };
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.declineButton,
-              { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
-            ]}
-            onPress={() => handleDecline(item)}
-          >
-            <ThemedText style={[Typography.body, { color: theme.text }]}>
-              Decline
-            </ThemedText>
-          </Pressable>
+  const renderNotification = ({ item }: { item: Notification }) => {
+    const isProcessing = processingId === item.id;
+    const showActions = item.type === 'split_invite' && !item.read;
+    const iconColor = getNotificationColor(item.type);
+
+    return (
+      <View style={[
+        styles.notificationCard, 
+        { 
+          backgroundColor: theme.surface, 
+          borderColor: theme.border,
+          opacity: item.read ? 0.7 : 1
+        }
+      ]}>
+        <View style={[styles.iconContainer, { backgroundColor: iconColor + '20' }]}>
+          <Feather name={getNotificationIcon(item.type) as any} size={24} color={iconColor} />
+        </View>
+
+        <View style={styles.notificationContent}>
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600', marginBottom: Spacing.xs }]}>
+            {item.title}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing.xs }]}>
+            {item.message}
+          </ThemedText>
+          <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+            {new Date(item.created_at).toLocaleDateString()}
+          </ThemedText>
+
+          {isProcessing ? (
+            <View style={styles.processingContainer}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : showActions ? (
+            <View style={styles.actions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.acceptButton,
+                  { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => handleAccept(item)}
+              >
+                <ThemedText style={[Typography.body, { color: '#FFFFFF' }]}>
+                  Accept
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.declineButton,
+                  { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => handleDecline(item)}
+              >
+                <ThemedText style={[Typography.body, { color: theme.text }]}>
+                  Decline
+                </ThemedText>
+              </Pressable>
+            </View>
+          ) : !item.read ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.dismissButton,
+                { opacity: pressed ? 0.7 : 1 }
+              ]}
+              onPress={() => handleDismiss(item)}
+            >
+              <ThemedText style={[Typography.small, { color: theme.primary }]}>
+                Mark as read
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </View>
       </View>
-    </View>
-  );
+    );
+  };
+
+  if (loading) {
+    return (
+      <ThemedView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
@@ -134,6 +222,9 @@ export default function NotificationsScreen({ navigation }: Props) {
         renderItem={renderNotification}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="bell" size={48} color={theme.textSecondary} />
@@ -198,6 +289,13 @@ const styles = StyleSheet.create({
   },
   acceptButton: {},
   declineButton: {},
+  dismissButton: {
+    marginTop: Spacing.md,
+  },
+  processingContainer: {
+    marginTop: Spacing.md,
+    alignItems: 'flex-start',
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: Spacing['2xl'] * 2,
