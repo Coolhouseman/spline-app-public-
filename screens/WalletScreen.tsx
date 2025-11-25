@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -28,6 +28,7 @@ export default function WalletScreen({ navigation }: Props) {
   
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showBlinkPayErrorModal, setShowBlinkPayErrorModal] = useState(false);
   
   const [amount, setAmount] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -181,13 +182,20 @@ export default function WalletScreen({ navigation }: Props) {
       }
     } catch (error: any) {
       console.error('Connect bank error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        ...error
-      });
-      Alert.alert('Error', error.message || 'Failed to connect bank account');
+      
+      if (error.message?.includes('Unexpected token') || error.message?.includes('<!DOCTYPE')) {
+        if (Platform.OS === 'web') {
+          setShowBlinkPayErrorModal(true);
+        } else {
+          Alert.alert(
+            'BlinkPay Not Available',
+            'Bank connection requires running the app locally or on a device via Expo Go. The web preview cannot reach the payment server.\n\nTo test BlinkPay:\n1. Run the project on your local computer\n2. Or scan the QR code with Expo Go on your phone',
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        Alert.alert('Error', error.message || 'Failed to connect bank account');
+      }
     } finally {
       setProcessing(false);
     }
@@ -484,6 +492,38 @@ export default function WalletScreen({ navigation }: Props) {
                 )}
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showBlinkPayErrorModal} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={{ alignItems: 'center', marginBottom: Spacing.lg }}>
+              <Feather name="alert-circle" size={48} color={theme.warning || '#F59E0B'} />
+            </View>
+            <ThemedText style={[Typography.h2, { color: theme.text, textAlign: 'center', marginBottom: Spacing.md }]}>
+              BlinkPay Not Available
+            </ThemedText>
+            <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center', marginBottom: Spacing.lg }]}>
+              Bank connection requires running the app locally or on a device via Expo Go. The web preview cannot reach the payment server.
+            </ThemedText>
+            <ThemedText style={[Typography.small, { color: theme.textSecondary, textAlign: 'center', marginBottom: Spacing.xl }]}>
+              To test BlinkPay:{'\n'}
+              1. Run the project on your local computer{'\n'}
+              2. Or scan the QR code with Expo Go on your phone
+            </ThemedText>
+            <Pressable
+              style={({ pressed }) => [
+                styles.modalButton,
+                { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, flex: 0, width: '100%' }
+              ]}
+              onPress={() => setShowBlinkPayErrorModal(false)}
+            >
+              <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                Got It
+              </ThemedText>
+            </Pressable>
           </View>
         </View>
       </Modal>
