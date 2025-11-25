@@ -101,16 +101,35 @@ export default function WalletScreen({ navigation }: Props) {
       return;
     }
     
+    if (!wallet?.bank_connected) {
+      Alert.alert(
+        'Connect Bank First',
+        'You need to connect your bank account via BlinkPay to add funds. Would you like to connect now?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Connect Bank',
+            onPress: () => {
+              setShowAddFundsModal(false);
+              setAmount('');
+              handleConnectBank();
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
     setProcessing(true);
     try {
-      await WalletService.addFunds(user.id, numAmount);
+      await WalletService.addFundsViaBlinkPay(user.id, numAmount);
       await loadWalletData();
       setAmount('');
       setShowAddFundsModal(false);
-      Alert.alert('Success', `$${numAmount.toFixed(2)} added to your wallet`);
-    } catch (error) {
+      Alert.alert('Success', `$${numAmount.toFixed(2)} added to your wallet via BlinkPay`);
+    } catch (error: any) {
       console.error('Add funds error:', error);
-      Alert.alert('Error', 'Failed to add funds');
+      Alert.alert('Error', error.message || 'Failed to add funds');
     } finally {
       setProcessing(false);
     }
@@ -234,6 +253,9 @@ export default function WalletScreen({ navigation }: Props) {
   const renderTransaction = ({ item }: { item: Transaction }) => {
     const isCredit = item.direction === 'in';
     const color = getTransactionColor(item.type);
+    const date = new Date(item.created_at);
+    const dateStr = date.toLocaleDateString();
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
       <View style={[styles.transactionCard, { borderBottomColor: theme.border }]}>
@@ -245,7 +267,7 @@ export default function WalletScreen({ navigation }: Props) {
             {item.description}
           </ThemedText>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            {new Date(item.created_at).toLocaleDateString()}
+            {dateStr} at {timeStr}
           </ThemedText>
         </View>
         <ThemedText style={[Typography.body, { color, fontWeight: '600' }]}>

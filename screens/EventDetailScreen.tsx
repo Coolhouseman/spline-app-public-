@@ -96,73 +96,56 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     if (!event || !user) return;
 
     try {
-      const wallet = await WalletService.getWallet(user.id);
-      
-      if (!wallet.bank_connected || !wallet.blinkpay_consent_id) {
-        Alert.alert(
-          'Bank Not Connected',
-          'You need to connect your bank account to make payments. Would you like to connect now?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Connect Bank',
-              onPress: async () => {
-                navigation.navigate('Wallet');
-              }
-            }
-          ]
-        );
-        return;
-      }
-
       const myParticipant = event.participants?.find((p: any) => p.user_id === user.id);
       if (!myParticipant) return;
 
       const paymentAmount = parseFloat(myParticipant.amount);
       
-      const paymentResponse = await fetch(`${BACKEND_URL}/api/blinkpay/payment/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          consentId: wallet.blinkpay_consent_id,
-          amount: paymentAmount.toFixed(2),
-          particulars: event.name.substring(0, 12),
-          reference: eventId.substring(0, 12)
-        }),
-      });
-
-      if (!paymentResponse.ok) {
-        throw new Error('Failed to create payment');
-      }
-
-      const payment = await paymentResponse.json();
-
-      const statusResponse = await fetch(`${BACKEND_URL}/api/blinkpay/payment/${payment.paymentId}/status?maxWaitSeconds=30`);
-      
-      if (!statusResponse.ok) {
-        throw new Error('Failed to check payment status');
-      }
-
-      const paymentResult = await statusResponse.json();
-      
-      if (paymentResult.status === 'completed' || paymentResult.status === 'AcceptedSettlementCompleted') {
-        await SplitsService.paySplit(user.id, eventId);
-        Alert.alert('Payment Successful', 'Your payment has been processed');
-        loadEvent();
-      } else {
-        throw new Error('Payment failed or was cancelled');
-      }
+      Alert.alert(
+        'Confirm Payment',
+        `Pay $${paymentAmount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Pay',
+            onPress: async () => {
+              try {
+                await WalletService.paySplitEvent(
+                  user.id,
+                  eventId,
+                  paymentAmount,
+                  event.creator_id,
+                  event.name
+                );
+                
+                await SplitsService.paySplit(user.id, eventId);
+                Alert.alert('Payment Successful', 'Your payment has been processed');
+                loadEvent();
+              } catch (error: any) {
+                console.error('Payment failed:', error);
+                if (error.message.includes('Insufficient wallet balance')) {
+                  Alert.alert(
+                    'Connect Bank Required',
+                    'You don\'t have enough balance in your wallet. Would you like to connect your bank to complete this payment?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Connect Bank',
+                        onPress: () => navigation.navigate('Wallet')
+                      }
+                    ]
+                  );
+                } else {
+                  Alert.alert('Error', error.message || 'Payment failed. Please try again.');
+                }
+              }
+            }
+          }
+        ]
+      );
     } catch (error: any) {
       console.error('Payment failed:', error);
-      if (error.message === 'Insufficient balance') {
-        Alert.alert('Insufficient Funds', 'Please add funds to your wallet to make this payment');
-      } else if (error.message.includes('Bank Not Connected')) {
-        Alert.alert('Error', error.message);
-      } else {
-        Alert.alert('Error', error.message || 'Payment failed. Please try again.');
-      }
+      Alert.alert('Error', error.message || 'Failed to process payment');
     }
   };
 
