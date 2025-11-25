@@ -17,6 +17,10 @@ localPort = 33295
 externalPort = 3003
 
 [[ports]]
+localPort = 33667
+externalPort = 4200
+
+[[ports]]
 localPort = 39243
 externalPort = 3001
 
@@ -100,3 +104,4 @@ value = "0"
 [userenv]
 
 [userenv.shared]
+EXPO_PUBLIC_BACKEND_URL = "http://172.31.89.130:8082"
