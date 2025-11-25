@@ -144,13 +144,19 @@ export class PushNotificationsService {
 
       const result = await response.json();
       
-      if (result.data?.status === 'ok') {
-        console.log('Push notification sent successfully');
-        return true;
-      } else {
-        console.error('Push notification failed:', result);
-        return false;
+      if (result.data && Array.isArray(result.data)) {
+        const ticket = result.data[0];
+        if (ticket?.status === 'ok') {
+          console.log('Push notification sent successfully');
+          return true;
+        } else if (ticket?.status === 'error') {
+          console.error('Push notification error:', ticket.message, ticket.details);
+          return false;
+        }
       }
+      
+      console.log('Push notification response:', result);
+      return true;
     } catch (error) {
       console.error('Error sending push notification:', error);
       return false;

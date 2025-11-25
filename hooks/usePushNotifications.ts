@@ -37,14 +37,19 @@ export function usePushNotifications(userId: string | undefined) {
         console.log('Notification response:', response);
         const data = response.notification.request.content.data;
         
-        if (data?.type === 'split_invite' && data?.splitEventId) {
-          navigation.navigate('EventDetail', { eventId: data.splitEventId });
-        } else if (data?.type === 'split_paid' && data?.splitEventId) {
-          navigation.navigate('EventDetail', { eventId: data.splitEventId });
-        } else if (data?.type === 'split_completed' && data?.splitEventId) {
-          navigation.navigate('EventDetail', { eventId: data.splitEventId });
-        } else {
-          navigation.navigate('Notifications');
+        try {
+          if (data?.splitEventId) {
+            navigation.navigate('HomeTab', {
+              screen: 'EventDetail',
+              params: { eventId: data.splitEventId },
+            });
+          } else {
+            navigation.navigate('HomeTab', {
+              screen: 'Notifications',
+            });
+          }
+        } catch (error) {
+          console.error('Navigation error:', error);
         }
       }
     );

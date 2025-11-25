@@ -12,15 +12,12 @@ import AuthStackNavigator from "@/navigation/AuthStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const Stack = createNativeStackNavigator();
 
 function RootNavigator() {
   const { user, isLoading } = useAuth();
   const { theme } = useTheme();
-  
-  usePushNotifications(user?.id);
 
   if (isLoading) {
     return (

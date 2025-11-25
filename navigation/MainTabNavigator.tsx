@@ -8,6 +8,8 @@ import WalletStackNavigator from "@/navigation/WalletStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { CustomTabBar } from "@/components/CustomTabBar";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/hooks/useAuth";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export type MainTabParamList = {
   HomeTab: { screen?: string } | undefined;
@@ -21,6 +23,9 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainTabNavigator() {
   const { theme, isDark } = useTheme();
+  const { user } = useAuth();
+  
+  usePushNotifications(user?.id);
 
   return (
     <Tab.Navigator

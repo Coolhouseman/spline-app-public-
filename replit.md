@@ -56,6 +56,18 @@ Preferred communication style: Simple, everyday language.
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.
 
+### Push Notifications (iOS/Android)
+- **expo-notifications**: Native push notification support for iOS and Android devices.
+- **Permission Flow**: Requests notification permission on first app launch after login. iOS and Android 13+ require explicit user consent.
+- **Push Token Storage**: Expo push tokens are stored in the `users` table (`push_token` column).
+- **Notification Triggers**:
+  1. **Split Invite**: When someone invites you to join a split activity.
+  2. **Payment Received**: When someone pays their share to you.
+  3. **Split Completed**: When a split reaches 100% (all participants have paid).
+- **Badge Count**: App icon badge updates to show unread notification count.
+- **Deep Linking**: Tapping a notification navigates to the relevant event detail or notifications screen.
+- **Web Fallback**: Push notifications are not supported on web; only in-app notifications work on web platform.
+
 ### Error Handling
 - **Error Boundaries**: Class-based error boundary component with fallback UI.
 - **Development Tools**: Detailed error modal in DEV mode.
