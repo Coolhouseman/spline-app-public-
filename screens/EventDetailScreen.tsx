@@ -12,18 +12,9 @@ import { SplitsService } from '@/services/splits.service';
 import { WalletService } from '@/services/wallet.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
-import * as Constants from 'expo-constants';
+import { resolveBackendOrigin } from '@/utils/backend';
 
-const getBackendUrl = () => {
-  const isDev = __DEV__;
-  if (isDev && Constants.default.expoConfig?.hostUri) {
-    const host = Constants.default.expoConfig.hostUri.split(':')[0];
-    return `https://${host}:3000`;
-  }
-  return 'http://localhost:3000';
-};
-
-const BACKEND_URL = getBackendUrl();
+const BACKEND_URL = resolveBackendOrigin();
 
 type Props = NativeStackScreenProps<any, 'EventDetail'>;
 

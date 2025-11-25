@@ -17,10 +17,6 @@ localPort = 33295
 externalPort = 3003
 
 [[ports]]
-localPort = 36369
-externalPort = 3002
-
-[[ports]]
 localPort = 39243
 externalPort = 3001
 
@@ -96,3 +92,8 @@ value = "1"
 path = "/*"
 name = "expo-sfv-version"
 value = "0"
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_BACKEND_URL = "https://2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev:8082"

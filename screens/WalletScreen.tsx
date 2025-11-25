@@ -162,6 +162,12 @@ export default function WalletScreen({ navigation }: Props) {
       }
     } catch (error: any) {
       console.error('Connect bank error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        ...error
+      });
       Alert.alert('Error', error.message || 'Failed to connect bank account');
     } finally {
       setProcessing(false);

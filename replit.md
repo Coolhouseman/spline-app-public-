@@ -25,25 +25,40 @@ Preferred communication style: Simple, everyday language.
 **Files Modified**:
 - `services/splits.service.ts` - Updated `getSplits()` method
 
-### Backend Server Architecture for BlinkPay
+### Backend Server Architecture for BlinkPay (Updated November 2025)
 **Issue**: BlinkPay Node.js SDK incompatible with React Native (requires Node.js-specific modules)
 
-**Solution**: Created Express backend server to handle BlinkPay operations:
-- Backend runs on port 8082 (external port 3000 in Replit)
-- Expo dev server runs on port 8081 (external port 80)
-- Client apps make HTTP requests to backend APIs
-- Backend handles all BlinkPay SDK interactions
+**Solution**: Created Express backend server with automatic URL resolution:
+- **Backend Port**: Internal port 8082, external HTTPS on Replit domain
+- **Frontend Port**: Expo dev server on port 8081
+- **TypeScript Compilation**: Using `tsx` (not ts-node) for proper ES module support
+- **Concurrent Execution**: Both servers start together via `concurrently` in package.json dev script
+
+**Backend URL Resolution**:
+- Created `utils/backend.ts` with `resolveBackendOrigin()` helper
+- **Web/Replit**: Uses `EXPO_PUBLIC_BACKEND_URL` environment variable (HTTPS)
+- **Expo Go on LAN**: Auto-detects from hostUri (HTTP)
+- **Expo Go tunnel mode**: Requires `EXPO_PUBLIC_BACKEND_URL` (tunnels can't reach local backend)
+- **Localhost web**: Falls back to `http://localhost:8082`
+
+**Environment Configuration**:
+- `EXPO_PUBLIC_BACKEND_URL`: Set to `https://<REPLIT_DEV_DOMAIN>:8082` for Replit hosting
+- Required for web testing and Expo Go tunnel mode
+- Auto-detected for LAN/localhost testing
 
 **Files Added**:
 - `server/index.ts` - Express server entry point
+- `server/tsconfig.json` - TypeScript configuration for backend
 - `server/routes/blinkpay.routes.ts` - BlinkPay API endpoints
 - `server/services/blinkpay.service.ts` - BlinkPay SDK wrapper
-- `start-all.sh` - Script to run both servers
-- `BLINKPAY_BACKEND_SETUP.md` - Complete documentation
+- `utils/backend.ts` - Backend URL resolution helper
+- `start-all.sh` - Script to run both servers (uses tsx)
 
 **Files Modified**:
-- `services/wallet.service.ts` - Updated to call backend APIs
-- `screens/EventDetailScreen.tsx` - Updated to call backend APIs for payments
+- `package.json` - Updated dev script to use concurrently for both servers
+- `nodemon.json` - Updated to use tsx with project-specific tsconfig
+- `services/wallet.service.ts` - Uses resolveBackendOrigin() for API calls
+- `screens/EventDetailScreen.tsx` - Uses resolveBackendOrigin() for payment processing
 
 ## System Architecture
 
