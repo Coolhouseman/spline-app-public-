@@ -44,11 +44,9 @@ export default function SignupBioScreen({ navigation, route }: Props) {
         uniqueId: uniqueId,
       });
       
-      navigation.navigate('SignupComplete', { uniqueId });
     } catch (error: any) {
       console.error('Signup error:', error);
       Alert.alert('Signup Failed', error.message || 'An error occurred during signup');
-    } finally {
       setLoading(false);
     }
   };
