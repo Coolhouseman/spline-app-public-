@@ -16,19 +16,25 @@ export default function AddFriendScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [uniqueId, setUniqueId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleAddFriend = async () => {
+    setErrorMessage(null);
+    
     if (!user?.id) {
+      setErrorMessage('Please log in to add friends');
       Alert.alert('Error', 'Please log in to add friends');
       return;
     }
 
     if (uniqueId.length < 5 || uniqueId.length > 10) {
+      setErrorMessage('Unique ID must be between 5-10 digits');
       Alert.alert('Invalid ID', 'Unique ID must be between 5-10 digits');
       return;
     }
 
     if (uniqueId === user?.unique_id) {
+      setErrorMessage('You cannot add yourself as a friend');
       Alert.alert('Invalid ID', 'You cannot add yourself as a friend');
       return;
     }
@@ -47,6 +53,8 @@ export default function AddFriendScreen({ navigation }: Props) {
     } catch (error: any) {
       setLoading(false);
       const message = error?.message || 'Failed to add friend';
+      console.error('Add friend error:', message);
+      setErrorMessage(message);
       Alert.alert('Error', message);
     }
   };
@@ -81,6 +89,12 @@ export default function AddFriendScreen({ navigation }: Props) {
         <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.sm }]}>
           Only numeric IDs between 5-10 digits are valid
         </ThemedText>
+
+        {errorMessage ? (
+          <ThemedText style={[Typography.body, { color: theme.danger, marginTop: Spacing.lg, textAlign: 'center' }]}>
+            {errorMessage}
+          </ThemedText>
+        ) : null}
       </ThemedView>
 
       <View style={styles.footer}>
