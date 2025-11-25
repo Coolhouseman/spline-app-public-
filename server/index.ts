@@ -6,7 +6,7 @@ import blinkpayRouter from './routes/blinkpay.routes';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8082;
 
 app.use(cors());
 app.use(express.json());
@@ -17,6 +17,6 @@ app.get('/health', (req, res) => {
 
 app.use('/api/blinkpay', blinkpayRouter);
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on port ${PORT}`);
 });

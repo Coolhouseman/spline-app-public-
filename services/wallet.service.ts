@@ -1,7 +1,17 @@
 import { supabase } from './supabase';
 import type { Wallet, Transaction } from '@/shared/types';
+import * as Constants from 'expo-constants';
 
-const BACKEND_URL = 'http://localhost:3000';
+const getBackendUrl = () => {
+  const isDev = __DEV__;
+  if (isDev && Constants.default.expoConfig?.hostUri) {
+    const host = Constants.default.expoConfig.hostUri.split(':')[0];
+    return `https://${host}:3000`;
+  }
+  return 'http://localhost:3000';
+};
+
+const BACKEND_URL = getBackendUrl();
 
 export interface BankDetails {
   bank_name: string;
