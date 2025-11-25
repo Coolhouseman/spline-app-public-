@@ -23,6 +23,7 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioText, setBioText] = useState(user?.bio || '');
   const [savingBio, setSavingBio] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const copyToClipboard = async () => {
     if (user?.unique_id) {
@@ -97,7 +98,12 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await logout();
+            setLoggingOut(true);
+            try {
+              await logout();
+            } finally {
+              setLoggingOut(false);
+            }
           },
         },
       ]
@@ -278,11 +284,18 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
             { backgroundColor: theme.danger, opacity: pressed ? 0.7 : 1 }
           ]}
           onPress={handleLogout}
+          disabled={loggingOut}
         >
-          <Feather name="log-out" size={20} color="#FFFFFF" />
-          <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.md, fontWeight: '600' }]}>
-            Logout
-          </ThemedText>
+          {loggingOut ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Feather name="log-out" size={20} color="#FFFFFF" />
+              <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.md, fontWeight: '600' }]}>
+                Logout
+              </ThemedText>
+            </>
+          )}
         </Pressable>
       </ThemedView>
     </ScreenScrollView>

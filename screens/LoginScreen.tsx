@@ -24,11 +24,13 @@ export default function LoginScreen({ navigation }: Props) {
     }
 
     setLoading(true);
-    const success = await login(email, password);
-    setLoading(false);
-
-    if (!success) {
-      Alert.alert('Error', 'Invalid email or password');
+    try {
+      const success = await login(email, password);
+      if (!success) {
+        Alert.alert('Error', 'Invalid email or password');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
