@@ -8,9 +8,7 @@ import {
   Consent,
   Payment,
   AuthFlowDetailTypeEnum,
-  AmountCurrencyEnum,
-  Period,
-  FlowHintTypeEnum
+  AmountCurrencyEnum
 } from 'blink-debit-api-client-node';
 
 const BLINKPAY_SANDBOX_URL = 'https://sandbox.debit.blinkpay.co.nz';
@@ -55,14 +53,15 @@ export class BlinkPayService {
   ): Promise<{ consentId: string; redirectUri: string }> {
     const client = this.getClient();
 
+    const now = new Date();
+    const oneYearLater = new Date();
+    oneYearLater.setFullYear(now.getFullYear() + 1);
+
     const request: EnduringConsentRequest = {
       flow: {
         detail: {
           type: AuthFlowDetailTypeEnum.Gateway,
-          redirectUri,
-          flowHint: {
-            type: FlowHintTypeEnum.Redirect
-          }
+          redirectUri
         }
       },
       maximumAmountPeriod: {
@@ -73,12 +72,16 @@ export class BlinkPayService {
         currency: AmountCurrencyEnum.NZD,
         total: maxAmountPerPeriod
       },
-      period: Period.Monthly,
-      fromTimestamp: new Date(),
-      expiryTimestamp: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      period: 'monthly' as any,
+      fromTimestamp: now.toISOString() as any,
+      expiryTimestamp: oneYearLater.toISOString() as any
     };
 
+    console.log('Creating enduring consent with request:', JSON.stringify(request, null, 2));
+
     const response: CreateConsentResponse = await client.createEnduringConsent(request);
+
+    console.log('Consent created:', { consentId: response.consentId, redirectUri: response.redirectUri });
 
     return {
       consentId: response.consentId || '',
@@ -90,7 +93,7 @@ export class BlinkPayService {
     const client = this.getClient();
     const consent: Consent = await client.getEnduringConsent(consentId);
 
-    const enduringDetail = consent.detail as EnduringConsentRequest;
+    const enduringDetail = consent.detail as any;
 
     return {
       consent_id: consentId,
@@ -98,7 +101,7 @@ export class BlinkPayService {
       account_reference: '****',
       status: consent.status === 'Authorised' ? 'active' : 
               consent.status === 'Revoked' ? 'revoked' : 'expired',
-      expires_at: enduringDetail.expiryTimestamp?.toISOString() || ''
+      expires_at: enduringDetail?.expiryTimestamp || ''
     };
   }
 
