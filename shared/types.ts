@@ -7,6 +7,7 @@ export interface User {
   date_of_birth?: string;
   bio?: string;
   profile_picture?: string;
+  push_token?: string;
   created_at: string;
   updated_at: string;
 }
@@ -76,7 +77,7 @@ export interface Transaction {
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received';
+  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed';
   title: string;
   message: string;
   split_event_id?: string;
