@@ -375,39 +375,143 @@ export class WalletService {
     if (!wallet) throw new Error('Wallet not found');
 
     const currentBalance = parseFloat(wallet.balance.toString());
+    
+    // Calculate how much we can pay from wallet vs BlinkPay
+    const walletPayment = Math.min(currentBalance, amount);
+    const blinkPayPayment = amount - walletPayment;
 
-    if (currentBalance >= amount) {
-      const newBalance = currentBalance - amount;
+    // If we need BlinkPay but don't have it connected
+    if (blinkPayPayment > 0 && (!wallet.bank_connected || !wallet.blinkpay_consent_id)) {
+      throw new Error(`Insufficient wallet balance ($${currentBalance.toFixed(2)}). Connect your bank to pay the remaining $${blinkPayPayment.toFixed(2)} via BlinkPay.`);
+    }
+
+    // Process BlinkPay payment first if needed (so we don't deduct wallet if bank fails)
+    if (blinkPayPayment > 0) {
+      const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          consentId: wallet.blinkpay_consent_id,
+          amount: blinkPayPayment.toFixed(2),
+          particulars: 'Split Payment',
+          reference: splitEventId.substring(0, 12)
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to process payment via BlinkPay');
+      }
+
+      const paymentResult = await response.json();
+
+      const statusResponse = await fetch(
+        `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
+      );
+
+      if (!statusResponse.ok) {
+        throw new Error('Failed to verify payment status');
+      }
+
+      const paymentStatus = await statusResponse.json();
+
+      if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
+        throw new Error('Payment was not completed. Your bank account was not charged.');
+      }
+    }
+
+    // Deduct from wallet if we used any wallet balance
+    if (walletPayment > 0) {
+      const newBalance = currentBalance - walletPayment;
       await supabase
         .from('wallets')
         .update({ balance: newBalance })
         .eq('user_id', userId);
+    }
 
-      const { data: recipientWallet } = await supabase
+    // Credit recipient's wallet with the full amount
+    const { data: recipientWallet } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', recipientId)
+      .single();
+
+    if (recipientWallet) {
+      const recipientNewBalance = parseFloat(recipientWallet.balance.toString()) + amount;
+      await supabase
         .from('wallets')
-        .select('balance')
-        .eq('user_id', recipientId)
-        .single();
+        .update({ balance: recipientNewBalance })
+        .eq('user_id', recipientId);
 
-      if (recipientWallet) {
-        const recipientNewBalance = parseFloat(recipientWallet.balance.toString()) + amount;
-        await supabase
-          .from('wallets')
-          .update({ balance: recipientNewBalance })
-          .eq('user_id', recipientId);
+      // Log transaction for recipient
+      await supabase
+        .from('transactions')
+        .insert({
+          user_id: recipientId,
+          type: 'split_received',
+          amount: amount,
+          description: `Received payment for ${eventName}`,
+          direction: 'in',
+          split_event_id: splitEventId,
+        });
+    }
 
-        await supabase
-          .from('transactions')
-          .insert({
-            user_id: recipientId,
-            type: 'split_received',
-            amount: amount,
-            description: `Received payment for ${eventName}`,
-            direction: 'in',
-            split_event_id: splitEventId,
-          });
+    // Create transaction record(s) for payer
+    // If hybrid payment, log both wallet and BlinkPay portions separately
+    if (walletPayment > 0 && blinkPayPayment > 0) {
+      // Hybrid payment: log wallet portion first
+      const { error: walletTxError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: 'split_payment',
+          amount: walletPayment,
+          description: `Paid ${eventName} (from wallet)`,
+          direction: 'out',
+          split_event_id: splitEventId,
+        });
+
+      if (walletTxError) {
+        console.error('Failed to log wallet transaction:', walletTxError);
       }
 
+      // Log BlinkPay portion
+      const { data: transaction, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: 'split_payment',
+          amount: blinkPayPayment,
+          description: `Paid ${eventName} (via bank)`,
+          direction: 'out',
+          split_event_id: splitEventId,
+        })
+        .select()
+        .single();
+
+      if (transactionError) throw transactionError;
+      return transaction as Transaction;
+    } else if (blinkPayPayment > 0) {
+      // Full BlinkPay payment
+      const { data: transaction, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: 'split_payment',
+          amount: amount,
+          description: `Paid ${eventName} via BlinkPay`,
+          direction: 'out',
+          split_event_id: splitEventId,
+        })
+        .select()
+        .single();
+
+      if (transactionError) throw transactionError;
+      return transaction as Transaction;
+    } else {
+      // Full wallet payment
       const { data: transaction, error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -424,85 +528,6 @@ export class WalletService {
       if (transactionError) throw transactionError;
       return transaction as Transaction;
     }
-
-    if (!wallet.bank_connected || !wallet.blinkpay_consent_id) {
-      throw new Error('Insufficient wallet balance. Connect your bank to pay via BlinkPay.');
-    }
-
-    const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        consentId: wallet.blinkpay_consent_id,
-        amount: amount.toFixed(2),
-        particulars: 'Split Payment',
-        reference: splitEventId.substring(0, 12)
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to process payment via BlinkPay');
-    }
-
-    const paymentResult = await response.json();
-
-    const statusResponse = await fetch(
-      `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
-    );
-
-    if (!statusResponse.ok) {
-      throw new Error('Failed to verify payment status');
-    }
-
-    const paymentStatus = await statusResponse.json();
-
-    if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
-      throw new Error('Payment was not completed. Your bank account was not charged.');
-    }
-
-    const { data: recipientWallet } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', recipientId)
-      .single();
-
-    if (recipientWallet) {
-      const recipientNewBalance = parseFloat(recipientWallet.balance.toString()) + amount;
-      await supabase
-        .from('wallets')
-        .update({ balance: recipientNewBalance })
-        .eq('user_id', recipientId);
-
-      await supabase
-        .from('transactions')
-        .insert({
-          user_id: recipientId,
-          type: 'split_received',
-          amount: amount,
-          description: `Received payment for ${eventName}`,
-          direction: 'in',
-          split_event_id: splitEventId,
-        });
-    }
-
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        type: 'split_payment',
-        amount: amount,
-        description: `Paid ${eventName} via BlinkPay`,
-        direction: 'out',
-        split_event_id: splitEventId,
-      })
-      .select()
-      .single();
-
-    if (transactionError) throw transactionError;
-    return transaction as Transaction;
   }
 
   static async getTransactions(userId: string): Promise<Transaction[]> {
