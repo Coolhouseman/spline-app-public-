@@ -13,13 +13,27 @@ export class FriendsService {
       .eq('id', userId)
       .single();
 
+    // Direct query to lookup user by unique_id (RLS is disabled on users table)
+    console.log('Looking up user with unique_id:', friendUniqueId);
+    
     const { data: friendUser, error: userError } = await supabase
       .from('users')
       .select('id, name')
       .eq('unique_id', friendUniqueId)
-      .single();
+      .maybeSingle();
 
-    if (userError || !friendUser) throw new Error('User not found with this ID');
+    console.log('User lookup result:', { friendUser, userError });
+
+    if (userError) {
+      console.error('User lookup error:', userError);
+      throw new Error('User not found with this ID');
+    }
+
+    if (!friendUser) {
+      console.error('User not found, friendUser is null/undefined');
+      throw new Error('User not found with this ID');
+    }
+
     if (friendUser.id === userId) throw new Error('Cannot add yourself as a friend');
 
     const { data: existing } = await supabase
@@ -59,28 +73,36 @@ export class FriendsService {
           })
           .eq('id', existing.id);
         
-        // Create notification via backend API
-        await BackendNotificationsService.createNotification({
-          user_id: friendUser.id,
-          type: 'friend_request',
-          title: 'Friend Request',
-          message: `${currentUser?.name || 'Someone'} wants to be your friend`,
-          friendship_id: existing.id,
-          metadata: {
-            sender_id: userId,
-            sender_name: currentUser?.name,
+        // Create notification via backend API (non-blocking)
+        try {
+          const notifResult = await BackendNotificationsService.createNotification({
+            user_id: friendUser.id,
+            type: 'friend_request',
+            title: 'Friend Request',
+            message: `${currentUser?.name || 'Someone'} wants to be your friend`,
             friendship_id: existing.id,
-          },
-        });
+            metadata: {
+              sender_id: userId,
+              sender_name: currentUser?.name,
+              friendship_id: existing.id,
+            },
+          });
+          if (!notifResult.success) {
+            console.warn('Notification creation failed (non-blocking):', notifResult.error);
+          }
+        } catch (notifError) {
+          console.warn('Notification creation error (non-blocking):', notifError);
+        }
         
-        await PushNotificationsService.sendPushToUser(friendUser.id, {
+        // Push notification (non-blocking)
+        PushNotificationsService.sendPushToUser(friendUser.id, {
           title: 'Friend Request',
           body: `${currentUser?.name || 'Someone'} wants to be your friend`,
           data: {
             type: 'friend_request',
             senderId: userId,
           },
-        });
+        }).catch(e => console.warn('Push notification failed (non-blocking):', e));
         
         return { ...existing, user_id: userId, friend_id: friendUser.id, status: 'pending' } as Friend;
       }
@@ -125,7 +147,8 @@ export class FriendsService {
         console.error('Failed to create notification:', notifResult.error);
       }
 
-      await PushNotificationsService.sendPushToUser(friendUser.id, {
+      // Push notification (non-blocking)
+      PushNotificationsService.sendPushToUser(friendUser.id, {
         title: isReminder ? 'Friend Request Reminder' : 'Friend Request',
         body: isReminder 
           ? `${currentUser?.name || 'Someone'} is waiting for your response`
@@ -134,7 +157,7 @@ export class FriendsService {
           type: 'friend_request',
           senderId: userId,
         },
-      });
+      }).catch(e => console.warn('Push notification failed (non-blocking):', e));
 
       return { ...existing, status: 'pending' } as Friend;
     }
@@ -173,14 +196,15 @@ export class FriendsService {
       console.log('Notification created successfully:', notifResult.notification?.id);
     }
 
-    await PushNotificationsService.sendPushToUser(friendUser.id, {
+    // Push notification (non-blocking)
+    PushNotificationsService.sendPushToUser(friendUser.id, {
       title: 'Friend Request',
       body: `${currentUser?.name || 'Someone'} wants to be your friend`,
       data: {
         type: 'friend_request',
         senderId: userId,
       },
-    });
+    }).catch(e => console.warn('Push notification failed (non-blocking):', e));
 
     return data as Friend;
   }

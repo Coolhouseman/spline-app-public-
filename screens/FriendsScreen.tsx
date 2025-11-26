@@ -43,6 +43,21 @@ interface FriendWithDetails {
   };
 }
 
+interface SentRequest {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  recipient: {
+    id: string;
+    unique_id: string;
+    name: string;
+    email: string;
+    profile_picture?: string;
+    bio?: string;
+  };
+}
+
 export default function FriendsScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -50,6 +65,7 @@ export default function FriendsScreen({ navigation }: Props) {
   const tabBarHeight = useSafeBottomTabBarHeight();
   const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,12 +81,14 @@ export default function FriendsScreen({ navigation }: Props) {
     
     try {
       setLoading(true);
-      const [friendsData, requestsData] = await Promise.all([
+      const [friendsData, requestsData, sentData] = await Promise.all([
         FriendsService.getFriends(user.id),
         FriendsService.getPendingRequests(user.id),
+        FriendsService.getSentPendingRequests(user.id),
       ]);
       setFriends(friendsData as FriendWithDetails[]);
       setPendingRequests(requestsData as unknown as PendingRequest[]);
+      setSentRequests(sentData as unknown as SentRequest[]);
     } catch (error) {
       console.error('Failed to load friends:', error);
     } finally {
@@ -185,6 +203,40 @@ export default function FriendsScreen({ navigation }: Props) {
     );
   };
 
+  const renderSentRequest = (request: SentRequest) => {
+    const recipient = request.recipient;
+    const recipientName = recipient?.name || 'Someone';
+    const recipientPicture = recipient?.profile_picture;
+    
+    return (
+      <View 
+        key={request.id} 
+        style={[styles.requestCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+      >
+        <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+          {recipientPicture ? (
+            <Image source={{ uri: recipientPicture }} style={styles.avatarImage} />
+          ) : (
+            <Feather name="user" size={24} color={theme.textSecondary} />
+          )}
+        </View>
+        <View style={styles.friendInfo}>
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+            {recipientName}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            ID: {recipient?.unique_id}
+          </ThemedText>
+        </View>
+        <View style={[styles.pendingBadge, { backgroundColor: theme.primary + '20' }]}>
+          <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+            Pending
+          </ThemedText>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
       <View style={styles.header}>
@@ -229,9 +281,18 @@ export default function FriendsScreen({ navigation }: Props) {
           </View>
         ) : null}
 
+        {sentRequests.length > 0 ? (
+          <View style={styles.section}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Sent Requests ({sentRequests.length})
+            </ThemedText>
+            {sentRequests.map(renderSentRequest)}
+          </View>
+        ) : null}
+
         {filteredFriends.length > 0 ? (
           <View style={styles.section}>
-            {pendingRequests.length > 0 ? (
+            {(pendingRequests.length > 0 || sentRequests.length > 0) ? (
               <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
                 Your Friends ({filteredFriends.length})
               </ThemedText>
@@ -261,7 +322,9 @@ export default function FriendsScreen({ navigation }: Props) {
               );
             })}
           </View>
-        ) : (
+        ) : null}
+
+        {filteredFriends.length === 0 && pendingRequests.length === 0 && sentRequests.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color={theme.textSecondary} />
             <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg, textAlign: 'center' }]}>
@@ -281,7 +344,7 @@ export default function FriendsScreen({ navigation }: Props) {
               </Pressable>
             ) : null}
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </ThemedView>
   );
@@ -384,5 +447,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  pendingBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
   },
 });

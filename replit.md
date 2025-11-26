@@ -50,6 +50,15 @@ Preferred communication style: Simple, everyday language.
 - **Context API**: Global user state management.
 - **Real-time Updates**: Polling mechanism and pull-to-refresh for data synchronization.
 
+### Friend Management
+- **Friend Requests**: Send requests by entering the recipient's unique_id (5-10 digit numeric ID)
+- **Friends Screen Sections**:
+  1. **Friend Requests** (incoming) - Requests from other users with Accept/Decline buttons
+  2. **Sent Requests** (outgoing) - Requests you've sent, displayed with a "Pending" badge
+  3. **Your Friends** - Accepted friendships
+- **Cooldown Period**: 24-hour cooldown between sending reminders for pending requests
+- **User Lookup**: Users are found by their unique_id
+
 ### Split Payment Features
 - **Split Types**: Supports equal and specified amount splitting.
 - **Creation Flow**: User selects split type, chooses friends, enters event details, and finalizes the split.
