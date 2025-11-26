@@ -90,6 +90,9 @@ CREATE TABLE wallets (
   balance DECIMAL(10,2) DEFAULT 0.00,
   bank_connected BOOLEAN DEFAULT FALSE,
   bank_details JSONB,
+  blinkpay_consent_id TEXT,
+  blinkpay_consent_status TEXT,
+  blinkpay_consent_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -304,3 +307,17 @@ Your Supabase backend is now ready to sync data across all devices where users i
 - **Security**: The RLS policies ensure users can only access their own data.
 - **Session Persistence**: Sessions are automatically saved and restored using AsyncStorage.
 - **Token Refresh**: Supabase automatically refreshes auth tokens in the background.
+
+## Migrations (If You Already Have Tables)
+
+If you already created your database and need to add the BlinkPay columns to the wallets table, run this in SQL Editor:
+
+```sql
+-- Add BlinkPay columns to wallets table (if not already present)
+ALTER TABLE wallets 
+ADD COLUMN IF NOT EXISTS blinkpay_consent_id TEXT,
+ADD COLUMN IF NOT EXISTS blinkpay_consent_status TEXT,
+ADD COLUMN IF NOT EXISTS blinkpay_consent_expires_at TIMESTAMPTZ;
+```
+
+This enables the Connect Bank Account feature to store BlinkPay consent information.
