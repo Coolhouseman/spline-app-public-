@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, ActivityIndicator, View, useColorScheme } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -12,6 +12,7 @@ import AuthStackNavigator from "@/navigation/AuthStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
+import { Colors } from "@/constants/theme";
 
 const Stack = createNativeStackNavigator();
 
@@ -20,9 +21,24 @@ const SPLASH_COLORS = {
   dark: '#1e40af',
 };
 
+const LightNavTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: Colors.light.backgroundRoot,
+  },
+};
+
+const DarkNavTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: Colors.dark.backgroundRoot,
+  },
+};
+
 function RootNavigator() {
   const { user, isLoading } = useAuth();
-  const { theme } = useTheme();
   const colorScheme = useColorScheme();
 
   if (isLoading) {
@@ -45,21 +61,36 @@ function RootNavigator() {
   );
 }
 
+function AppContent() {
+  const colorScheme = useColorScheme();
+  const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+  const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
+
+  return (
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: splashBg }]}>
+      <KeyboardProvider>
+        <NavigationContainer theme={navTheme}>
+          <RootNavigator />
+        </NavigationContainer>
+        <StatusBar style="auto" />
+      </KeyboardProvider>
+    </GestureHandlerRootView>
+  );
+}
+
 export default function App() {
+  const colorScheme = useColorScheme();
+  const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+
   return (
     <ErrorBoundary>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <GestureHandlerRootView style={styles.root}>
-            <KeyboardProvider>
-              <NavigationContainer>
-                <RootNavigator />
-              </NavigationContainer>
-              <StatusBar style="auto" />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </AuthProvider>
-      </SafeAreaProvider>
+      <View style={[styles.root, { backgroundColor: splashBg }]}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </View>
     </ErrorBoundary>
   );
 }
