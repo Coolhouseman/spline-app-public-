@@ -80,12 +80,12 @@ export default function NotificationsScreen({ navigation }: Props) {
   };
 
   const handleAcceptFriendRequest = async (notification: Notification) => {
-    if (!user || !notification.friend_request_id) return;
+    if (!user || !notification.friendship_id) return;
     
     setProcessingId(notification.id);
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await FriendsService.acceptFriendRequest(user.id, notification.friend_request_id);
+      await FriendsService.acceptFriendRequest(user.id, notification.friendship_id);
       await NotificationsService.markAsRead(notification.id);
       await loadNotifications();
     } catch (error) {
@@ -96,12 +96,12 @@ export default function NotificationsScreen({ navigation }: Props) {
   };
 
   const handleDeclineFriendRequest = async (notification: Notification) => {
-    if (!user || !notification.friend_request_id) return;
+    if (!user || !notification.friendship_id) return;
     
     setProcessingId(notification.id);
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      await FriendsService.declineFriendRequest(user.id, notification.friend_request_id);
+      await FriendsService.declineFriendRequest(user.id, notification.friendship_id);
       await NotificationsService.markAsRead(notification.id);
       await loadNotifications();
     } catch (error) {
@@ -160,9 +160,9 @@ export default function NotificationsScreen({ navigation }: Props) {
   const renderNotification = ({ item }: { item: Notification }) => {
     const isProcessing = processingId === item.id;
     const showSplitActions = item.type === 'split_invite' && !item.read;
-    // Check for friend_request_id in the column OR in metadata (fallback)
-    const friendRequestId = item.friend_request_id || (item.metadata as any)?.friendship_id;
-    const showFriendActions = item.type === 'friend_request' && !item.read && friendRequestId;
+    // Check for friendship_id in the column OR in metadata (fallback)
+    const friendshipId = item.friendship_id || (item.metadata as any)?.friendship_id;
+    const showFriendActions = item.type === 'friend_request' && !item.read && friendshipId;
     const iconColor = getNotificationColor(item.type);
 
     return (
@@ -229,7 +229,7 @@ export default function NotificationsScreen({ navigation }: Props) {
                   styles.acceptButton,
                   { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
                 ]}
-                onPress={() => handleAcceptFriendRequest({ ...item, friend_request_id: friendRequestId })}
+                onPress={() => handleAcceptFriendRequest({ ...item, friendship_id: friendshipId })}
               >
                 <ThemedText style={[Typography.body, { color: '#FFFFFF' }]}>
                   Accept
@@ -242,7 +242,7 @@ export default function NotificationsScreen({ navigation }: Props) {
                   styles.declineButton,
                   { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
                 ]}
-                onPress={() => handleDeclineFriendRequest({ ...item, friend_request_id: friendRequestId })}
+                onPress={() => handleDeclineFriendRequest({ ...item, friendship_id: friendshipId })}
               >
                 <ThemedText style={[Typography.body, { color: theme.text }]}>
                   Decline

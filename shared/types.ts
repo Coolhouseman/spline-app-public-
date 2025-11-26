@@ -81,7 +81,7 @@ export interface Notification {
   title: string;
   message: string;
   split_event_id?: string;
-  friend_request_id?: string;
+  friendship_id?: string;
   metadata?: {
     split_type?: string;
     amount?: string;
