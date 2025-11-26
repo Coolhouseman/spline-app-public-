@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -16,37 +16,40 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const handleResetPassword = async () => {
+    setError('');
+    
     if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
+      setError('Please enter your email address');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      setError('Please enter a valid email address');
       return;
     }
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: undefined,
       });
 
-      if (error) {
-        if (error.message.includes('rate limit')) {
-          Alert.alert('Please Wait', 'Too many requests. Please try again in a few minutes.');
+      if (supabaseError) {
+        if (supabaseError.message.includes('rate limit')) {
+          setError('Too many requests. Please try again in a few minutes.');
         } else {
-          Alert.alert('Error', error.message);
+          setError(supabaseError.message);
         }
         return;
       }
 
       setSent(true);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send reset email');
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset email');
     } finally {
       setLoading(false);
     }
@@ -123,18 +126,27 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           style={[styles.input, { 
             backgroundColor: theme.surface, 
             color: theme.text, 
-            borderColor: theme.border,
+            borderColor: error ? Colors.light.error : theme.border,
             marginTop: Spacing['2xl']
           }]}
           placeholder="Email address"
           placeholderTextColor={theme.textSecondary}
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(text) => {
+            setEmail(text);
+            if (error) setError('');
+          }}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
           autoFocus
         />
+
+        {error ? (
+          <ThemedText style={[Typography.caption, { color: Colors.light.error, marginTop: Spacing.sm }]}>
+            {error}
+          </ThemedText>
+        ) : null}
 
         <Pressable
           style={({ pressed }) => [
