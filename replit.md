@@ -30,6 +30,14 @@ Preferred communication style: Simple, everyday language.
 - **Storage**: AsyncStorage for local data persistence.
 - **User Model**: Comprehensive user profiles with unique IDs and profile picture support.
 - **Onboarding**: An 8-step wizard for user information collection.
+- **Terms Acceptance**: Users must accept Terms and Conditions and Privacy Policy during signup (Step 4 - Password screen).
+
+### Legal Documents
+- **Terms and Conditions**: Comprehensive terms for KNH Group (screens/TermsScreen.tsx)
+- **Privacy Policy**: Data protection and privacy information (screens/PrivacyPolicyScreen.tsx)
+- **Company Contact**: admin@spline.nz
+- **Location**: New Zealand
+- **Presentation**: Modal screens accessible from AuthStackNavigator during signup or from profile settings.
 
 ### Data Management
 - **Backend**: Supabase PostgreSQL for real-time data synchronization.
