@@ -39,7 +39,7 @@ export class BackendNotificationsService {
           message: payload.message,
           metadata: payload.metadata || {},
           split_event_id: payload.split_event_id || null,
-          friend_request_id: payload.friendship_id || null,
+          friendship_id: payload.friendship_id || null,
         }),
       });
 
@@ -121,7 +121,7 @@ export class BackendNotificationsService {
         message: payload.message,
         metadata: payload.metadata || {},
         split_event_id: payload.split_event_id || null,
-        friend_request_id: payload.friendship_id || null,
+        friendship_id: payload.friendship_id || null,
         read: false,
       }).select().single();
 

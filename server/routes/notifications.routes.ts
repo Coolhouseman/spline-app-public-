@@ -15,7 +15,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
 
 router.post('/create', async (req, res) => {
   try {
-    const { user_id, type, title, message, metadata, split_event_id, friend_request_id } = req.body;
+    const { user_id, type, title, message, metadata, split_event_id, friendship_id } = req.body;
 
     if (!user_id || !type || !title || !message) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -30,7 +30,7 @@ router.post('/create', async (req, res) => {
       message,
       metadata: metadata || {},
       split_event_id: split_event_id || null,
-      friend_request_id: friend_request_id || null,
+      friendship_id: friendship_id || null,
       read: false,
     }).select().single();
 
