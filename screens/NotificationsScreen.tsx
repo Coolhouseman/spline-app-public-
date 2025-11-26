@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { NotificationsService } from '@/services/notifications.service';
 import { SplitsService } from '@/services/splits.service';
+import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Notification } from '@/shared/types';
 
@@ -78,6 +79,38 @@ export default function NotificationsScreen({ navigation }: Props) {
     }
   };
 
+  const handleAcceptFriendRequest = async (notification: Notification) => {
+    if (!user || !notification.friend_request_id) return;
+    
+    setProcessingId(notification.id);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await FriendsService.acceptFriendRequest(user.id, notification.friend_request_id);
+      await NotificationsService.markAsRead(notification.id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to accept friend request:', error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeclineFriendRequest = async (notification: Notification) => {
+    if (!user || !notification.friend_request_id) return;
+    
+    setProcessingId(notification.id);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await FriendsService.declineFriendRequest(user.id, notification.friend_request_id);
+      await NotificationsService.markAsRead(notification.id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to decline friend request:', error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const handleDismiss = async (notification: Notification) => {
     setProcessingId(notification.id);
     try {
@@ -100,6 +133,10 @@ export default function NotificationsScreen({ navigation }: Props) {
         return 'x-circle';
       case 'split_paid':
         return 'dollar-sign';
+      case 'friend_request':
+        return 'user-plus';
+      case 'friend_accepted':
+        return 'user-check';
       default:
         return 'bell';
     }
@@ -109,9 +146,12 @@ export default function NotificationsScreen({ navigation }: Props) {
     switch (type) {
       case 'split_accepted':
       case 'split_paid':
+      case 'friend_accepted':
         return theme.success;
       case 'split_declined':
         return theme.danger;
+      case 'friend_request':
+        return theme.primary;
       default:
         return theme.primary;
     }
@@ -119,7 +159,8 @@ export default function NotificationsScreen({ navigation }: Props) {
 
   const renderNotification = ({ item }: { item: Notification }) => {
     const isProcessing = processingId === item.id;
-    const showActions = item.type === 'split_invite' && !item.read;
+    const showSplitActions = item.type === 'split_invite' && !item.read;
+    const showFriendActions = item.type === 'friend_request' && !item.read && item.friend_request_id;
     const iconColor = getNotificationColor(item.type);
 
     return (
@@ -150,7 +191,7 @@ export default function NotificationsScreen({ navigation }: Props) {
             <View style={styles.processingContainer}>
               <ActivityIndicator size="small" color={theme.primary} />
             </View>
-          ) : showActions ? (
+          ) : showSplitActions ? (
             <View style={styles.actions}>
               <Pressable
                 style={({ pressed }) => [
@@ -172,6 +213,34 @@ export default function NotificationsScreen({ navigation }: Props) {
                   { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
                 ]}
                 onPress={() => handleDecline(item)}
+              >
+                <ThemedText style={[Typography.body, { color: theme.text }]}>
+                  Decline
+                </ThemedText>
+              </Pressable>
+            </View>
+          ) : showFriendActions ? (
+            <View style={styles.actions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.acceptButton,
+                  { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => handleAcceptFriendRequest(item)}
+              >
+                <ThemedText style={[Typography.body, { color: '#FFFFFF' }]}>
+                  Accept
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.declineButton,
+                  { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => handleDeclineFriendRequest(item)}
               >
                 <ThemedText style={[Typography.body, { color: theme.text }]}>
                   Decline

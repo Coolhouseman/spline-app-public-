@@ -49,10 +49,10 @@ export class FriendsService {
       type: 'friend_request',
       title: 'Friend Request',
       message: `${currentUser?.name || 'Someone'} wants to be your friend`,
+      friend_request_id: data.id,
       metadata: {
         sender_id: userId,
         sender_name: currentUser?.name,
-        friendship_id: data.id,
       },
       read: false,
     });

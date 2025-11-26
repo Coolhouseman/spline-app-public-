@@ -77,14 +77,16 @@ export interface Transaction {
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed';
+  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed' | 'friend_request' | 'friend_accepted';
   title: string;
   message: string;
   split_event_id?: string;
+  friend_request_id?: string;
   metadata?: {
     split_type?: string;
     amount?: string;
     creator_name?: string;
+    sender_name?: string;
   };
   read: boolean;
   created_at: string;
