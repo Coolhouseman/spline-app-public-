@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 

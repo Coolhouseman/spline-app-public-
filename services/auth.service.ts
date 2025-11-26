@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { User } from '@/shared/types';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 
