@@ -8,7 +8,6 @@
     "scheme": "splitpaymentapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "owner": "split-app",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split"
