@@ -1,5 +1,8 @@
 import { supabase } from './supabase';
 import type { User } from '@/shared/types';
+import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
+import { decode } from 'base64-arraybuffer';
 
 export interface SignupData {
   name: string;
@@ -138,16 +141,29 @@ export class AuthService {
   }
 
   static async uploadProfilePicture(userId: string, fileUri: string): Promise<string> {
-    const response = await fetch(fileUri);
-    const blob = await response.blob();
-    const fileExt = fileUri.split('.').pop();
+    const fileExt = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${userId}-${Date.now()}.${fileExt}`;
     const filePath = `profile-pictures/${fileName}`;
 
+    let uploadData: ArrayBuffer | Blob;
+    let contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+    if (Platform.OS === 'web') {
+      // Web: use fetch and blob
+      const response = await fetch(fileUri);
+      uploadData = await response.blob();
+    } else {
+      // React Native: use expo-file-system to read as base64, then decode
+      const base64 = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: 'base64',
+      });
+      uploadData = decode(base64);
+    }
+
     const { error: uploadError } = await supabase.storage
       .from('user-uploads')
-      .upload(filePath, blob, {
-        contentType: `image/${fileExt}`,
+      .upload(filePath, uploadData, {
+        contentType,
         upsert: true,
       });
 

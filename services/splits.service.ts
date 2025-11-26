@@ -1,6 +1,9 @@
 import { supabase } from './supabase';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
+import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
+import { decode } from 'base64-arraybuffer';
 
 export interface CreateSplitData {
   name: string;
@@ -16,16 +19,27 @@ export class SplitsService {
     let receiptUrl: string | undefined;
 
     if (data.receiptUri) {
-      const response = await fetch(data.receiptUri);
-      const blob = await response.blob();
-      const fileExt = data.receiptUri.split('.').pop();
+      const fileExt = data.receiptUri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `receipt-${Date.now()}.${fileExt}`;
       const filePath = `receipts/${fileName}`;
+      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+      let uploadData: ArrayBuffer | Blob;
+
+      if (Platform.OS === 'web') {
+        const response = await fetch(data.receiptUri);
+        uploadData = await response.blob();
+      } else {
+        const base64 = await FileSystem.readAsStringAsync(data.receiptUri, {
+          encoding: 'base64',
+        });
+        uploadData = decode(base64);
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('user-uploads')
-        .upload(filePath, blob, {
-          contentType: `image/${fileExt}`,
+        .upload(filePath, uploadData, {
+          contentType,
         });
 
       if (uploadError) throw uploadError;
