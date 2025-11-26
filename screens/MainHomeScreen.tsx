@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -27,8 +27,11 @@ export default function MainHomeScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<number>(0);
+  const [networkError, setNetworkError] = useState(false);
+  const retryCountRef = useRef(0);
+  const appState = useRef(AppState.currentState);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isRetry = false) => {
     if (!user) return;
     
     try {
@@ -41,8 +44,23 @@ export default function MainHomeScreen({ navigation }: Props) {
       setEvents(splitsData);
       setWallet(walletData);
       setNotifications(unreadCount);
-    } catch (error) {
-      console.error('Failed to load home data:', error);
+      setNetworkError(false);
+      retryCountRef.current = 0;
+    } catch (error: any) {
+      const isNetworkError = error?.message?.includes('Network') || 
+                             error?.message?.includes('network') ||
+                             error?.message?.includes('fetch');
+      
+      if (isNetworkError) {
+        setNetworkError(true);
+        if (!isRetry && retryCountRef.current < 3) {
+          retryCountRef.current += 1;
+          const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 5000);
+          setTimeout(() => loadData(true), delay);
+        }
+      } else {
+        console.error('Failed to load home data:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -50,12 +68,25 @@ export default function MainHomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 3000);
+    const interval = setInterval(() => loadData(false), 5000);
     return () => clearInterval(interval);
+  }, [loadData]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        retryCountRef.current = 0;
+        loadData();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => subscription.remove();
   }, [loadData]);
 
   const onRefresh = async () => {
     setRefreshing(true);
+    retryCountRef.current = 0;
     await loadData();
     setRefreshing(false);
   };
@@ -165,6 +196,19 @@ export default function MainHomeScreen({ navigation }: Props) {
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
+      {networkError && !loading ? (
+        <Pressable 
+          style={[styles.networkBanner, { backgroundColor: theme.warning + '20' }]}
+          onPress={onRefresh}
+        >
+          <Feather name="wifi-off" size={14} color={theme.warning} />
+          <ThemedText style={[Typography.small, { color: theme.warning, marginLeft: Spacing.sm, flex: 1 }]}>
+            Connection issue. Tap to retry
+          </ThemedText>
+          <ActivityIndicator size="small" color={theme.warning} />
+        </Pressable>
+      ) : null}
+
       <View style={styles.header}>
         <ThemedText style={[Typography.h1, { color: theme.text }]}>Split</ThemedText>
         <Pressable
@@ -262,6 +306,15 @@ export default function MainHomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  networkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
+    borderRadius: BorderRadius.xs,
   },
   header: {
     flexDirection: 'row',
