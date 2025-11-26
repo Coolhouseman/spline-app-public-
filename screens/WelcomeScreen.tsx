@@ -196,6 +196,7 @@ export default function WelcomeScreen({ navigation }: Props) {
 
       <View style={styles.gradientOverlay}>
         <View style={[styles.gradientTop, { backgroundColor: Colors.light.primary + '08' }]} />
+        <View style={[styles.gradientMiddle, { backgroundColor: Colors.light.primary + '06' }]} />
         <View style={[styles.gradientBottom, { backgroundColor: Colors.light.primary + '04' }]} />
       </View>
 
@@ -291,12 +292,19 @@ const styles = StyleSheet.create({
     right: 0,
     height: '40%',
   },
+  gradientMiddle: {
+    position: 'absolute',
+    top: '35%',
+    left: 0,
+    right: 0,
+    height: '35%',
+  },
   gradientBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '30%',
+    height: '35%',
   },
   floatingCircle1: {
     position: 'absolute',
