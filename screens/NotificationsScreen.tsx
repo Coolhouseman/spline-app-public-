@@ -160,7 +160,9 @@ export default function NotificationsScreen({ navigation }: Props) {
   const renderNotification = ({ item }: { item: Notification }) => {
     const isProcessing = processingId === item.id;
     const showSplitActions = item.type === 'split_invite' && !item.read;
-    const showFriendActions = item.type === 'friend_request' && !item.read && item.friend_request_id;
+    // Check for friend_request_id in the column OR in metadata (fallback)
+    const friendRequestId = item.friend_request_id || (item.metadata as any)?.friendship_id;
+    const showFriendActions = item.type === 'friend_request' && !item.read && friendRequestId;
     const iconColor = getNotificationColor(item.type);
 
     return (
@@ -227,7 +229,7 @@ export default function NotificationsScreen({ navigation }: Props) {
                   styles.acceptButton,
                   { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
                 ]}
-                onPress={() => handleAcceptFriendRequest(item)}
+                onPress={() => handleAcceptFriendRequest({ ...item, friend_request_id: friendRequestId })}
               >
                 <ThemedText style={[Typography.body, { color: '#FFFFFF' }]}>
                   Accept
@@ -240,7 +242,7 @@ export default function NotificationsScreen({ navigation }: Props) {
                   styles.declineButton,
                   { backgroundColor: theme.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
                 ]}
-                onPress={() => handleDeclineFriendRequest(item)}
+                onPress={() => handleDeclineFriendRequest({ ...item, friend_request_id: friendRequestId })}
               >
                 <ThemedText style={[Typography.body, { color: theme.text }]}>
                   Decline

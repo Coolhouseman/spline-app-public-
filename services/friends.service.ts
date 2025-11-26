@@ -95,7 +95,8 @@ export class FriendsService {
 
     console.log('Creating notification for user:', friendUser.id, 'with friend_request_id:', data.id);
     
-    const { data: notifData, error: notifError } = await supabase.from('notifications').insert({
+    // Try to create notification with friend_request_id first
+    let { data: notifData, error: notifError } = await supabase.from('notifications').insert({
       user_id: friendUser.id,
       type: 'friend_request',
       title: 'Friend Request',
@@ -104,9 +105,29 @@ export class FriendsService {
       metadata: {
         sender_id: userId,
         sender_name: currentUser?.name,
+        friendship_id: data.id,
       },
       read: false,
     }).select().single();
+
+    // If that fails, try without friend_request_id (in case of FK constraint issues)
+    if (notifError) {
+      console.error('Failed with friend_request_id, trying without:', notifError);
+      const result = await supabase.from('notifications').insert({
+        user_id: friendUser.id,
+        type: 'friend_request',
+        title: 'Friend Request',
+        message: `${currentUser?.name || 'Someone'} wants to be your friend`,
+        metadata: {
+          sender_id: userId,
+          sender_name: currentUser?.name,
+          friendship_id: data.id,
+        },
+        read: false,
+      }).select().single();
+      notifData = result.data;
+      notifError = result.error;
+    }
 
     if (notifError) {
       console.error('Failed to create friend request notification:', notifError);
