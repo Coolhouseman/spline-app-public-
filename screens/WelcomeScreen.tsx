@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   withRepeat,
   withSequence,
+  withDelay,
   Easing,
   interpolate,
   useDerivedValue,
@@ -15,7 +16,6 @@ import Animated, {
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { Feather } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<any, 'Welcome'>;
 
@@ -34,11 +34,14 @@ export default function WelcomeScreen({ navigation }: Props) {
   
   const progress = useSharedValue(0);
   const fadeIn = useSharedValue(0);
+  const floatAnim1 = useSharedValue(0);
+  const floatAnim2 = useSharedValue(0);
+  const floatAnim3 = useSharedValue(0);
 
-  const curveStartX = width * 0.1;
-  const curveEndX = width * 0.9;
-  const curveY = height * 0.32;
-  const curveControlY = height * 0.18;
+  const curveStartX = width * 0.08;
+  const curveEndX = width * 0.92;
+  const curveY = height * 0.38;
+  const curveControlY = height * 0.22;
   const controlX = width * 0.5;
 
   const startPoint = { x: curveStartX, y: curveY };
@@ -46,16 +49,43 @@ export default function WelcomeScreen({ navigation }: Props) {
   const endPoint = { x: curveEndX, y: curveY };
 
   useEffect(() => {
-    fadeIn.value = withTiming(1, { duration: 800 });
+    fadeIn.value = withTiming(1, { duration: 1000 });
     
     progress.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 2500, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 3000, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       false
     );
+
+    floatAnim1.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 4000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+
+    floatAnim2.value = withDelay(1000, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 5000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    ));
+
+    floatAnim3.value = withDelay(2000, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 3500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    ));
   }, []);
 
   const dotPosition = useDerivedValue(() => {
@@ -65,38 +95,38 @@ export default function WelcomeScreen({ navigation }: Props) {
   const dotStyle = useAnimatedStyle(() => {
     return {
       transform: [
-        { translateX: dotPosition.value.x - 12 },
-        { translateY: dotPosition.value.y - 12 },
+        { translateX: dotPosition.value.x - 14 },
+        { translateY: dotPosition.value.y - 14 },
       ],
     };
   });
 
   const trailDot1Style = useAnimatedStyle(() => {
-    const trailProgress = Math.max(0, progress.value - 0.08);
+    const trailProgress = Math.max(0, progress.value - 0.06);
     const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
     return {
       transform: [
-        { translateX: pos.x - 6 },
-        { translateY: pos.y - 6 },
+        { translateX: pos.x - 8 },
+        { translateY: pos.y - 8 },
       ],
-      opacity: 0.5,
+      opacity: 0.6,
     };
   });
 
   const trailDot2Style = useAnimatedStyle(() => {
-    const trailProgress = Math.max(0, progress.value - 0.16);
+    const trailProgress = Math.max(0, progress.value - 0.12);
     const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
     return {
       transform: [
-        { translateX: pos.x - 4 },
-        { translateY: pos.y - 4 },
+        { translateX: pos.x - 5 },
+        { translateY: pos.y - 5 },
       ],
-      opacity: 0.3,
+      opacity: 0.35,
     };
   });
 
   const trailDot3Style = useAnimatedStyle(() => {
-    const trailProgress = Math.max(0, progress.value - 0.24);
+    const trailProgress = Math.max(0, progress.value - 0.18);
     const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
     return {
       transform: [
@@ -114,18 +144,42 @@ export default function WelcomeScreen({ navigation }: Props) {
   const logoFadeStyle = useAnimatedStyle(() => ({
     opacity: interpolate(fadeIn.value, [0, 1], [0, 1]),
     transform: [
-      { translateY: interpolate(fadeIn.value, [0, 1], [20, 0]) },
+      { translateY: interpolate(fadeIn.value, [0, 1], [30, 0]) },
     ],
   }));
 
   const curvePathStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.15]),
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.2]),
+  }));
+
+  const floatingCircle1Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim1.value, [0, 1], [0, -20]) },
+      { scale: interpolate(floatAnim1.value, [0, 1], [1, 1.1]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.08]),
+  }));
+
+  const floatingCircle2Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim2.value, [0, 1], [0, 15]) },
+      { scale: interpolate(floatAnim2.value, [0, 1], [1, 0.9]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.06]),
+  }));
+
+  const floatingCircle3Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim3.value, [0, 1], [0, -12]) },
+      { translateX: interpolate(floatAnim3.value, [0, 1], [0, 8]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.05]),
   }));
 
   const generateCurvePoints = () => {
     const points = [];
-    for (let i = 0; i <= 30; i++) {
-      const t = i / 30;
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40;
       const pos = quadraticBezier(t, startPoint, controlPoint, endPoint);
       points.push(pos);
     }
@@ -136,6 +190,15 @@ export default function WelcomeScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <Animated.View style={[styles.floatingCircle1, { backgroundColor: Colors.light.primary }, floatingCircle1Style]} />
+      <Animated.View style={[styles.floatingCircle2, { backgroundColor: Colors.light.primary }, floatingCircle2Style]} />
+      <Animated.View style={[styles.floatingCircle3, { backgroundColor: Colors.light.primary }, floatingCircle3Style]} />
+
+      <View style={styles.gradientOverlay}>
+        <View style={[styles.gradientTop, { backgroundColor: Colors.light.primary + '08' }]} />
+        <View style={[styles.gradientBottom, { backgroundColor: Colors.light.primary + '04' }]} />
+      </View>
+
       <View style={StyleSheet.absoluteFill}>
         <Animated.View style={curvePathStyle}>
           {curvePoints.map((point, index) => (
@@ -144,8 +207,8 @@ export default function WelcomeScreen({ navigation }: Props) {
               style={[
                 styles.curvePoint,
                 {
-                  left: point.x - 2,
-                  top: point.y - 2,
+                  left: point.x - 2.5,
+                  top: point.y - 2.5,
                   backgroundColor: Colors.light.primary,
                 },
               ]}
@@ -163,13 +226,19 @@ export default function WelcomeScreen({ navigation }: Props) {
 
       <Animated.View style={[styles.content, { paddingTop: insets.top + Spacing['2xl'] }, logoFadeStyle]}>
         <View style={styles.logoContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: Colors.light.primary }]}>
-            <Feather name="divide" size={32} color="#FFFFFF" />
+          <View style={styles.logoTextContainer}>
+            <ThemedText style={[styles.logoText, { color: Colors.light.primary }]}>
+              Sp
+            </ThemedText>
+            <ThemedText style={[styles.logoText, { color: theme.text }]}>
+              line
+            </ThemedText>
           </View>
-          <ThemedText style={[Typography.hero, { color: theme.text, marginTop: Spacing.lg }]}>
-            Split
-          </ThemedText>
-          <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.sm, textAlign: 'center', paddingHorizontal: Spacing.xl }]}>
+          <View style={styles.logoUnderline}>
+            <View style={[styles.underlineSegment, { backgroundColor: Colors.light.primary }]} />
+            <View style={[styles.underlineDot, { backgroundColor: Colors.light.primary }]} />
+          </View>
+          <ThemedText style={[Typography.body, styles.tagline, { color: theme.textSecondary }]}>
             Split bills effortlessly with friends
           </ThemedText>
         </View>
@@ -212,49 +281,90 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  gradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  gradientTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '40%',
+  },
+  gradientBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '30%',
+  },
+  floatingCircle1: {
+    position: 'absolute',
+    top: '15%',
+    left: '10%',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+  },
+  floatingCircle2: {
+    position: 'absolute',
+    top: '55%',
+    right: '-10%',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+  },
+  floatingCircle3: {
+    position: 'absolute',
+    bottom: '20%',
+    left: '-5%',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+  },
   curvePoint: {
     position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
   },
   dot: {
     position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     ...Platform.select({
       ios: {
         shadowColor: Colors.light.primary,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 8,
+        shadowOpacity: 0.7,
+        shadowRadius: 10,
       },
       android: {
-        elevation: 8,
+        elevation: 10,
       },
       default: {},
     }),
   },
   dotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: '#FFFFFF',
   },
   trailDot1: {
     position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   trailDot2: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   trailDot3: {
     position: 'absolute',
@@ -265,31 +375,41 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 80,
+    justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: Spacing['2xl'] * 3,
+    marginTop: Spacing.xl,
   },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
+  logoTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  logoText: {
+    fontSize: 56,
+    fontWeight: '700',
+    letterSpacing: -1,
+  },
+  logoUnderline: {
+    flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.light.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 8,
-      },
-      default: {},
-    }),
+    marginTop: Spacing.xs,
+    gap: 6,
+  },
+  underlineSegment: {
+    width: 60,
+    height: 4,
+    borderRadius: 2,
+  },
+  underlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tagline: {
+    marginTop: Spacing.lg,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
   },
   buttonContainer: {
     paddingHorizontal: Spacing.xl,
