@@ -50,7 +50,7 @@ export class FriendsService {
           .update({ last_reminder_at: new Date().toISOString() })
           .eq('id', existing.id);
         
-        await supabase.from('notifications').insert({
+        const { error: notifError } = await supabase.from('notifications').insert({
           user_id: friendUser.id,
           type: 'friend_request',
           title: 'Friend Request Reminder',
@@ -63,6 +63,10 @@ export class FriendsService {
           },
           read: false,
         });
+        
+        if (notifError) {
+          console.error('Failed to create reminder notification:', notifError);
+        }
 
         await PushNotificationsService.sendPushToUser(friendUser.id, {
           title: 'Friend Request Reminder',
@@ -89,7 +93,9 @@ export class FriendsService {
 
     if (error) throw error;
 
-    await supabase.from('notifications').insert({
+    console.log('Creating notification for user:', friendUser.id, 'with friend_request_id:', data.id);
+    
+    const { data: notifData, error: notifError } = await supabase.from('notifications').insert({
       user_id: friendUser.id,
       type: 'friend_request',
       title: 'Friend Request',
@@ -100,7 +106,13 @@ export class FriendsService {
         sender_name: currentUser?.name,
       },
       read: false,
-    });
+    }).select().single();
+
+    if (notifError) {
+      console.error('Failed to create friend request notification:', notifError);
+    } else {
+      console.log('Notification created successfully:', notifData?.id);
+    }
 
     await PushNotificationsService.sendPushToUser(friendUser.id, {
       title: 'Friend Request',
