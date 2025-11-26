@@ -12,6 +12,8 @@ import SignupDOBScreen from '@/screens/SignupDOBScreen';
 import SignupProfilePictureScreen from '@/screens/SignupProfilePictureScreen';
 import SignupBioScreen from '@/screens/SignupBioScreen';
 import SignupCompleteScreen from '@/screens/SignupCompleteScreen';
+import TermsScreen from '@/screens/TermsScreen';
+import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import { useTheme } from '@/hooks/useTheme';
 import { getCommonScreenOptions } from './screenOptions';
 
@@ -119,6 +121,26 @@ export default function AuthStackNavigator() {
         options={{ 
           headerShown: false,
           gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen 
+        name="Terms" 
+        component={TermsScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: 'Terms',
+          headerBackTitle: 'Back',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen 
+        name="PrivacyPolicy" 
+        component={PrivacyPolicyScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: 'Privacy',
+          headerBackTitle: 'Back',
+          presentation: 'modal',
         }}
       />
     </Stack.Navigator>
