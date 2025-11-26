@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { supabaseAdmin } from './supabaseAdmin';
+import { BackendNotificationsService } from './backendNotifications.service';
 import { PushNotificationsService } from './pushNotifications.service';
 import type { Friend, User } from '@/shared/types';
 
@@ -59,8 +59,8 @@ export class FriendsService {
           })
           .eq('id', existing.id);
         
-        // Create notification for the new request using admin client to bypass RLS
-        await supabaseAdmin.from('notifications').insert({
+        // Create notification via backend API
+        await BackendNotificationsService.createNotification({
           user_id: friendUser.id,
           type: 'friend_request',
           title: 'Friend Request',
@@ -70,7 +70,6 @@ export class FriendsService {
             sender_name: currentUser?.name,
             friendship_id: existing.id,
           },
-          read: false,
         });
         
         await PushNotificationsService.sendPushToUser(friendUser.id, {
@@ -104,8 +103,8 @@ export class FriendsService {
         .eq('id', existing.id);
       
       const isReminder = existing.status === 'pending';
-      // Use admin client to bypass RLS when creating notifications for other users
-      const { error: notifError } = await supabaseAdmin.from('notifications').insert({
+      // Create notification via backend API
+      const notifResult = await BackendNotificationsService.createNotification({
         user_id: friendUser.id,
         type: 'friend_request',
         title: isReminder ? 'Friend Request Reminder' : 'Friend Request',
@@ -118,11 +117,10 @@ export class FriendsService {
           friendship_id: existing.id,
           is_reminder: isReminder,
         },
-        read: false,
       });
       
-      if (notifError) {
-        console.error('Failed to create notification:', notifError);
+      if (!notifResult.success) {
+        console.error('Failed to create notification:', notifResult.error);
       }
 
       await PushNotificationsService.sendPushToUser(friendUser.id, {
@@ -153,8 +151,8 @@ export class FriendsService {
 
     console.log('Creating notification for user:', friendUser.id, 'with friendship_id:', data.id);
     
-    // Use admin client to bypass RLS when creating notifications for other users
-    const { data: notifData, error: notifError } = await supabaseAdmin.from('notifications').insert({
+    // Create notification via backend API
+    const notifResult = await BackendNotificationsService.createNotification({
       user_id: friendUser.id,
       type: 'friend_request',
       title: 'Friend Request',
@@ -164,13 +162,12 @@ export class FriendsService {
         sender_name: currentUser?.name,
         friendship_id: data.id,
       },
-      read: false,
-    }).select().single();
+    });
 
-    if (notifError) {
-      console.error('Failed to create friend request notification:', notifError);
+    if (!notifResult.success) {
+      console.error('Failed to create friend request notification:', notifResult.error);
     } else {
-      console.log('Notification created successfully:', notifData?.id);
+      console.log('Notification created successfully:', notifResult.notification?.id);
     }
 
     await PushNotificationsService.sendPushToUser(friendUser.id, {
@@ -275,13 +272,12 @@ export class FriendsService {
       .eq('id', userId)
       .single();
 
-    // Use admin client to bypass RLS when creating notifications for other users
-    await supabaseAdmin.from('notifications').insert({
+    // Create notification via backend API
+    await BackendNotificationsService.createNotification({
       user_id: friendship.user_id,
       type: 'friend_accepted',
       title: 'Friend Request Accepted',
       message: `${currentUser?.name || 'Someone'} accepted your friend request`,
-      read: false,
     });
 
     await PushNotificationsService.sendPushToUser(friendship.user_id, {

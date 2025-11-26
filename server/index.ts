@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import blinkpayRouter from './routes/blinkpay.routes';
+import notificationsRouter from './routes/notifications.routes';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/blinkpay', blinkpayRouter);
+app.use('/api/notifications', notificationsRouter);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on port ${PORT}`);

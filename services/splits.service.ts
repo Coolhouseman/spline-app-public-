@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { supabaseAdmin } from './supabaseAdmin';
+import { BackendNotificationsService } from './backendNotifications.service';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -103,8 +103,17 @@ export class SplitsService {
       }));
 
     if (notificationsToCreate.length > 0) {
-      // Use admin client to bypass RLS when creating notifications for other users
-      await supabaseAdmin.from('notifications').insert(notificationsToCreate);
+      // Create notifications via backend API
+      for (const notif of notificationsToCreate) {
+        await BackendNotificationsService.createNotification({
+          user_id: notif.user_id,
+          type: notif.type,
+          title: notif.title,
+          message: notif.message,
+          split_event_id: notif.split_event_id,
+          metadata: notif.metadata,
+        });
+      }
 
       const inviteeIds = data.participants
         .filter(p => p.userId !== data.creatorId)
@@ -220,14 +229,13 @@ export class SplitsService {
     const creatorId = (participant as any).split_events.creator_id;
     const splitName = (participant as any).split_events.name;
 
-    // Use admin client to bypass RLS when creating notifications for other users
-    await supabaseAdmin.from('notifications').insert({
+    // Create notification via backend API
+    await BackendNotificationsService.createNotification({
       user_id: creatorId,
       type: response === 'accepted' ? 'split_accepted' : 'split_declined',
       title: response === 'accepted' ? 'Split Accepted' : 'Split Declined',
       message: `${user?.name || 'Someone'} ${response} your split for ${splitName}`,
       split_event_id: splitId,
-      read: false,
     });
   }
 
@@ -258,14 +266,13 @@ export class SplitsService {
       .eq('id', userId)
       .single();
 
-    // Use admin client to bypass RLS when creating notifications for other users
-    await supabaseAdmin.from('notifications').insert({
+    // Create notification via backend API
+    await BackendNotificationsService.createNotification({
       user_id: creatorId,
       type: 'split_paid',
       title: 'Payment Received',
       message: `${user?.name || 'Someone'} paid their share for ${splitName}`,
       split_event_id: splitId,
-      read: false,
     });
 
     await PushNotificationsService.sendPushToUser(creatorId, {
@@ -306,14 +313,13 @@ export class SplitsService {
           .single();
 
         if (!existingNotification) {
-          // Use admin client to bypass RLS when creating notifications for other users
-          await supabaseAdmin.from('notifications').insert({
+          // Create notification via backend API
+          await BackendNotificationsService.createNotification({
             user_id: creatorId,
             type: 'split_completed',
             title: 'Split Complete!',
             message: `Everyone has paid for ${splitName}. You collected $${parseFloat(totalAmount).toFixed(2)}!`,
             split_event_id: splitId,
-            read: false,
           });
 
           await PushNotificationsService.sendPushToUser(creatorId, {
