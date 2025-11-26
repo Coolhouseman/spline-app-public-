@@ -55,7 +55,14 @@ export class PushNotificationsService {
         });
       }
 
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      // Get projectId from multiple sources for compatibility
+      const projectId = 
+        Constants?.expoConfig?.extra?.eas?.projectId ?? 
+        Constants?.easConfig?.projectId ??
+        Constants?.expoConfig?.slug ??
+        'split-payment-app';
+      
+      console.log('Using projectId for push notifications:', projectId);
       
       const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId: projectId,
