@@ -65,6 +65,7 @@ export class FriendsService {
           type: 'friend_request',
           title: 'Friend Request',
           message: `${currentUser?.name || 'Someone'} wants to be your friend`,
+          friendship_id: existing.id,
           metadata: {
             sender_id: userId,
             sender_name: currentUser?.name,
@@ -111,6 +112,7 @@ export class FriendsService {
         message: isReminder 
           ? `${currentUser?.name || 'Someone'} is waiting for your response`
           : `${currentUser?.name || 'Someone'} wants to be your friend`,
+        friendship_id: existing.id,
         metadata: {
           sender_id: userId,
           sender_name: currentUser?.name,
@@ -157,6 +159,7 @@ export class FriendsService {
       type: 'friend_request',
       title: 'Friend Request',
       message: `${currentUser?.name || 'Someone'} wants to be your friend`,
+      friendship_id: data.id,
       metadata: {
         sender_id: userId,
         sender_name: currentUser?.name,
