@@ -4,6 +4,8 @@ import type { Friend, User } from '@/shared/types';
 
 export class FriendsService {
   static async sendFriendRequest(userId: string, friendUniqueId: string): Promise<Friend> {
+    const REMINDER_COOLDOWN_HOURS = 24;
+    
     const { data: currentUser } = await supabase
       .from('users')
       .select('name')
@@ -21,15 +23,58 @@ export class FriendsService {
 
     const { data: existing } = await supabase
       .from('friends')
-      .select('id, status')
+      .select('id, status, user_id, friend_id, last_reminder_at, created_at')
       .or(`and(user_id.eq.${userId},friend_id.eq.${friendUser.id}),and(user_id.eq.${friendUser.id},friend_id.eq.${userId})`)
       .single();
 
     if (existing) {
-      if (existing.status === 'pending') {
-        throw new Error('Friend request already sent');
+      if (existing.status === 'accepted') {
+        throw new Error('Already friends with this user');
       }
-      throw new Error('Already friends with this user');
+      
+      if (existing.status === 'pending') {
+        if (existing.user_id !== userId) {
+          throw new Error('This user already sent you a friend request. Check your notifications!');
+        }
+        
+        const lastSentAt = existing.last_reminder_at || existing.created_at;
+        const hoursSinceLastSent = (Date.now() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60);
+        
+        if (hoursSinceLastSent < REMINDER_COOLDOWN_HOURS) {
+          const hoursRemaining = Math.ceil(REMINDER_COOLDOWN_HOURS - hoursSinceLastSent);
+          throw new Error(`Please wait ${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''} before sending another reminder`);
+        }
+        
+        await supabase
+          .from('friends')
+          .update({ last_reminder_at: new Date().toISOString() })
+          .eq('id', existing.id);
+        
+        await supabase.from('notifications').insert({
+          user_id: friendUser.id,
+          type: 'friend_request',
+          title: 'Friend Request Reminder',
+          message: `${currentUser?.name || 'Someone'} is waiting for your response`,
+          friend_request_id: existing.id,
+          metadata: {
+            sender_id: userId,
+            sender_name: currentUser?.name,
+            is_reminder: true,
+          },
+          read: false,
+        });
+
+        await PushNotificationsService.sendPushToUser(friendUser.id, {
+          title: 'Friend Request Reminder',
+          body: `${currentUser?.name || 'Someone'} is waiting for your response`,
+          data: {
+            type: 'friend_request',
+            senderId: userId,
+          },
+        });
+
+        return existing as Friend;
+      }
     }
 
     const { data, error } = await supabase
