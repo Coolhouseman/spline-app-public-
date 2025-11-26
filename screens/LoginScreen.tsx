@@ -74,6 +74,15 @@ export default function LoginScreen({ navigation }: Props) {
         />
 
         <Pressable
+          style={({ pressed }) => [styles.forgotButton, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => navigation.navigate('ForgotPassword')}
+        >
+          <ThemedText style={[Typography.caption, { color: theme.primary }]}>
+            Forgot Password?
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
           style={({ pressed }) => [
             styles.button,
             { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 }
@@ -122,6 +131,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: Spacing.sm,
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginBottom: Spacing.sm,
   },
   linkButton: {
     marginTop: Spacing.xl,

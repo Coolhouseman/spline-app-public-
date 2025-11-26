@@ -1,6 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import WelcomeScreen from '@/screens/WelcomeScreen';
 import LoginScreen from '@/screens/LoginScreen';
+import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
 import SignupFirstNameScreen from '@/screens/SignupFirstNameScreen';
 import SignupLastNameScreen from '@/screens/SignupLastNameScreen';
 import SignupEmailScreen from '@/screens/SignupEmailScreen';
@@ -21,9 +23,23 @@ export default function AuthStackNavigator() {
   return (
     <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
       <Stack.Screen 
+        name="Welcome" 
+        component={WelcomeScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
         name="Login" 
         component={LoginScreen}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="ForgotPassword" 
+        component={ForgotPasswordScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
       />
       <Stack.Screen 
         name="SignupFirstName" 
