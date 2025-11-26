@@ -12,6 +12,7 @@ export interface SignupData {
   dateOfBirth?: string;
   bio?: string;
   uniqueId: string;
+  profilePicture?: string;
 }
 
 export class AuthService {
@@ -64,7 +65,19 @@ export class AuthService {
 
     if (walletError) throw walletError;
 
-    return { user: profile as User, session: authData.session };
+    // Upload profile picture if provided
+    let finalProfile = profile;
+    if (data.profilePicture) {
+      try {
+        const publicUrl = await this.uploadProfilePicture(authData.user.id, data.profilePicture);
+        finalProfile = { ...profile, profile_picture: publicUrl };
+      } catch (uploadError) {
+        console.error('Profile picture upload failed during signup:', uploadError);
+        // Continue with signup even if picture upload fails
+      }
+    }
+
+    return { user: finalProfile as User, session: authData.session };
   }
 
   static async login(email: string, password: string): Promise<{ user: User; session: any }> {

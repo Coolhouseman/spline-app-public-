@@ -42,6 +42,7 @@ export default function SignupBioScreen({ navigation, route }: Props) {
         dateOfBirth: params.dateOfBirth,
         bio: bio.trim(),
         uniqueId: uniqueId,
+        profilePicture: params.profilePicture,
       });
       
     } catch (error: any) {
