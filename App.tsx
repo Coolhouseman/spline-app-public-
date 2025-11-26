@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, ActivityIndicator, View } from "react-native";
+import { StyleSheet, ActivityIndicator, View, useColorScheme } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -15,14 +15,21 @@ import { useTheme } from "@/hooks/useTheme";
 
 const Stack = createNativeStackNavigator();
 
+const SPLASH_COLORS = {
+  light: '#2563EB',
+  dark: '#1e40af',
+};
+
 function RootNavigator() {
   const { user, isLoading } = useAuth();
   const { theme } = useTheme();
+  const colorScheme = useColorScheme();
 
   if (isLoading) {
+    const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
-      <View style={[styles.loading, { backgroundColor: theme.backgroundRoot }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
+      <View style={[styles.loading, { backgroundColor: splashBg }]}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
       </View>
     );
   }
