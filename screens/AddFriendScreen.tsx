@@ -46,13 +46,13 @@ export default function AddFriendScreen({ navigation }: Props) {
       setLoading(false);
 
       Alert.alert(
-        'Friend added!',
-        'Friend has been added to your friends list',
+        'Request Sent!',
+        'Friend request has been sent. They will appear in your friends list once they accept.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
       setLoading(false);
-      const message = error?.message || 'Failed to add friend';
+      const message = error?.message || 'Failed to send friend request';
       console.error('Add friend error:', message);
       setErrorMessage(message);
       Alert.alert('Error', message);

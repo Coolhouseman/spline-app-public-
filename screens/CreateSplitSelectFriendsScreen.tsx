@@ -1,23 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, Image } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, Image, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { storageService, Friend } from '@/utils/storage';
+import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<any, 'CreateSplitSelectFriends'>;
 
+interface FriendWithDetails {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  friend_details: {
+    id: string;
+    unique_id: string;
+    name: string;
+    email: string;
+    profile_picture?: string;
+  };
+}
+
 export default function CreateSplitSelectFriendsScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const params = route.params as { splitType?: 'equal' | 'specified' } | undefined;
   const splitType = params?.splitType;
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
   React.useEffect(() => {
     if (!splitType) {
@@ -27,31 +44,50 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
 
   useEffect(() => {
     loadFriends();
-  }, []);
+  }, [user?.id]);
 
   const loadFriends = async () => {
-    const allFriends = await storageService.getFriends();
-    setFriends(allFriends);
+    if (!user?.id) return;
+    try {
+      setLoading(true);
+      const data = await FriendsService.getFriends(user.id);
+      setFriends(data as FriendWithDetails[]);
+    } catch (error) {
+      console.error('Failed to load friends:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const toggleSelection = (uniqueId: string) => {
+  const toggleSelection = (friendId: string) => {
     const newSelected = new Set(selected);
-    if (newSelected.has(uniqueId)) {
-      newSelected.delete(uniqueId);
+    if (newSelected.has(friendId)) {
+      newSelected.delete(friendId);
     } else {
-      newSelected.add(uniqueId);
+      newSelected.add(friendId);
     }
     setSelected(newSelected);
   };
 
   const handleContinue = () => {
     if (!splitType) return;
-    const selectedFriends = friends.filter(f => selected.has(f.uniqueId));
+    const selectedFriends = friends
+      .filter(f => selected.has(f.friend_id))
+      .map(f => ({
+        uniqueId: f.friend_details.unique_id,
+        odooUserId: f.friend_id,
+        firstName: f.friend_details.name.split(' ')[0] || f.friend_details.name,
+        lastName: f.friend_details.name.split(' ').slice(1).join(' ') || '',
+        profilePicture: f.friend_details.profile_picture,
+      }));
     navigation.navigate('CreateSplitDetails', { selectedFriends, splitType });
   };
 
-  const renderFriend = ({ item }: { item: Friend }) => {
-    const isSelected = selected.has(item.uniqueId);
+  const renderFriend = ({ item }: { item: FriendWithDetails }) => {
+    const details = item.friend_details;
+    if (!details) return null;
+    
+    const isSelected = selected.has(item.friend_id);
 
     return (
       <Pressable
@@ -64,21 +100,21 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
             opacity: pressed ? 0.7 : 1
           }
         ]}
-        onPress={() => toggleSelection(item.uniqueId)}
+        onPress={() => toggleSelection(item.friend_id)}
       >
         <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-          {item.profilePicture ? (
-            <Image source={{ uri: item.profilePicture }} style={styles.avatarImage} />
+          {details.profile_picture ? (
+            <Image source={{ uri: details.profile_picture }} style={styles.avatarImage} />
           ) : (
             <Feather name="user" size={24} color={theme.textSecondary} />
           )}
         </View>
         <View style={styles.friendInfo}>
           <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-            {item.firstName} {item.lastName}
+            {details.name}
           </ThemedText>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            ID: {item.uniqueId}
+            ID: {details.unique_id}
           </ThemedText>
         </View>
         {isSelected ? (
@@ -124,20 +160,26 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
         </View>
       ) : null}
 
-      <FlatList
-        data={friends}
-        renderItem={renderFriend}
-        keyExtractor={(item) => item.uniqueId}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Feather name="users" size={48} color={theme.textSecondary} />
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg }]}>
-              No friends yet. Add friends first.
-            </ThemedText>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={friends}
+          renderItem={renderFriend}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Feather name="users" size={48} color={theme.textSecondary} />
+              <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg }]}>
+                No friends yet. Add friends first.
+              </ThemedText>
+            </View>
+          }
+        />
+      )}
     </ThemedView>
   );
 }

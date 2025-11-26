@@ -1,11 +1,18 @@
 import { supabase } from './supabase';
+import { PushNotificationsService } from './pushNotifications.service';
 import type { Friend, User } from '@/shared/types';
 
 export class FriendsService {
-  static async addFriend(userId: string, friendUniqueId: string): Promise<Friend> {
+  static async sendFriendRequest(userId: string, friendUniqueId: string): Promise<Friend> {
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .single();
+
     const { data: friendUser, error: userError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, name')
       .eq('unique_id', friendUniqueId)
       .single();
 
@@ -14,37 +21,198 @@ export class FriendsService {
 
     const { data: existing } = await supabase
       .from('friends')
-      .select('id')
+      .select('id, status')
       .or(`and(user_id.eq.${userId},friend_id.eq.${friendUser.id}),and(user_id.eq.${friendUser.id},friend_id.eq.${userId})`)
       .single();
 
-    if (existing) throw new Error('Already friends with this user');
+    if (existing) {
+      if (existing.status === 'pending') {
+        throw new Error('Friend request already sent');
+      }
+      throw new Error('Already friends with this user');
+    }
 
     const { data, error } = await supabase
       .from('friends')
       .insert({
         user_id: userId,
         friend_id: friendUser.id,
-        status: 'accepted',
+        status: 'pending',
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    await supabase
-      .from('friends')
-      .insert({
-        user_id: friendUser.id,
-        friend_id: userId,
-        status: 'accepted',
-      });
+    await supabase.from('notifications').insert({
+      user_id: friendUser.id,
+      type: 'friend_request',
+      title: 'Friend Request',
+      message: `${currentUser?.name || 'Someone'} wants to be your friend`,
+      metadata: {
+        sender_id: userId,
+        sender_name: currentUser?.name,
+        friendship_id: data.id,
+      },
+      read: false,
+    });
+
+    await PushNotificationsService.sendPushToUser(friendUser.id, {
+      title: 'Friend Request',
+      body: `${currentUser?.name || 'Someone'} wants to be your friend`,
+      data: {
+        type: 'friend_request',
+        senderId: userId,
+      },
+    });
 
     return data as Friend;
   }
 
-  static async getFriends(userId: string): Promise<Friend[]> {
+  static async addFriend(userId: string, friendUniqueId: string): Promise<Friend> {
+    return this.sendFriendRequest(userId, friendUniqueId);
+  }
+
+  static async getPendingRequests(userId: string): Promise<Friend[]> {
     const { data, error } = await supabase
+      .from('friends')
+      .select(`
+        *,
+        requester:user_id (
+          id,
+          unique_id,
+          name,
+          email,
+          profile_picture,
+          bio
+        )
+      `)
+      .eq('friend_id', userId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    return data as Friend[];
+  }
+
+  static async getSentPendingRequests(userId: string): Promise<Friend[]> {
+    const { data, error } = await supabase
+      .from('friends')
+      .select(`
+        *,
+        recipient:friend_id (
+          id,
+          unique_id,
+          name,
+          email,
+          profile_picture,
+          bio
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    return data as Friend[];
+  }
+
+  static async acceptFriendRequest(userId: string, friendshipId: string): Promise<void> {
+    const { data: friendship, error: fetchError } = await supabase
+      .from('friends')
+      .select('user_id, friend_id')
+      .eq('id', friendshipId)
+      .eq('friend_id', userId)
+      .eq('status', 'pending')
+      .single();
+
+    if (fetchError || !friendship) throw new Error('Friend request not found');
+
+    await supabase
+      .from('friends')
+      .update({ status: 'accepted' })
+      .eq('id', friendshipId);
+
+    const { data: existing } = await supabase
+      .from('friends')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('friend_id', friendship.user_id)
+      .single();
+
+    if (!existing) {
+      await supabase
+        .from('friends')
+        .insert({
+          user_id: userId,
+          friend_id: friendship.user_id,
+          status: 'accepted',
+        });
+    } else {
+      await supabase
+        .from('friends')
+        .update({ status: 'accepted' })
+        .eq('id', existing.id);
+    }
+
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .single();
+
+    await supabase.from('notifications').insert({
+      user_id: friendship.user_id,
+      type: 'friend_accepted',
+      title: 'Friend Request Accepted',
+      message: `${currentUser?.name || 'Someone'} accepted your friend request`,
+      read: false,
+    });
+
+    await PushNotificationsService.sendPushToUser(friendship.user_id, {
+      title: 'Friend Request Accepted',
+      body: `${currentUser?.name || 'Someone'} accepted your friend request`,
+      data: {
+        type: 'friend_accepted',
+      },
+    });
+  }
+
+  static async declineFriendRequest(userId: string, friendshipId: string): Promise<void> {
+    const { error } = await supabase
+      .from('friends')
+      .delete()
+      .eq('id', friendshipId)
+      .eq('friend_id', userId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+  }
+
+  static async checkFriendship(userId: string, otherUserId: string): Promise<boolean> {
+    const { data } = await supabase
+      .from('friends')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('friend_id', otherUserId)
+      .eq('status', 'accepted')
+      .single();
+
+    return !!data;
+  }
+
+  static async sendFriendRequestById(userId: string, targetUserId: string): Promise<Friend> {
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('unique_id')
+      .eq('id', targetUserId)
+      .single();
+
+    if (!targetUser) throw new Error('User not found');
+    
+    return this.sendFriendRequest(userId, targetUser.unique_id);
+  }
+
+  static async getFriends(userId: string): Promise<Friend[]> {
+    const { data: outgoing, error: outError } = await supabase
       .from('friends')
       .select(`
         *,
@@ -60,8 +228,43 @@ export class FriendsService {
       .eq('user_id', userId)
       .eq('status', 'accepted');
 
-    if (error) throw error;
-    return data as Friend[];
+    if (outError) throw outError;
+
+    const { data: incoming, error: inError } = await supabase
+      .from('friends')
+      .select(`
+        *,
+        friend_details:user_id (
+          id,
+          unique_id,
+          name,
+          email,
+          profile_picture,
+          bio
+        )
+      `)
+      .eq('friend_id', userId)
+      .eq('status', 'accepted');
+
+    if (inError) throw inError;
+
+    const incomingMapped = (incoming || []).map((item: any) => ({
+      ...item,
+      friend_id: item.user_id,
+      user_id: userId,
+    }));
+
+    const allFriends = [...(outgoing || []), ...incomingMapped];
+    
+    const uniqueFriends = allFriends.reduce((acc: any[], friend: any) => {
+      const friendId = friend.friend_details?.id || friend.friend_id;
+      if (!acc.find((f: any) => (f.friend_details?.id || f.friend_id) === friendId)) {
+        acc.push(friend);
+      }
+      return acc;
+    }, []);
+
+    return uniqueFriends as Friend[];
   }
 
   static async removeFriend(userId: string, friendshipId: string): Promise<void> {

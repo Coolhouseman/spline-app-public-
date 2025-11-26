@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 import { WalletService } from '@/services/wallet.service';
+import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 import { resolveBackendOrigin } from '@/utils/backend';
@@ -27,10 +28,68 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [imageVisible, setImageVisible] = useState(false);
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [addingFriend, setAddingFriend] = useState<string | null>(null);
 
   useEffect(() => {
     loadEvent();
-  }, [eventId]);
+    loadFriendIds();
+  }, [eventId, user?.id]);
+
+  const loadFriendIds = async () => {
+    if (!user?.id) return;
+    try {
+      const friends = await FriendsService.getFriends(user.id);
+      const ids = new Set(friends.map((f: any) => f.friend_details?.id || f.friend_id));
+      setFriendIds(ids);
+      
+      const pendingRequests = await FriendsService.getPendingRequests(user.id);
+      const sentRequests = await FriendsService.getSentPendingRequests(user.id);
+      const pendingUserIds = new Set([
+        ...pendingRequests.map((r: any) => r.user_id),
+        ...sentRequests.map((r: any) => r.friend_id)
+      ]);
+      setPendingIds(pendingUserIds);
+    } catch (error) {
+      console.error('Failed to load friends:', error);
+    }
+  };
+
+  const handleAddFriend = async (participantId: string) => {
+    if (!user?.id || participantId === user.id) return;
+    
+    if (friendIds.has(participantId)) {
+      Alert.alert('Already Friends', 'You are already friends with this person.');
+      return;
+    }
+    
+    if (pendingIds.has(participantId)) {
+      Alert.alert('Request Pending', 'A friend request is already pending.');
+      return;
+    }
+    
+    try {
+      setAddingFriend(participantId);
+      await FriendsService.sendFriendRequestById(user.id, participantId);
+      setPendingIds(prev => new Set([...prev, participantId]));
+      Alert.alert('Request Sent', 'Friend request has been sent! They will appear in your friends list once they accept.');
+      await loadFriendIds();
+    } catch (error: any) {
+      const message = error.message || 'Failed to send friend request';
+      if (message.includes('Already friends')) {
+        await loadFriendIds();
+        Alert.alert('Already Friends', 'You are already friends with this person.');
+      } else if (message.includes('already sent') || message.includes('pending')) {
+        setPendingIds(prev => new Set([...prev, participantId]));
+        Alert.alert('Request Pending', 'A friend request is already pending. Check your Friends tab to accept or view the request.');
+      } else {
+        Alert.alert('Error', message);
+      }
+    } finally {
+      setAddingFriend(null);
+    }
+  };
 
   const loadEvent = async () => {
     try {
@@ -245,38 +304,82 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             Participants
           </ThemedText>
 
-          {event.participants?.map((participant: any) => (
-            <View
-              key={participant.user_id}
-              style={[styles.participantCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            >
-              <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
-                {participant.user?.profile_picture ? (
-                  <Image source={{ uri: participant.user.profile_picture }} style={styles.avatarImage} />
-                ) : (
-                  <Feather name="user" size={20} color={theme.textSecondary} />
-                )}
-              </View>
-              <View style={styles.participantInfo}>
-                <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                  {participant.user?.name || 'Unknown'}
-                </ThemedText>
-                <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                  ${parseFloat(participant.amount).toFixed(2)}
-                </ThemedText>
-              </View>
-              <View 
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(participant.status) }
-                ]}
+          {event.participants?.map((participant: any) => {
+            const isCurrentUser = participant.user_id === user?.id;
+            const isFriend = friendIds.has(participant.user_id);
+            const isPending = pendingIds.has(participant.user_id);
+            const showAddFriend = !isCurrentUser && !isFriend && !isPending;
+            const isAdding = addingFriend === participant.user_id;
+            
+            return (
+              <View
+                key={participant.user_id}
+                style={[styles.participantCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
               >
-                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>
-                  {getStatusText(participant.status)}
-                </ThemedText>
+                <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+                  {participant.user?.profile_picture ? (
+                    <Image source={{ uri: participant.user.profile_picture }} style={styles.avatarImage} />
+                  ) : (
+                    <Feather name="user" size={20} color={theme.textSecondary} />
+                  )}
+                </View>
+                <View style={styles.participantInfo}>
+                  <View style={styles.participantNameRow}>
+                    <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                      {participant.user?.name || 'Unknown'}
+                    </ThemedText>
+                    {isCurrentUser ? (
+                      <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}> (You)</ThemedText>
+                    ) : null}
+                  </View>
+                  <View style={styles.participantSubRow}>
+                    <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                      ${parseFloat(participant.amount).toFixed(2)}
+                    </ThemedText>
+                    {isPending ? (
+                      <View style={[styles.pendingBadge, { backgroundColor: theme.warning + '20' }]}>
+                        <Feather name="clock" size={12} color={theme.warning} />
+                        <ThemedText style={[Typography.small, { color: theme.warning, marginLeft: 4 }]}>
+                          Pending
+                        </ThemedText>
+                      </View>
+                    ) : showAddFriend ? (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.addFriendBtn,
+                          { 
+                            backgroundColor: theme.primary + '15',
+                            opacity: pressed || isAdding ? 0.6 : 1
+                          }
+                        ]}
+                        onPress={() => handleAddFriend(participant.user_id)}
+                        disabled={isAdding}
+                      >
+                        <Feather 
+                          name={isAdding ? "loader" : "user-plus"} 
+                          size={12} 
+                          color={theme.primary} 
+                        />
+                        <ThemedText style={[Typography.small, { color: theme.primary, marginLeft: 4 }]}>
+                          {isAdding ? 'Sending...' : 'Add Friend'}
+                        </ThemedText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+                <View 
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: getStatusColor(participant.status) }
+                  ]}
+                >
+                  <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>
+                    {getStatusText(participant.status)}
+                  </ThemedText>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {canRespond ? (
@@ -413,6 +516,30 @@ const styles = StyleSheet.create({
   participantInfo: {
     flex: 1,
     marginLeft: Spacing.md,
+  },
+  participantNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  participantSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: 2,
+  },
+  addFriendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
   },
   statusBadge: {
     paddingHorizontal: Spacing.md,

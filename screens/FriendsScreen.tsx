@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, Image, TextInput, RefreshControl } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, Image, TextInput, RefreshControl, Alert, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -12,6 +12,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
 type Props = NativeStackScreenProps<any, 'Friends'>;
+
+interface PendingRequest {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  requester: {
+    id: string;
+    unique_id: string;
+    name: string;
+    email: string;
+    profile_picture?: string;
+    bio?: string;
+  };
+}
 
 interface FriendWithDetails {
   id: string;
@@ -34,23 +49,28 @@ export default function FriendsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
   const [friends, setFriends] = useState<FriendWithDetails[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadFriends();
-    const unsubscribe = navigation.addListener('focus', loadFriends);
+    loadData();
+    const unsubscribe = navigation.addListener('focus', loadData);
     return unsubscribe;
   }, [navigation, user?.id]);
 
-  const loadFriends = async () => {
+  const loadData = async () => {
     if (!user?.id) return;
     
     try {
       setLoading(true);
-      const data = await FriendsService.getFriends(user.id);
-      setFriends(data as FriendWithDetails[]);
+      const [friendsData, requestsData] = await Promise.all([
+        FriendsService.getFriends(user.id),
+        FriendsService.getPendingRequests(user.id),
+      ]);
+      setFriends(friendsData as FriendWithDetails[]);
+      setPendingRequests(requestsData as unknown as PendingRequest[]);
     } catch (error) {
       console.error('Failed to load friends:', error);
     } finally {
@@ -60,8 +80,28 @@ export default function FriendsScreen({ navigation }: Props) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadFriends();
+    await loadData();
     setRefreshing(false);
+  };
+
+  const handleAcceptRequest = async (requestId: string) => {
+    if (!user?.id) return;
+    try {
+      await FriendsService.acceptFriendRequest(user.id, requestId);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to accept request');
+    }
+  };
+
+  const handleDeclineRequest = async (requestId: string) => {
+    if (!user?.id) return;
+    try {
+      await FriendsService.declineFriendRequest(user.id, requestId);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to decline request');
+    }
   };
 
   const filteredFriends = friends.filter(f => {
@@ -96,6 +136,55 @@ export default function FriendsScreen({ navigation }: Props) {
     );
   };
 
+  const renderPendingRequest = (request: PendingRequest) => {
+    const requester = request.requester;
+    const requesterName = requester?.name || 'Someone';
+    const requesterPicture = requester?.profile_picture;
+    
+    return (
+      <View 
+        key={request.id} 
+        style={[styles.requestCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+      >
+        <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+          {requesterPicture ? (
+            <Image source={{ uri: requesterPicture }} style={styles.avatarImage} />
+          ) : (
+            <Feather name="user" size={24} color={theme.textSecondary} />
+          )}
+        </View>
+        <View style={styles.friendInfo}>
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+            {requesterName}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            Wants to be your friend
+          </ThemedText>
+        </View>
+        <View style={styles.requestActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.declineBtn,
+              { borderColor: theme.danger, opacity: pressed ? 0.7 : 1 }
+            ]}
+            onPress={() => handleDeclineRequest(request.id)}
+          >
+            <Feather name="x" size={18} color={theme.danger} />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.acceptBtn,
+              { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
+            ]}
+            onPress={() => handleAcceptRequest(request.id)}
+          >
+            <Feather name="check" size={18} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
       <View style={styles.header}>
@@ -122,10 +211,7 @@ export default function FriendsScreen({ navigation }: Props) {
         />
       </View>
 
-      <FlatList
-        data={filteredFriends}
-        renderItem={renderFriend}
-        keyExtractor={(item) => item.id}
+      <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -133,7 +219,49 @@ export default function FriendsScreen({ navigation }: Props) {
           styles.listContent,
           { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }
         ]}
-        ListEmptyComponent={
+      >
+        {pendingRequests.length > 0 ? (
+          <View style={styles.section}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Friend Requests ({pendingRequests.length})
+            </ThemedText>
+            {pendingRequests.map(renderPendingRequest)}
+          </View>
+        ) : null}
+
+        {filteredFriends.length > 0 ? (
+          <View style={styles.section}>
+            {pendingRequests.length > 0 ? (
+              <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+                Your Friends ({filteredFriends.length})
+              </ThemedText>
+            ) : null}
+            {filteredFriends.map((item) => {
+              const details = item.friend_details;
+              if (!details) return null;
+              
+              return (
+                <View key={item.id} style={[styles.friendCard, { borderBottomColor: theme.border }]}>
+                  <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+                    {details.profile_picture ? (
+                      <Image source={{ uri: details.profile_picture }} style={styles.avatarImage} />
+                    ) : (
+                      <Feather name="user" size={24} color={theme.textSecondary} />
+                    )}
+                  </View>
+                  <View style={styles.friendInfo}>
+                    <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                      {details.name}
+                    </ThemedText>
+                    <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                      ID: {details.unique_id}
+                    </ThemedText>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color={theme.textSecondary} />
             <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg, textAlign: 'center' }]}>
@@ -153,8 +281,8 @@ export default function FriendsScreen({ navigation }: Props) {
               </Pressable>
             ) : null}
           </View>
-        }
-      />
+        )}
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -226,5 +354,35 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.xs,
     marginTop: Spacing.xl,
+  },
+  section: {
+    marginBottom: Spacing.xl,
+  },
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    marginBottom: Spacing.md,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  declineBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  acceptBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
