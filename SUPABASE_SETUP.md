@@ -259,13 +259,9 @@ CREATE POLICY "Users can create splits" ON split_events FOR INSERT
 
 -- Split participants: Users can view and update their participations
 CREATE POLICY "Users can view split participants" ON split_participants FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM split_participants sp2
-      WHERE sp2.split_event_id = split_participants.split_event_id
-      AND sp2.user_id = auth.uid()
-    )
-  );
+  USING (auth.uid() = user_id OR auth.uid() IN (
+    SELECT creator_id FROM split_events WHERE id = split_event_id
+  ));
 CREATE POLICY "Creators can add participants" ON split_participants FOR INSERT
   WITH CHECK (auth.uid() IN (
     SELECT creator_id FROM split_events WHERE id = split_event_id
@@ -310,6 +306,8 @@ Your Supabase backend is now ready to sync data across all devices where users i
 
 ## Migrations (If You Already Have Tables)
 
+### Fix 1: Add BlinkPay Columns to Wallets
+
 If you already created your database and need to add the BlinkPay columns to the wallets table, run this in SQL Editor:
 
 ```sql
@@ -321,3 +319,20 @@ ADD COLUMN IF NOT EXISTS blinkpay_consent_expires_at TIMESTAMPTZ;
 ```
 
 This enables the Connect Bank Account feature to store BlinkPay consent information.
+
+### Fix 2: Fix split_participants Infinite Recursion
+
+If you see error "infinite recursion detected in policy for relation split_participants", run this to fix it:
+
+```sql
+-- Drop the problematic policy
+DROP POLICY IF EXISTS "Users can view split participants" ON split_participants;
+
+-- Create fixed policy that doesn't self-reference
+CREATE POLICY "Users can view split participants" ON split_participants FOR SELECT
+  USING (auth.uid() = user_id OR auth.uid() IN (
+    SELECT creator_id FROM split_events WHERE id = split_event_id
+  ));
+```
+
+This allows users to see their own participation entries and creators to see all participants in their splits.
