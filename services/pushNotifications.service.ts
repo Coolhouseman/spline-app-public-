@@ -55,12 +55,18 @@ export class PushNotificationsService {
         });
       }
 
-      // Get projectId from multiple sources for compatibility
+      // Get projectId - must be a valid UUID from EAS
       const projectId = 
         Constants?.expoConfig?.extra?.eas?.projectId ?? 
-        Constants?.easConfig?.projectId ??
-        Constants?.expoConfig?.slug ??
-        'split-payment-app';
+        Constants?.easConfig?.projectId;
+      
+      // If no valid EAS projectId, skip push token registration
+      // Push notifications require a development build with EAS for full support
+      if (!projectId) {
+        console.log('Push notifications: No EAS projectId configured. Skipping token registration.');
+        console.log('Note: For full push notification support, create a development build with EAS.');
+        return null;
+      }
       
       console.log('Using projectId for push notifications:', projectId);
       
@@ -74,7 +80,13 @@ export class PushNotificationsService {
       await this.savePushToken(userId, pushToken);
 
       return pushToken;
-    } catch (error) {
+    } catch (error: any) {
+      // Gracefully handle Expo Go limitations
+      if (error?.message?.includes('Invalid uuid') || error?.message?.includes('400')) {
+        console.log('Push notifications: EAS project not configured. Using in-app notifications only.');
+        console.log('Note: For push notifications, build with EAS: npx eas build');
+        return null;
+      }
       console.error('Failed to register for push notifications:', error);
       return null;
     }
