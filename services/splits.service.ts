@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { supabaseAdmin } from './supabaseAdmin';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -102,7 +103,8 @@ export class SplitsService {
       }));
 
     if (notificationsToCreate.length > 0) {
-      await supabase.from('notifications').insert(notificationsToCreate);
+      // Use admin client to bypass RLS when creating notifications for other users
+      await supabaseAdmin.from('notifications').insert(notificationsToCreate);
 
       const inviteeIds = data.participants
         .filter(p => p.userId !== data.creatorId)
@@ -218,7 +220,8 @@ export class SplitsService {
     const creatorId = (participant as any).split_events.creator_id;
     const splitName = (participant as any).split_events.name;
 
-    await supabase.from('notifications').insert({
+    // Use admin client to bypass RLS when creating notifications for other users
+    await supabaseAdmin.from('notifications').insert({
       user_id: creatorId,
       type: response === 'accepted' ? 'split_accepted' : 'split_declined',
       title: response === 'accepted' ? 'Split Accepted' : 'Split Declined',
@@ -255,7 +258,8 @@ export class SplitsService {
       .eq('id', userId)
       .single();
 
-    await supabase.from('notifications').insert({
+    // Use admin client to bypass RLS when creating notifications for other users
+    await supabaseAdmin.from('notifications').insert({
       user_id: creatorId,
       type: 'split_paid',
       title: 'Payment Received',
@@ -302,7 +306,8 @@ export class SplitsService {
           .single();
 
         if (!existingNotification) {
-          await supabase.from('notifications').insert({
+          // Use admin client to bypass RLS when creating notifications for other users
+          await supabaseAdmin.from('notifications').insert({
             user_id: creatorId,
             type: 'split_completed',
             title: 'Split Complete!',

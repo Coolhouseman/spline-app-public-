@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { supabaseAdmin } from './supabaseAdmin';
 import { PushNotificationsService } from './pushNotifications.service';
 import type { Friend, User } from '@/shared/types';
 
@@ -58,8 +59,8 @@ export class FriendsService {
           })
           .eq('id', existing.id);
         
-        // Create notification for the new request
-        await supabase.from('notifications').insert({
+        // Create notification for the new request using admin client to bypass RLS
+        await supabaseAdmin.from('notifications').insert({
           user_id: friendUser.id,
           type: 'friend_request',
           title: 'Friend Request',
@@ -103,7 +104,8 @@ export class FriendsService {
         .eq('id', existing.id);
       
       const isReminder = existing.status === 'pending';
-      const { error: notifError } = await supabase.from('notifications').insert({
+      // Use admin client to bypass RLS when creating notifications for other users
+      const { error: notifError } = await supabaseAdmin.from('notifications').insert({
         user_id: friendUser.id,
         type: 'friend_request',
         title: isReminder ? 'Friend Request Reminder' : 'Friend Request',
@@ -149,15 +151,14 @@ export class FriendsService {
 
     if (error) throw error;
 
-    console.log('Creating notification for user:', friendUser.id, 'with friend_request_id:', data.id);
+    console.log('Creating notification for user:', friendUser.id, 'with friendship_id:', data.id);
     
-    // Try to create notification with friend_request_id first
-    let { data: notifData, error: notifError } = await supabase.from('notifications').insert({
+    // Use admin client to bypass RLS when creating notifications for other users
+    const { data: notifData, error: notifError } = await supabaseAdmin.from('notifications').insert({
       user_id: friendUser.id,
       type: 'friend_request',
       title: 'Friend Request',
       message: `${currentUser?.name || 'Someone'} wants to be your friend`,
-      friend_request_id: data.id,
       metadata: {
         sender_id: userId,
         sender_name: currentUser?.name,
@@ -165,25 +166,6 @@ export class FriendsService {
       },
       read: false,
     }).select().single();
-
-    // If that fails, try without friend_request_id (in case of FK constraint issues)
-    if (notifError) {
-      console.error('Failed with friend_request_id, trying without:', notifError);
-      const result = await supabase.from('notifications').insert({
-        user_id: friendUser.id,
-        type: 'friend_request',
-        title: 'Friend Request',
-        message: `${currentUser?.name || 'Someone'} wants to be your friend`,
-        metadata: {
-          sender_id: userId,
-          sender_name: currentUser?.name,
-          friendship_id: data.id,
-        },
-        read: false,
-      }).select().single();
-      notifData = result.data;
-      notifError = result.error;
-    }
 
     if (notifError) {
       console.error('Failed to create friend request notification:', notifError);
@@ -293,7 +275,8 @@ export class FriendsService {
       .eq('id', userId)
       .single();
 
-    await supabase.from('notifications').insert({
+    // Use admin client to bypass RLS when creating notifications for other users
+    await supabaseAdmin.from('notifications').insert({
       user_id: friendship.user_id,
       type: 'friend_accepted',
       title: 'Friend Request Accepted',
