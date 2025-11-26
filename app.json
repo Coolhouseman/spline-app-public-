@@ -44,11 +44,6 @@
     ],
     "experiments": {
       "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "split-payment-app"
-      }
     }
   }
 }
