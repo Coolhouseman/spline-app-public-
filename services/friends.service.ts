@@ -32,53 +32,109 @@ export class FriendsService {
         throw new Error('Already friends with this user');
       }
       
-      if (existing.status === 'pending') {
-        if (existing.user_id !== userId) {
+      // Check if this is a request FROM the other user TO us
+      if (existing.user_id !== userId) {
+        if (existing.status === 'pending') {
           throw new Error('This user already sent you a friend request. Check your notifications!');
         }
-        
+        // If it's declined or any other status from their side, we can send our own request
+        // by updating this record to be from us
         const lastSentAt = existing.last_reminder_at || existing.created_at;
         const hoursSinceLastSent = (Date.now() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60);
         
         if (hoursSinceLastSent < REMINDER_COOLDOWN_HOURS) {
           const hoursRemaining = Math.ceil(REMINDER_COOLDOWN_HOURS - hoursSinceLastSent);
-          throw new Error(`Please wait ${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''} before sending another reminder`);
+          throw new Error(`Please wait ${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''} before sending a friend request`);
         }
         
+        // Update the existing record to be from us
         await supabase
           .from('friends')
-          .update({ last_reminder_at: new Date().toISOString() })
+          .update({ 
+            user_id: userId,
+            friend_id: friendUser.id,
+            status: 'pending',
+            last_reminder_at: new Date().toISOString(),
+          })
           .eq('id', existing.id);
         
-        const { error: notifError } = await supabase.from('notifications').insert({
+        // Create notification for the new request
+        await supabase.from('notifications').insert({
           user_id: friendUser.id,
           type: 'friend_request',
-          title: 'Friend Request Reminder',
-          message: `${currentUser?.name || 'Someone'} is waiting for your response`,
-          friend_request_id: existing.id,
+          title: 'Friend Request',
+          message: `${currentUser?.name || 'Someone'} wants to be your friend`,
           metadata: {
             sender_id: userId,
             sender_name: currentUser?.name,
-            is_reminder: true,
+            friendship_id: existing.id,
           },
           read: false,
         });
         
-        if (notifError) {
-          console.error('Failed to create reminder notification:', notifError);
-        }
-
         await PushNotificationsService.sendPushToUser(friendUser.id, {
-          title: 'Friend Request Reminder',
-          body: `${currentUser?.name || 'Someone'} is waiting for your response`,
+          title: 'Friend Request',
+          body: `${currentUser?.name || 'Someone'} wants to be your friend`,
           data: {
             type: 'friend_request',
             senderId: userId,
           },
         });
-
-        return existing as Friend;
+        
+        return { ...existing, user_id: userId, friend_id: friendUser.id, status: 'pending' } as Friend;
       }
+      
+      // This is OUR request to them - handle pending/declined/any status
+      const lastSentAt = existing.last_reminder_at || existing.created_at;
+      const hoursSinceLastSent = (Date.now() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceLastSent < REMINDER_COOLDOWN_HOURS) {
+        const hoursRemaining = Math.ceil(REMINDER_COOLDOWN_HOURS - hoursSinceLastSent);
+        throw new Error(`Please wait ${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''} before sending another reminder`);
+      }
+      
+      // Update the existing record (reactivate if declined, or just update reminder time if pending)
+      await supabase
+        .from('friends')
+        .update({ 
+          status: 'pending',
+          last_reminder_at: new Date().toISOString() 
+        })
+        .eq('id', existing.id);
+      
+      const isReminder = existing.status === 'pending';
+      const { error: notifError } = await supabase.from('notifications').insert({
+        user_id: friendUser.id,
+        type: 'friend_request',
+        title: isReminder ? 'Friend Request Reminder' : 'Friend Request',
+        message: isReminder 
+          ? `${currentUser?.name || 'Someone'} is waiting for your response`
+          : `${currentUser?.name || 'Someone'} wants to be your friend`,
+        metadata: {
+          sender_id: userId,
+          sender_name: currentUser?.name,
+          friendship_id: existing.id,
+          is_reminder: isReminder,
+        },
+        read: false,
+      });
+      
+      if (notifError) {
+        console.error('Failed to create notification:', notifError);
+      }
+
+      await PushNotificationsService.sendPushToUser(friendUser.id, {
+        title: isReminder ? 'Friend Request Reminder' : 'Friend Request',
+        body: isReminder 
+          ? `${currentUser?.name || 'Someone'} is waiting for your response`
+          : `${currentUser?.name || 'Someone'} wants to be your friend`,
+        data: {
+          type: 'friend_request',
+          senderId: userId,
+        },
+      });
+
+      return { ...existing, status: 'pending' } as Friend;
     }
 
     const { data, error } = await supabase
@@ -255,9 +311,13 @@ export class FriendsService {
   }
 
   static async declineFriendRequest(userId: string, friendshipId: string): Promise<void> {
+    // Mark as declined instead of deleting, so we can track cooldown for resends
     const { error } = await supabase
       .from('friends')
-      .delete()
+      .update({ 
+        status: 'declined',
+        last_reminder_at: new Date().toISOString() // Reset the cooldown timer
+      })
       .eq('id', friendshipId)
       .eq('friend_id', userId)
       .eq('status', 'pending');
