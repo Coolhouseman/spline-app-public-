@@ -4,6 +4,32 @@ import { resolveBackendOrigin } from '@/utils/backend';
 
 const BACKEND_URL = resolveBackendOrigin();
 
+/**
+ * ==========================================================
+ * SPLIT WALLET - LEDGER-BASED PAYMENT SYSTEM
+ * ==========================================================
+ * 
+ * BUSINESS MODEL:
+ * - All user funds are held in a single business bank account (connected via BlinkPay)
+ * - User balances are tracked as ledger entries in the database
+ * - In-app transfers between users are just ledger adjustments (no real money movement)
+ * - Real money only moves on:
+ *   1. DEPOSIT: User's bank → Business holding account (via BlinkPay)
+ *   2. WITHDRAWAL: Business holding account → User's bank (requires manual processing)
+ * 
+ * TRANSACTION TYPES:
+ * - deposit: Money added to wallet (from bank via BlinkPay)
+ * - withdrawal: Money withdrawn (pending - requires manual processing)
+ * - split_payment: User paying their share of a split (ledger deduction)
+ * - split_received: User receiving payment from someone (ledger credit)
+ * 
+ * CRITICAL RULES:
+ * - Balance can NEVER go negative
+ * - All balance changes MUST be logged in transactions table
+ * - Re-fetch balance before any deduction to prevent race conditions
+ * ==========================================================
+ */
+
 export interface BankDetails {
   bank_name: string;
   account_last4: string;
@@ -24,6 +50,75 @@ interface BlinkPayBankDetails {
 }
 
 export class WalletService {
+  /**
+   * Safely get current balance with fresh data
+   * Always call this before any balance-modifying operation
+   */
+  private static async getCurrentBalance(userId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error) throw new Error('Failed to fetch wallet balance');
+    return parseFloat(data.balance?.toString() || '0');
+  }
+
+  /**
+   * Safely update balance with validation
+   * Returns the new balance after update
+   */
+  private static async updateBalance(
+    userId: string, 
+    newBalance: number,
+    operation: string
+  ): Promise<number> {
+    if (newBalance < 0) {
+      throw new Error(`Cannot complete ${operation}: would result in negative balance`);
+    }
+
+    const { error } = await supabase
+      .from('wallets')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+
+    if (error) throw new Error(`Failed to update balance for ${operation}`);
+    return newBalance;
+  }
+
+  /**
+   * Log a transaction - MUST be called for every balance change
+   */
+  private static async logTransaction(
+    userId: string,
+    type: 'deposit' | 'withdrawal' | 'split_payment' | 'split_received',
+    amount: number,
+    description: string,
+    direction: 'in' | 'out',
+    splitEventId?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<Transaction> {
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type,
+        amount,
+        description,
+        direction,
+        split_event_id: splitEventId || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('CRITICAL: Failed to log transaction:', error);
+      throw new Error('Failed to record transaction');
+    }
+
+    return data as Transaction;
+  }
   static async getWallet(userId: string): Promise<Wallet> {
     const { data, error } = await supabase
       .from('wallets')
@@ -202,10 +297,24 @@ export class WalletService {
     return data as Wallet;
   }
 
+  /**
+   * ADD FUNDS VIA BLINKPAY (DEPOSIT)
+   * 
+   * Money Flow:
+   * User's personal bank → Business holding account (via BlinkPay)
+   * User's ledger balance increases
+   * 
+   * This is REAL MONEY coming INTO the business account
+   */
   static async addFundsViaBlinkPay(
     userId: string, 
     amount: number
   ): Promise<{ transaction: Transaction; paymentId: string }> {
+    // Validate amount
+    if (amount <= 0) {
+      throw new Error('Deposit amount must be greater than zero');
+    }
+
     const { data: wallet } = await supabase
       .from('wallets')
       .select('blinkpay_consent_id, bank_connected')
@@ -216,11 +325,12 @@ export class WalletService {
       throw new Error('Bank account must be connected via BlinkPay to add funds');
     }
 
+    console.log(`Processing BlinkPay deposit of $${amount.toFixed(2)} for user ${userId}`);
+
+    // Charge user's bank
     const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         consentId: wallet.blinkpay_consent_id,
         amount: amount.toFixed(2),
@@ -231,11 +341,12 @@ export class WalletService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to process BlinkPay payment');
+      throw new Error(error.message || 'Failed to process bank payment');
     }
 
     const paymentResult = await response.json();
 
+    // Wait for payment confirmation
     const statusResponse = await fetch(
       `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
     );
@@ -250,115 +361,132 @@ export class WalletService {
       throw new Error('Payment was not completed. Your bank account was not charged.');
     }
 
-    const { data: walletData } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
+    console.log(`BlinkPay deposit confirmed: $${amount.toFixed(2)}`);
 
-    const newBalance = parseFloat(walletData?.balance.toString() || '0') + amount;
+    // Credit user's ledger balance
+    const currentBalance = await this.getCurrentBalance(userId);
+    const newBalance = currentBalance + amount;
+    await this.updateBalance(userId, newBalance, 'deposit');
 
-    await supabase
-      .from('wallets')
-      .update({ balance: newBalance })
-      .eq('user_id', userId);
+    // Log the transaction
+    const transaction = await this.logTransaction(
+      userId,
+      'deposit',
+      amount,
+      'Added funds from bank',
+      'in'
+    );
 
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        type: 'deposit',
-        amount: amount,
-        description: 'Added funds via BlinkPay',
-        direction: 'in',
-      })
-      .select()
-      .single();
-
-    if (transactionError) throw transactionError;
-    return { transaction: transaction as Transaction, paymentId: paymentResult.paymentId };
+    console.log(`Deposit completed: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
+    return { transaction, paymentId: paymentResult.paymentId };
   }
 
+  /**
+   * ADD FUNDS (ADMIN/TEST ONLY)
+   * 
+   * This method adds funds to a user's ledger WITHOUT charging their bank.
+   * Should only be used for:
+   * - Admin adjustments
+   * - Testing
+   * - Promotional credits
+   * 
+   * In production, use addFundsViaBlinkPay for real deposits
+   */
   static async addFunds(userId: string, amount: number): Promise<Transaction> {
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
+    if (amount <= 0) {
+      throw new Error('Amount must be greater than zero');
+    }
 
-    if (walletError) throw walletError;
+    // Get fresh balance
+    const currentBalance = await this.getCurrentBalance(userId);
+    const newBalance = currentBalance + amount;
 
-    const newBalance = parseFloat(wallet.balance.toString()) + amount;
+    await this.updateBalance(userId, newBalance, 'admin deposit');
 
-    const { error: updateError } = await supabase
-      .from('wallets')
-      .update({ balance: newBalance })
-      .eq('user_id', userId);
+    const transaction = await this.logTransaction(
+      userId,
+      'deposit',
+      amount,
+      'Credit added to wallet',
+      'in'
+    );
 
-    if (updateError) throw updateError;
-
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        type: 'deposit',
-        amount: amount,
-        description: 'Added funds to wallet',
-        direction: 'in',
-      })
-      .select()
-      .single();
-
-    if (transactionError) throw transactionError;
-    return transaction as Transaction;
+    console.log(`Admin deposit: $${amount.toFixed(2)} to user ${userId}. New balance: $${newBalance.toFixed(2)}`);
+    return transaction;
   }
 
+  /**
+   * WITHDRAW FUNDS (PAYOUT)
+   * 
+   * Money Flow:
+   * Business holding account → User's personal bank
+   * User's ledger balance decreases
+   * 
+   * NOTE: BlinkPay enduring consents only support PULLING money FROM user's bank
+   * To send money TO user's bank, we need to:
+   * 1. Deduct from user's ledger immediately
+   * 2. Log as pending withdrawal
+   * 3. Process manual bank transfer (admin action)
+   * 
+   * This is REAL MONEY leaving the business account
+   */
   static async withdraw(userId: string, amount: number): Promise<Transaction> {
+    // Validate amount
+    if (amount <= 0) {
+      throw new Error('Withdrawal amount must be greater than zero');
+    }
+
     const { data: wallet, error: walletError } = await supabase
       .from('wallets')
-      .select('balance, bank_connected, blinkpay_consent_id')
+      .select('balance, bank_connected, bank_details')
       .eq('user_id', userId)
       .single();
 
     if (walletError) throw walletError;
+    
     if (!wallet.bank_connected) {
-      throw new Error('Bank account must be connected to withdraw funds');
+      throw new Error('Connect your bank account to withdraw funds');
     }
 
-    const currentBalance = parseFloat(wallet.balance.toString());
+    // Get fresh balance
+    const currentBalance = await this.getCurrentBalance(userId);
+    
     if (currentBalance < amount) {
-      throw new Error('Insufficient balance');
+      throw new Error(`Insufficient balance. You have $${currentBalance.toFixed(2)} available.`);
     }
 
-    if (wallet.blinkpay_consent_id) {
-      throw new Error('Withdrawals via BlinkPay are not supported. Funds remain in your Split wallet for paying friends.');
-    }
+    console.log(`Processing withdrawal of $${amount.toFixed(2)} for user ${userId}`);
 
+    // Deduct from ledger immediately
     const newBalance = currentBalance - amount;
+    await this.updateBalance(userId, newBalance, 'withdrawal');
 
-    const { error: updateError } = await supabase
-      .from('wallets')
-      .update({ balance: newBalance })
-      .eq('user_id', userId);
+    // Log the withdrawal transaction
+    const transaction = await this.logTransaction(
+      userId,
+      'withdrawal',
+      amount,
+      'Withdrawal to bank (processing)',
+      'out'
+    );
 
-    if (updateError) throw updateError;
-
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        type: 'withdrawal',
-        amount: amount,
-        description: 'Withdrew funds from wallet',
-        direction: 'out',
-      })
-      .select()
-      .single();
-
-    if (transactionError) throw transactionError;
-    return transaction as Transaction;
+    console.log(`Withdrawal initiated: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
+    console.log(`NOTE: Manual bank transfer required to complete this withdrawal`);
+    
+    return transaction;
   }
 
+  /**
+   * PAY FOR A SPLIT EVENT
+   * 
+   * Money Flow:
+   * 1. If payer has wallet balance: deduct from ledger (no real money moves)
+   * 2. If shortfall: charge payer's bank via BlinkPay → money goes to business holding account
+   * 3. Credit recipient's ledger balance (they can withdraw later)
+   * 
+   * This is an INTERNAL TRANSFER - money stays in business holding account
+   * Only the ledger balances change
+   */
   static async paySplitEvent(
     userId: string, 
     splitEventId: string,
@@ -366,6 +494,12 @@ export class WalletService {
     recipientId: string,
     eventName: string
   ): Promise<Transaction> {
+    // Validate amount
+    if (amount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    // Get fresh wallet data
     const { data: wallet } = await supabase
       .from('wallets')
       .select('balance, bank_connected, blinkpay_consent_id')
@@ -374,27 +508,32 @@ export class WalletService {
 
     if (!wallet) throw new Error('Wallet not found');
 
-    const currentBalance = parseFloat(wallet.balance.toString());
+    // Get current balance with fresh read
+    const currentBalance = await this.getCurrentBalance(userId);
     
-    // Calculate how much we can pay from wallet vs BlinkPay
+    // Calculate payment split: wallet first, then bank
     const walletPayment = Math.min(currentBalance, amount);
-    const blinkPayPayment = amount - walletPayment;
+    const bankPayment = amount - walletPayment;
 
-    // If we need BlinkPay but don't have it connected
-    if (blinkPayPayment > 0 && (!wallet.bank_connected || !wallet.blinkpay_consent_id)) {
-      throw new Error(`Insufficient wallet balance ($${currentBalance.toFixed(2)}). Connect your bank to pay the remaining $${blinkPayPayment.toFixed(2)} via BlinkPay.`);
+    // Validate we can complete the payment
+    if (bankPayment > 0 && (!wallet.bank_connected || !wallet.blinkpay_consent_id)) {
+      throw new Error(
+        `Insufficient wallet balance ($${currentBalance.toFixed(2)}). ` +
+        `Connect your bank to pay the remaining $${bankPayment.toFixed(2)}.`
+      );
     }
 
-    // Process BlinkPay payment first if needed (so we don't deduct wallet if bank fails)
-    if (blinkPayPayment > 0) {
+    // STEP 1: Process bank payment FIRST (if needed)
+    // This ensures we don't deduct wallet balance if bank charge fails
+    if (bankPayment > 0) {
+      console.log(`Processing BlinkPay charge of $${bankPayment.toFixed(2)} for split ${splitEventId}`);
+      
       const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           consentId: wallet.blinkpay_consent_id,
-          amount: blinkPayPayment.toFixed(2),
+          amount: bankPayment.toFixed(2),
           particulars: 'Split Payment',
           reference: splitEventId.substring(0, 12)
         }),
@@ -402,132 +541,115 @@ export class WalletService {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to process payment via BlinkPay');
+        throw new Error(error.message || 'Bank payment failed. No charges were made.');
       }
 
       const paymentResult = await response.json();
 
+      // Wait for payment confirmation
       const statusResponse = await fetch(
         `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
       );
 
       if (!statusResponse.ok) {
-        throw new Error('Failed to verify payment status');
+        throw new Error('Could not verify bank payment. Please try again.');
       }
 
       const paymentStatus = await statusResponse.json();
 
       if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
-        throw new Error('Payment was not completed. Your bank account was not charged.');
+        throw new Error('Bank payment was not completed. Your account was not charged.');
       }
+
+      console.log(`BlinkPay payment confirmed: $${bankPayment.toFixed(2)}`);
     }
 
-    // Deduct from wallet if we used any wallet balance
+    // STEP 2: Deduct from payer's wallet (ledger adjustment)
     if (walletPayment > 0) {
-      const newBalance = currentBalance - walletPayment;
-      await supabase
-        .from('wallets')
-        .update({ balance: newBalance })
-        .eq('user_id', userId);
+      // Re-verify balance hasn't changed (race condition protection)
+      const verifyBalance = await this.getCurrentBalance(userId);
+      if (verifyBalance < walletPayment) {
+        throw new Error('Balance changed during transaction. Please try again.');
+      }
+
+      const newPayerBalance = verifyBalance - walletPayment;
+      await this.updateBalance(userId, newPayerBalance, 'split payment');
+      console.log(`Deducted $${walletPayment.toFixed(2)} from payer wallet. New balance: $${newPayerBalance.toFixed(2)}`);
     }
 
-    // Credit recipient's wallet with the full amount
+    // STEP 3: Credit recipient's wallet (ledger adjustment)
+    // This always happens - recipient gets full amount added to their ledger
+    const recipientBalance = await this.getCurrentBalance(recipientId).catch(() => 0);
+    const newRecipientBalance = recipientBalance + amount;
+    
+    // Ensure recipient has a wallet
     const { data: recipientWallet } = await supabase
       .from('wallets')
-      .select('balance')
+      .select('id')
       .eq('user_id', recipientId)
       .single();
 
     if (recipientWallet) {
-      const recipientNewBalance = parseFloat(recipientWallet.balance.toString()) + amount;
-      await supabase
-        .from('wallets')
-        .update({ balance: recipientNewBalance })
-        .eq('user_id', recipientId);
+      await this.updateBalance(recipientId, newRecipientBalance, 'split received');
+      console.log(`Credited $${amount.toFixed(2)} to recipient wallet. New balance: $${newRecipientBalance.toFixed(2)}`);
 
-      // Log transaction for recipient
-      await supabase
-        .from('transactions')
-        .insert({
-          user_id: recipientId,
-          type: 'split_received',
-          amount: amount,
-          description: `Received payment for ${eventName}`,
-          direction: 'in',
-          split_event_id: splitEventId,
-        });
+      // Log recipient's incoming transaction
+      await this.logTransaction(
+        recipientId,
+        'split_received',
+        amount,
+        `Received payment for ${eventName}`,
+        'in',
+        splitEventId
+      );
     }
 
-    // Create transaction record(s) for payer
-    // If hybrid payment, log both wallet and BlinkPay portions separately
-    if (walletPayment > 0 && blinkPayPayment > 0) {
-      // Hybrid payment: log wallet portion first
-      const { error: walletTxError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: 'split_payment',
-          amount: walletPayment,
-          description: `Paid ${eventName} (from wallet)`,
-          direction: 'out',
-          split_event_id: splitEventId,
-        });
+    // STEP 4: Log payer's transaction(s)
+    let payerTransaction: Transaction;
 
-      if (walletTxError) {
-        console.error('Failed to log wallet transaction:', walletTxError);
-      }
+    if (walletPayment > 0 && bankPayment > 0) {
+      // Hybrid payment: log both portions separately for clarity
+      await this.logTransaction(
+        userId,
+        'split_payment',
+        walletPayment,
+        `Paid ${eventName} (from wallet)`,
+        'out',
+        splitEventId
+      );
 
-      // Log BlinkPay portion
-      const { data: transaction, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: 'split_payment',
-          amount: blinkPayPayment,
-          description: `Paid ${eventName} (via bank)`,
-          direction: 'out',
-          split_event_id: splitEventId,
-        })
-        .select()
-        .single();
-
-      if (transactionError) throw transactionError;
-      return transaction as Transaction;
-    } else if (blinkPayPayment > 0) {
-      // Full BlinkPay payment
-      const { data: transaction, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: 'split_payment',
-          amount: amount,
-          description: `Paid ${eventName} via BlinkPay`,
-          direction: 'out',
-          split_event_id: splitEventId,
-        })
-        .select()
-        .single();
-
-      if (transactionError) throw transactionError;
-      return transaction as Transaction;
+      payerTransaction = await this.logTransaction(
+        userId,
+        'split_payment',
+        bankPayment,
+        `Paid ${eventName} (from bank)`,
+        'out',
+        splitEventId
+      );
+    } else if (bankPayment > 0) {
+      // Full bank payment
+      payerTransaction = await this.logTransaction(
+        userId,
+        'split_payment',
+        amount,
+        `Paid ${eventName} (from bank)`,
+        'out',
+        splitEventId
+      );
     } else {
-      // Full wallet payment
-      const { data: transaction, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: 'split_payment',
-          amount: amount,
-          description: `Paid ${eventName}`,
-          direction: 'out',
-          split_event_id: splitEventId,
-        })
-        .select()
-        .single();
-
-      if (transactionError) throw transactionError;
-      return transaction as Transaction;
+      // Full wallet payment (internal transfer only)
+      payerTransaction = await this.logTransaction(
+        userId,
+        'split_payment',
+        amount,
+        `Paid ${eventName}`,
+        'out',
+        splitEventId
+      );
     }
+
+    console.log(`Split payment completed: $${amount.toFixed(2)} from ${userId} to ${recipientId}`);
+    return payerTransaction;
   }
 
   static async getTransactions(userId: string): Promise<Transaction[]> {
