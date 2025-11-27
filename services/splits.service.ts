@@ -70,7 +70,7 @@ export class SplitsService {
       split_event_id: split.id,
       user_id: p.userId,
       amount: p.amount,
-      status: p.userId === data.creatorId ? 'accepted' : 'pending',
+      status: p.userId === data.creatorId ? 'paid' : 'pending',
       is_creator: p.userId === data.creatorId,
     }));
 
@@ -152,6 +152,7 @@ export class SplitsService {
         *,
         creator:creator_id (
           id,
+          unique_id,
           name,
           profile_picture
         ),
@@ -159,6 +160,7 @@ export class SplitsService {
           *,
           user:user_id (
             id,
+            unique_id,
             name,
             profile_picture
           )
@@ -178,6 +180,7 @@ export class SplitsService {
         *,
         creator:creator_id (
           id,
+          unique_id,
           name,
           profile_picture
         ),
@@ -185,6 +188,7 @@ export class SplitsService {
           *,
           user:user_id (
             id,
+            unique_id,
             name,
             profile_picture
           )

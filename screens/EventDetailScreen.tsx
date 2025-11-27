@@ -217,7 +217,27 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   };
 
   const getStatusText = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
+    switch (status) {
+      case 'paid': return 'Paid';
+      case 'declined': return 'Declined';
+      default: return 'Pending';
+    }
+  };
+
+  const calculateProgress = () => {
+    if (!event?.participants) return { paidAmount: 0, totalAmount: 0, percentage: 0 };
+    
+    const totalAmount = parseFloat(event.total_amount);
+    let paidAmount = 0;
+    
+    for (const participant of event.participants) {
+      if (participant.status === 'paid') {
+        paidAmount += parseFloat(participant.amount);
+      }
+    }
+    
+    const percentage = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+    return { paidAmount, totalAmount, percentage };
   };
 
   if (loading) {
@@ -277,6 +297,36 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
             Your share: ${parseFloat(myAmount).toFixed(2)}
           </ThemedText>
+
+          {(() => {
+            const { paidAmount, totalAmount, percentage } = calculateProgress();
+            return (
+              <View style={styles.progressSection}>
+                <View style={styles.progressHeader}>
+                  <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                    Payment Progress
+                  </ThemedText>
+                  <ThemedText style={[Typography.caption, { color: theme.text, fontWeight: '600' }]}>
+                    ${paidAmount.toFixed(2)} / ${totalAmount.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={[styles.progressBar, { backgroundColor: theme.backgroundSecondary }]}>
+                  <View 
+                    style={[
+                      styles.progressFill, 
+                      { 
+                        backgroundColor: theme.success,
+                        width: `${Math.min(percentage, 100)}%`
+                      }
+                    ]} 
+                  />
+                </View>
+                <ThemedText style={[Typography.small, { color: theme.success, textAlign: 'right', marginTop: 4 }]}>
+                  {percentage.toFixed(0)}% collected
+                </ThemedText>
+              </View>
+            );
+          })()}
         </View>
 
         {event.receipt_image ? (
@@ -316,11 +366,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 key={participant.user_id}
                 style={[styles.participantCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
               >
-                <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+                <View style={[styles.avatarLarge, { backgroundColor: theme.backgroundSecondary }]}>
                   {participant.user?.profile_picture ? (
                     <Image source={{ uri: participant.user.profile_picture }} style={styles.avatarImage} />
                   ) : (
-                    <Feather name="user" size={20} color={theme.textSecondary} />
+                    <Feather name="user" size={24} color={theme.textSecondary} />
                   )}
                 </View>
                 <View style={styles.participantInfo}>
@@ -332,8 +382,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                       <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}> (You)</ThemedText>
                     ) : null}
                   </View>
+                  <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                    ID: {participant.user?.unique_id || 'N/A'}
+                  </ThemedText>
                   <View style={styles.participantSubRow}>
-                    <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                    <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
                       ${parseFloat(participant.amount).toFixed(2)}
                     </ThemedText>
                     {isPending ? (
@@ -509,9 +562,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  avatarLarge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  progressSection: {
+    width: '100%',
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   participantInfo: {
     flex: 1,
