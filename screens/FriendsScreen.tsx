@@ -48,6 +48,8 @@ interface SentRequest {
   user_id: string;
   friend_id: string;
   status: string;
+  created_at: string;
+  last_reminder_at?: string;
   recipient: {
     id: string;
     unique_id: string;
@@ -55,6 +57,18 @@ interface SentRequest {
     email: string;
     profile_picture?: string;
     bio?: string;
+  };
+}
+
+const REMINDER_COOLDOWN_HOURS = 24;
+
+function getResendStatus(request: SentRequest): { canResend: boolean; hoursRemaining: number } {
+  const lastSentAt = request.last_reminder_at || request.created_at;
+  const hoursSinceSent = (Date.now() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60);
+  const hoursRemaining = Math.max(0, Math.ceil(REMINDER_COOLDOWN_HOURS - hoursSinceSent));
+  return {
+    canResend: hoursSinceSent >= REMINDER_COOLDOWN_HOURS,
+    hoursRemaining,
   };
 }
 
@@ -119,6 +133,24 @@ export default function FriendsScreen({ navigation }: Props) {
       loadData();
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to decline request');
+    }
+  };
+
+  const handleResendRequest = async (request: SentRequest) => {
+    if (!user?.id || !request.recipient?.unique_id) return;
+    
+    const { canResend, hoursRemaining } = getResendStatus(request);
+    if (!canResend) {
+      Alert.alert('Please Wait', `You can resend in ${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}`);
+      return;
+    }
+    
+    try {
+      await FriendsService.sendFriendRequest(user.id, request.recipient.unique_id);
+      Alert.alert('Success', 'Reminder sent successfully!');
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to resend request');
     }
   };
 
@@ -207,6 +239,7 @@ export default function FriendsScreen({ navigation }: Props) {
     const recipient = request.recipient;
     const recipientName = recipient?.name || 'Someone';
     const recipientPicture = recipient?.profile_picture;
+    const { canResend, hoursRemaining } = getResendStatus(request);
     
     return (
       <View 
@@ -228,10 +261,35 @@ export default function FriendsScreen({ navigation }: Props) {
             ID: {recipient?.unique_id}
           </ThemedText>
         </View>
-        <View style={[styles.pendingBadge, { backgroundColor: theme.primary + '20' }]}>
-          <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
-            Pending
-          </ThemedText>
+        <View style={styles.sentRequestActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.resendBtn,
+              { 
+                backgroundColor: canResend ? theme.primary : theme.backgroundSecondary,
+                opacity: pressed ? 0.7 : 1 
+              }
+            ]}
+            onPress={() => handleResendRequest(request)}
+          >
+            <Feather 
+              name="send" 
+              size={14} 
+              color={canResend ? '#FFFFFF' : theme.textSecondary} 
+            />
+            <ThemedText 
+              style={[
+                Typography.caption, 
+                { 
+                  color: canResend ? '#FFFFFF' : theme.textSecondary, 
+                  fontWeight: '600',
+                  marginLeft: 4 
+                }
+              ]}
+            >
+              {canResend ? 'Resend' : `${hoursRemaining}h`}
+            </ThemedText>
+          </Pressable>
         </View>
       </View>
     );
@@ -451,6 +509,17 @@ const styles = StyleSheet.create({
   pendingBadge: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+  },
+  sentRequestActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.xs,
   },
 });
