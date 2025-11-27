@@ -29,8 +29,24 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
   const [eventName, setEventName] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [myShare, setMyShare] = useState('');
+  const [friendShares, setFriendShares] = useState<{ [key: string]: string }>({});
   const [receiptImage, setReceiptImage] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+
+  const updateFriendShare = (odooUserId: string, value: string) => {
+    setFriendShares(prev => ({ ...prev, [odooUserId]: value }));
+  };
+
+  const calculateTotalShares = () => {
+    const creatorAmount = parseFloat(myShare) || 0;
+    const friendsTotal = Object.values(friendShares).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+    return creatorAmount + friendsTotal;
+  };
+
+  const getRemainingAmount = () => {
+    const total = parseFloat(totalAmount) || 0;
+    return total - calculateTotalShares();
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -69,7 +85,21 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
       }
       const share = parseFloat(myShare);
       if (isNaN(share) || share <= 0 || share > amount) {
-        Alert.alert('Invalid share', 'Please enter a valid share amount');
+        Alert.alert('Invalid share', 'Please enter a valid share amount for yourself');
+        return;
+      }
+      
+      for (const friend of selectedFriends) {
+        const friendShare = parseFloat(friendShares[friend.odooUserId] || '0');
+        if (isNaN(friendShare) || friendShare <= 0) {
+          Alert.alert('Missing amount', `Please enter an amount for ${friend.firstName}`);
+          return;
+        }
+      }
+      
+      const totalShares = calculateTotalShares();
+      if (Math.abs(totalShares - amount) > 0.01) {
+        Alert.alert('Amount mismatch', `Total of all shares ($${totalShares.toFixed(2)}) must equal the total amount ($${amount.toFixed(2)})`);
         return;
       }
     }
@@ -87,44 +117,54 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
 
       const participantCount = selectedFriends.length + 1;
       let creatorAmount = 0;
-      let friendAmount = 0;
 
       if (splitType === 'equal') {
         const equalShare = amount / participantCount;
         creatorAmount = equalShare;
-        friendAmount = equalShare;
+        
+        const participants = [
+          { userId: user.id, amount: creatorAmount },
+          ...selectedFriends.map(friend => ({
+            userId: friend.odooUserId,
+            amount: equalShare,
+          })),
+        ];
+
+        const totalShares = participants.reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(totalShares - amount) > 0.01) {
+          Alert.alert('Error', `Participant shares ($${totalShares.toFixed(2)}) must equal total amount ($${amount.toFixed(2)})`);
+          setLoading(false);
+          return;
+        }
+
+        await SplitsService.createSplit({
+          name: eventName.trim(),
+          totalAmount: amount,
+          splitType,
+          creatorId: user.id,
+          participants,
+          receiptUri: receiptImage,
+        });
       } else {
         creatorAmount = parseFloat(myShare || '0');
-        const remainingAmount = amount - creatorAmount;
-        friendAmount = remainingAmount / selectedFriends.length;
+        
+        const participants = [
+          { userId: user.id, amount: creatorAmount },
+          ...selectedFriends.map(friend => ({
+            userId: friend.odooUserId,
+            amount: parseFloat(friendShares[friend.odooUserId] || '0'),
+          })),
+        ];
+
+        await SplitsService.createSplit({
+          name: eventName.trim(),
+          totalAmount: amount,
+          splitType,
+          creatorId: user.id,
+          participants,
+          receiptUri: receiptImage,
+        });
       }
-
-      const participants = [
-        {
-          userId: user.id,
-          amount: creatorAmount,
-        },
-        ...selectedFriends.map(friend => ({
-          userId: friend.odooUserId,
-          amount: friendAmount,
-        })),
-      ];
-
-      const totalShares = participants.reduce((sum, p) => sum + p.amount, 0);
-      if (Math.abs(totalShares - amount) > 0.01) {
-        Alert.alert('Error', `Participant shares ($${totalShares.toFixed(2)}) must equal total amount ($${amount.toFixed(2)})`);
-        setLoading(false);
-        return;
-      }
-
-      await SplitsService.createSplit({
-        name: eventName.trim(),
-        totalAmount: amount,
-        splitType,
-        creatorId: user.id,
-        participants,
-        receiptUri: receiptImage,
-      });
 
       // Reset the navigation stack to show MainHome with the tab bar
       navigation.getParent()?.reset({
@@ -211,27 +251,85 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
               <Image source={{ uri: receiptImage }} style={styles.receiptPreview} />
             ) : null}
 
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.sm, marginTop: Spacing.lg }]}>
-              What is your share?
+            <ThemedText style={[Typography.h2, { color: theme.text, marginTop: Spacing.xl, marginBottom: Spacing.md }]}>
+              Participant Amounts
             </ThemedText>
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: theme.surface, 
-                color: theme.text, 
-                borderColor: theme.border 
-              }]}
-              placeholder="0.00"
-              placeholderTextColor={theme.textSecondary}
-              value={myShare}
-              onChangeText={setMyShare}
-              keyboardType="decimal-pad"
-            />
 
-            {myShare && totalAmount ? (
-              <View style={[styles.infoBox, { backgroundColor: theme.warning + '20', marginTop: Spacing.lg }]}>
-                <ThemedText style={[Typography.caption, { color: theme.text }]}>
-                  Remaining: ${(parseFloat(totalAmount) - parseFloat(myShare)).toFixed(2)}
+            <View style={[styles.participantRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.participantInfo}>
+                <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                  You (Creator)
                 </ThemedText>
+              </View>
+              <TextInput
+                style={[styles.amountInput, { 
+                  backgroundColor: theme.backgroundSecondary, 
+                  color: theme.text, 
+                  borderColor: theme.border 
+                }]}
+                placeholder="0.00"
+                placeholderTextColor={theme.textSecondary}
+                value={myShare}
+                onChangeText={setMyShare}
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            {selectedFriends.map(friend => (
+              <View 
+                key={friend.odooUserId} 
+                style={[styles.participantRow, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              >
+                <View style={styles.participantInfo}>
+                  <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                    {friend.firstName} {friend.lastName}
+                  </ThemedText>
+                  <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                    ID: {friend.uniqueId}
+                  </ThemedText>
+                </View>
+                <TextInput
+                  style={[styles.amountInput, { 
+                    backgroundColor: theme.backgroundSecondary, 
+                    color: theme.text, 
+                    borderColor: theme.border 
+                  }]}
+                  placeholder="0.00"
+                  placeholderTextColor={theme.textSecondary}
+                  value={friendShares[friend.odooUserId] || ''}
+                  onChangeText={(val) => updateFriendShare(friend.odooUserId, val)}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            ))}
+
+            {totalAmount ? (
+              <View style={[
+                styles.infoBox, 
+                { 
+                  backgroundColor: Math.abs(getRemainingAmount()) < 0.01 ? theme.success + '20' : theme.warning + '20', 
+                  marginTop: Spacing.lg 
+                }
+              ]}>
+                <View style={styles.summaryRow}>
+                  <ThemedText style={[Typography.caption, { color: theme.text }]}>
+                    Total entered:
+                  </ThemedText>
+                  <ThemedText style={[Typography.caption, { color: theme.text, fontWeight: '600' }]}>
+                    ${calculateTotalShares().toFixed(2)} / ${parseFloat(totalAmount).toFixed(2)}
+                  </ThemedText>
+                </View>
+                {Math.abs(getRemainingAmount()) >= 0.01 ? (
+                  <ThemedText style={[Typography.small, { color: theme.warning, marginTop: Spacing.xs }]}>
+                    {getRemainingAmount() > 0 
+                      ? `$${getRemainingAmount().toFixed(2)} remaining to assign` 
+                      : `$${Math.abs(getRemainingAmount()).toFixed(2)} over the total`}
+                  </ThemedText>
+                ) : (
+                  <ThemedText style={[Typography.small, { color: theme.success, marginTop: Spacing.xs }]}>
+                    All amounts assigned correctly
+                  </ThemedText>
+                )}
               </View>
             ) : null}
           </>
@@ -292,6 +390,32 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: BorderRadius.sm,
     marginTop: Spacing.lg,
+  },
+  participantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    marginBottom: Spacing.sm,
+  },
+  participantInfo: {
+    flex: 1,
+  },
+  amountInput: {
+    width: 100,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.md,
+    fontSize: 16,
+    textAlign: 'right',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   footer: {
     paddingHorizontal: Spacing.xl,
