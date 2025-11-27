@@ -243,6 +243,52 @@ export class SplitsService {
     });
   }
 
+  static async respondToSplitWithAmount(
+    userId: string,
+    splitId: string,
+    response: 'accepted' | 'declined',
+    amount: number
+  ): Promise<void> {
+    const { data: participant, error: fetchError } = await supabase
+      .from('split_participants')
+      .select('*, split_events(creator_id, name)')
+      .eq('split_event_id', splitId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (participant.is_creator) throw new Error('Creator cannot respond to their own split');
+
+    const { error: updateError } = await supabase
+      .from('split_participants')
+      .update({ 
+        status: response,
+        amount: amount
+      })
+      .eq('split_event_id', splitId)
+      .eq('user_id', userId);
+
+    if (updateError) throw updateError;
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .single();
+
+    const creatorId = (participant as any).split_events.creator_id;
+    const splitName = (participant as any).split_events.name;
+
+    // Create notification via backend API
+    await BackendNotificationsService.createNotification({
+      user_id: creatorId,
+      type: response === 'accepted' ? 'split_accepted' : 'split_declined',
+      title: response === 'accepted' ? 'Split Accepted' : 'Split Declined',
+      message: `${user?.name || 'Someone'} ${response} your split for ${splitName}${response === 'accepted' ? ` with $${amount.toFixed(2)}` : ''}`,
+      split_event_id: splitId,
+    });
+  }
+
   static async paySplit(userId: string, splitId: string): Promise<void> {
     const { data: participant, error: fetchError } = await supabase
       .from('split_participants')

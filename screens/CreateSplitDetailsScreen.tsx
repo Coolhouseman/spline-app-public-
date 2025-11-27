@@ -88,20 +88,6 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
         Alert.alert('Invalid share', 'Please enter a valid share amount for yourself');
         return;
       }
-      
-      for (const friend of selectedFriends) {
-        const friendShare = parseFloat(friendShares[friend.odooUserId] || '0');
-        if (isNaN(friendShare) || friendShare <= 0) {
-          Alert.alert('Missing amount', `Please enter an amount for ${friend.firstName}`);
-          return;
-        }
-      }
-      
-      const totalShares = calculateTotalShares();
-      if (Math.abs(totalShares - amount) > 0.01) {
-        Alert.alert('Amount mismatch', `Total of all shares ($${totalShares.toFixed(2)}) must equal the total amount ($${amount.toFixed(2)})`);
-        return;
-      }
     }
 
     if (!user) return;
@@ -152,7 +138,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           { userId: user.id, amount: creatorAmount },
           ...selectedFriends.map(friend => ({
             userId: friend.odooUserId,
-            amount: parseFloat(friendShares[friend.odooUserId] || '0'),
+            amount: 0,
           })),
         ];
 
@@ -252,13 +238,16 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
             ) : null}
 
             <ThemedText style={[Typography.h2, { color: theme.text, marginTop: Spacing.xl, marginBottom: Spacing.md }]}>
-              Participant Amounts
+              Your Share
             </ThemedText>
 
             <View style={[styles.participantRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.participantInfo}>
                 <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
                   You (Creator)
+                </ThemedText>
+                <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                  Enter the amount you are paying
                 </ThemedText>
               </View>
               <TextInput
@@ -275,63 +264,12 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
               />
             </View>
 
-            {selectedFriends.map(friend => (
-              <View 
-                key={friend.odooUserId} 
-                style={[styles.participantRow, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              >
-                <View style={styles.participantInfo}>
-                  <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                    {friend.firstName} {friend.lastName}
-                  </ThemedText>
-                  <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                    ID: {friend.uniqueId}
-                  </ThemedText>
-                </View>
-                <TextInput
-                  style={[styles.amountInput, { 
-                    backgroundColor: theme.backgroundSecondary, 
-                    color: theme.text, 
-                    borderColor: theme.border 
-                  }]}
-                  placeholder="0.00"
-                  placeholderTextColor={theme.textSecondary}
-                  value={friendShares[friend.odooUserId] || ''}
-                  onChangeText={(val) => updateFriendShare(friend.odooUserId, val)}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            ))}
-
-            {totalAmount ? (
-              <View style={[
-                styles.infoBox, 
-                { 
-                  backgroundColor: Math.abs(getRemainingAmount()) < 0.01 ? theme.success + '20' : theme.warning + '20', 
-                  marginTop: Spacing.lg 
-                }
-              ]}>
-                <View style={styles.summaryRow}>
-                  <ThemedText style={[Typography.caption, { color: theme.text }]}>
-                    Total entered:
-                  </ThemedText>
-                  <ThemedText style={[Typography.caption, { color: theme.text, fontWeight: '600' }]}>
-                    ${calculateTotalShares().toFixed(2)} / ${parseFloat(totalAmount).toFixed(2)}
-                  </ThemedText>
-                </View>
-                {Math.abs(getRemainingAmount()) >= 0.01 ? (
-                  <ThemedText style={[Typography.small, { color: theme.warning, marginTop: Spacing.xs }]}>
-                    {getRemainingAmount() > 0 
-                      ? `$${getRemainingAmount().toFixed(2)} remaining to assign` 
-                      : `$${Math.abs(getRemainingAmount()).toFixed(2)} over the total`}
-                  </ThemedText>
-                ) : (
-                  <ThemedText style={[Typography.small, { color: theme.success, marginTop: Spacing.xs }]}>
-                    All amounts assigned correctly
-                  </ThemedText>
-                )}
-              </View>
-            ) : null}
+            <View style={[styles.infoBox, { backgroundColor: theme.primary + '15', marginTop: Spacing.lg }]}>
+              <Feather name="info" size={16} color={theme.primary} style={{ marginBottom: Spacing.xs }} />
+              <ThemedText style={[Typography.caption, { color: theme.text }]}>
+                Your {selectedFriends.length} invited friend{selectedFriends.length > 1 ? 's' : ''} will enter their own amounts after accepting the invite.
+              </ThemedText>
+            </View>
           </>
         )}
       </ThemedView>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -33,6 +33,8 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [addingFriend, setAddingFriend] = useState<string | null>(null);
+  const [amountModalVisible, setAmountModalVisible] = useState(false);
+  const [customAmount, setCustomAmount] = useState('');
 
   useEffect(() => {
     loadEvent();
@@ -117,9 +119,40 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const handleAccept = async () => {
     if (!user || !event) return;
     
+    if (event.split_type === 'specified') {
+      setAmountModalVisible(true);
+    } else {
+      try {
+        await SplitsService.respondToSplit(user.id, eventId, 'accepted');
+        Alert.alert('Success', 'You accepted this split request');
+        loadEvent();
+      } catch (error) {
+        console.error('Failed to accept split:', error);
+        Alert.alert('Error', 'Failed to accept split');
+      }
+    }
+  };
+
+  const handleAcceptWithAmount = async () => {
+    if (!user || !event) return;
+    
+    const amount = parseFloat(customAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0');
+      return;
+    }
+
+    const totalAmount = parseFloat(event.total_amount);
+    if (amount > totalAmount) {
+      Alert.alert('Invalid Amount', 'Your share cannot exceed the total amount');
+      return;
+    }
+
     try {
-      await SplitsService.respondToSplit(user.id, eventId, 'accepted');
-      Alert.alert('Success', 'You accepted this split request');
+      await SplitsService.respondToSplitWithAmount(user.id, eventId, 'accepted', amount);
+      setAmountModalVisible(false);
+      setCustomAmount('');
+      Alert.alert('Success', 'You accepted this split and entered your share');
       loadEvent();
     } catch (error) {
       console.error('Failed to accept split:', error);
@@ -233,9 +266,16 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     let paidAmount = 0;
     
     for (const participant of event.participants) {
-      // Creator is always considered paid, or if status is actually 'paid'
-      if (participant.is_creator || participant.status === 'paid') {
-        paidAmount += parseFloat(participant.amount);
+      const participantAmount = parseFloat(participant.amount) || 0;
+      
+      if (event.split_type === 'specified') {
+        if (participant.is_creator || (participant.status === 'paid' && participantAmount > 0)) {
+          paidAmount += participantAmount;
+        }
+      } else {
+        if (participant.is_creator || participant.status === 'paid') {
+          paidAmount += participantAmount;
+        }
       }
     }
     
@@ -306,9 +346,15 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           <ThemedText style={[Typography.hero, { color: theme.text }]}>
             ${parseFloat(event.total_amount).toFixed(2)}
           </ThemedText>
-          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-            Your share: ${parseFloat(myAmount).toFixed(2)}
-          </ThemedText>
+          {event.split_type === 'specified' && parseFloat(myAmount) === 0 && !isCreator ? (
+            <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+              Your share: Enter after accepting
+            </ThemedText>
+          ) : (
+            <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+              Your share: ${parseFloat(myAmount).toFixed(2)}
+            </ThemedText>
+          )}
 
           {(() => {
             const { paidAmount, totalAmount, percentage } = calculateProgress();
@@ -373,6 +419,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             const showAddFriend = !isCurrentUser && !isFriend && !isPending;
             const isAdding = addingFriend === participant.user_id;
             
+            const isSpecifiedSplit = event.split_type === 'specified';
+            const participantAmount = parseFloat(participant.amount) || 0;
+            const hasEnteredAmount = participant.is_creator || participantAmount > 0;
+            const showAmount = !isSpecifiedSplit || hasEnteredAmount;
+            
             return (
               <View
                 key={participant.user_id}
@@ -398,9 +449,15 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     ID: {participant.user?.unique_id || 'N/A'}
                   </ThemedText>
                   <View style={styles.participantSubRow}>
-                    <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
-                      ${parseFloat(participant.amount).toFixed(2)}
-                    </ThemedText>
+                    {showAmount ? (
+                      <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+                        ${participantAmount.toFixed(2)}
+                      </ThemedText>
+                    ) : (
+                      <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                        Awaiting entry
+                      </ThemedText>
+                    )}
                     {isPending ? (
                       <View style={[styles.pendingBadge, { backgroundColor: theme.warning + '20' }]}>
                         <Feather name="clock" size={12} color={theme.warning} />
@@ -513,6 +570,64 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             ) : null}
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal
+        visible={amountModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAmountModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.amountModalContent, { backgroundColor: theme.backgroundRoot }]}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Enter Your Share
+            </ThemedText>
+            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
+              How much are you paying for this split?
+            </ThemedText>
+            <TextInput
+              style={[styles.amountInput, { 
+                backgroundColor: theme.surface, 
+                color: theme.text, 
+                borderColor: theme.border 
+              }]}
+              placeholder="0.00"
+              placeholderTextColor={theme.textSecondary}
+              value={customAmount}
+              onChangeText={setCustomAmount}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+            <View style={styles.amountModalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalCancelButton,
+                  { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => {
+                  setAmountModalVisible(false);
+                  setCustomAmount('');
+                }}
+              >
+                <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalConfirmButton,
+                  { backgroundColor: theme.success, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={handleAcceptWithAmount}
+              >
+                <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                  Accept
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </ThemedView>
   );
@@ -694,5 +809,41 @@ const styles = StyleSheet.create({
   fullImage: {
     width: '100%',
     height: '100%',
+  },
+  amountModalContent: {
+    width: '85%',
+    padding: Spacing.xl,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+  },
+  amountInput: {
+    width: '100%',
+    height: 56,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    fontSize: 24,
+    textAlign: 'center',
+  },
+  amountModalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.xl,
+    width: '100%',
+  },
+  modalCancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  modalConfirmButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
