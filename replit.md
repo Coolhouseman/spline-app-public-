@@ -15,9 +15,10 @@ Preferred communication style: Simple, everyday language.
 - **React 19.1.0**: Utilizes the latest React version.
 
 ### Backend Architecture
-- **Express Server**: Handles BlinkPay payment processing and API interactions.
-- **Port Configuration**: Backend runs on port 8082 (exposed externally), Expo dev server on 8081.
-- **BlinkPay Integration**: All BlinkPay operations are processed server-side for security and SDK compatibility.
+- **Supabase Edge Functions**: BlinkPay payment processing runs on Supabase's serverless infrastructure.
+- **Express Server (Development)**: Optional local server for daily reminders and testing. Expo dev server runs on port 8081.
+- **BlinkPay Integration**: All BlinkPay operations are processed via Supabase Edge Functions for security and cross-platform compatibility.
+- **Edge Functions Location**: `supabase/functions/blinkpay-consent` and `supabase/functions/blinkpay-payment`
 
 ### UI/UX Architecture
 - **Theming System**: Centralized theme constants with light/dark mode support and custom hooks (`useTheme`, `useColorScheme`).
@@ -67,7 +68,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Wallet System & Payment Processing
 - **Balance Management**: Tracks available funds, persisted in Supabase.
-- **BlinkPay Integration**: OAuth-based bank connection for enduring consent and direct debit payments. All BlinkPay operations are handled by the Express backend.
+- **BlinkPay Integration**: OAuth-based bank connection for enduring consent and direct debit payments. All BlinkPay operations are handled by Supabase Edge Functions.
 - **Payment Flow**: Users connect their bank via BlinkPay, authorize enduring consent, and then can make seamless split payments.
 
 ### Media Handling

@@ -129,4 +129,3 @@ value = "0"
 [userenv]
 
 [userenv.shared]
-EXPO_PUBLIC_BACKEND_URL = "https://3000-2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev"
