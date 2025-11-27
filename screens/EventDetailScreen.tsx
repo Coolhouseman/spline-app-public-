@@ -35,6 +35,8 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [addingFriend, setAddingFriend] = useState<string | null>(null);
   const [amountModalVisible, setAmountModalVisible] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
 
   useEffect(() => {
     loadEvent();
@@ -193,11 +195,17 @@ export default function EventDetailScreen({ route, navigation }: Props) {
       const myParticipant = event.participants?.find((p: any) => p.user_id === user.id);
       if (!myParticipant) return;
 
-      const paymentAmount = parseFloat(myParticipant.amount);
+      const participantAmount = parseFloat(myParticipant.amount);
+      
+      // For specified splits where participant hasn't entered their amount yet, show modal
+      if (event.split_type === 'specified' && participantAmount === 0) {
+        setPaymentModalVisible(true);
+        return;
+      }
       
       Alert.alert(
         'Confirm Payment',
-        `Pay $${paymentAmount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
+        `Pay $${participantAmount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -207,7 +215,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 await WalletService.paySplitEvent(
                   user.id,
                   eventId,
-                  paymentAmount,
+                  participantAmount,
                   event.creator_id,
                   event.name
                 );
@@ -241,6 +249,76 @@ export default function EventDetailScreen({ route, navigation }: Props) {
       console.error('Payment failed:', error);
       Alert.alert('Error', error.message || 'Failed to process payment');
     }
+  };
+
+  const handlePaymentWithAmount = async () => {
+    if (!event || !user) return;
+    
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0');
+      return;
+    }
+
+    const totalAmount = parseFloat(event.total_amount);
+    if (amount > totalAmount) {
+      Alert.alert('Invalid Amount', 'Your share cannot exceed the total amount');
+      return;
+    }
+
+    setPaymentModalVisible(false);
+    
+    Alert.alert(
+      'Confirm Payment',
+      `Pay $${amount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
+      [
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => setPaymentAmount('')
+        },
+        {
+          text: 'Pay',
+          onPress: async () => {
+            try {
+              // First update the participant's amount
+              await SplitsService.updateParticipantAmount(user.id, eventId, amount);
+              
+              // Then process the payment
+              await WalletService.paySplitEvent(
+                user.id,
+                eventId,
+                amount,
+                event.creator_id,
+                event.name
+              );
+              
+              await SplitsService.paySplit(user.id, eventId);
+              setPaymentAmount('');
+              Alert.alert('Payment Successful', 'Your payment has been processed');
+              loadEvent();
+            } catch (error: any) {
+              console.error('Payment failed:', error);
+              if (error.message.includes('Insufficient wallet balance')) {
+                Alert.alert(
+                  'Connect Bank Required',
+                  'You don\'t have enough balance in your wallet. Would you like to connect your bank to complete this payment?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Connect Bank',
+                      onPress: () => navigation.navigate('Wallet')
+                    }
+                  ]
+                );
+              } else {
+                Alert.alert('Error', error.message || 'Payment failed. Please try again.');
+              }
+            }
+          }
+        }
+      ]
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -538,7 +616,9 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             onPress={handlePayment}
           >
             <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-              Pay ${parseFloat(myAmount).toFixed(2)}
+              {event?.split_type === 'specified' && parseFloat(myAmount) === 0
+                ? 'Pay'
+                : `Pay $${parseFloat(myAmount).toFixed(2)}`}
             </ThemedText>
           </Pressable>
         ) : null}
@@ -623,6 +703,64 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               >
                 <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
                   Accept
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={paymentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPaymentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.amountModalContent, { backgroundColor: theme.backgroundRoot }]}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Enter Payment Amount
+            </ThemedText>
+            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
+              How much are you paying for this split?
+            </ThemedText>
+            <TextInput
+              style={[styles.amountInput, { 
+                backgroundColor: theme.surface, 
+                color: theme.text, 
+                borderColor: theme.border 
+              }]}
+              placeholder="0.00"
+              placeholderTextColor={theme.textSecondary}
+              value={paymentAmount}
+              onChangeText={setPaymentAmount}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+            <View style={styles.amountModalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalCancelButton,
+                  { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => {
+                  setPaymentModalVisible(false);
+                  setPaymentAmount('');
+                }}
+              >
+                <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalConfirmButton,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={handlePaymentWithAmount}
+              >
+                <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                  Pay
                 </ThemedText>
               </Pressable>
             </View>

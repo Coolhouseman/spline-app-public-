@@ -289,6 +289,20 @@ export class SplitsService {
     });
   }
 
+  static async updateParticipantAmount(
+    userId: string,
+    splitId: string,
+    amount: number
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('split_participants')
+      .update({ amount: amount })
+      .eq('split_event_id', splitId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  }
+
   static async paySplit(userId: string, splitId: string): Promise<void> {
     const { data: participant, error: fetchError } = await supabase
       .from('split_participants')
