@@ -205,7 +205,7 @@ export class WalletService {
       throw new Error('Failed to get BlinkPay consent details');
     }
 
-    const { data, error } = await supabase
+    const { data, error: updateError } = await supabase
       .from('wallets')
       .update({
         bank_connected: true,
@@ -221,7 +221,7 @@ export class WalletService {
       .select()
       .single();
 
-    if (error) throw error;
+    if (updateError) throw updateError;
     return data as Wallet;
   }
 

@@ -110,13 +110,29 @@ async function getEnduringConsent(consentId: string) {
   }
 
   const data = await response.json();
+  console.log('Consent details from BlinkPay:', JSON.stringify(data));
+  
+  let bankName = 'Connected Bank';
+  let accountReference = '****';
+  
+  if (data.detail?.bank_reference_id) {
+    bankName = data.detail.bank_reference_id;
+  }
+  if (data.accounts && data.accounts.length > 0) {
+    const account = data.accounts[0];
+    bankName = account.bank?.bank_name || account.name || bankName;
+    accountReference = account.account_number ? 
+      `****${account.account_number.slice(-4)}` : 
+      account.account_reference || accountReference;
+  }
   
   return {
     consent_id: consentId,
-    bank_name: 'Connected Bank',
-    account_reference: '****',
+    bank_name: bankName,
+    account_reference: accountReference,
     status: data.status === 'Authorised' ? 'active' : 
-            data.status === 'Revoked' ? 'revoked' : 'expired',
+            data.status === 'Revoked' ? 'revoked' : 
+            data.status === 'Consumed' ? 'consumed' : 'expired',
     expires_at: data.expiry_timestamp || ''
   };
 }
