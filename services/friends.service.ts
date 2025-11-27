@@ -162,6 +162,8 @@ export class FriendsService {
       return { ...existing, status: 'pending' } as Friend;
     }
 
+    console.log('Inserting new friend request:', { user_id: userId, friend_id: friendUser.id, status: 'pending' });
+    
     const { data, error } = await supabase
       .from('friends')
       .insert({
@@ -172,8 +174,19 @@ export class FriendsService {
       .select()
       .single();
 
-    if (error) throw error;
+    console.log('Insert result - data:', data, 'error:', error);
+    
+    if (error) {
+      console.error('Failed to insert friend request:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      console.error('Insert returned no data (possible RLS issue)');
+      throw new Error('Failed to create friend request - please try again');
+    }
 
+    console.log('Friend request created successfully with ID:', data.id);
     console.log('Creating notification for user:', friendUser.id, 'with friendship_id:', data.id);
     
     // Create notification via backend API
