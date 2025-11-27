@@ -231,13 +231,20 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     let paidAmount = 0;
     
     for (const participant of event.participants) {
-      if (participant.status === 'paid') {
+      // Creator is always considered paid, or if status is actually 'paid'
+      if (participant.is_creator || participant.status === 'paid') {
         paidAmount += parseFloat(participant.amount);
       }
     }
     
     const percentage = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
     return { paidAmount, totalAmount, percentage };
+  };
+
+  // Get display status - creator is always "paid"
+  const getDisplayStatus = (participant: any) => {
+    if (participant.is_creator) return 'paid';
+    return participant.status;
   };
 
   if (loading) {
@@ -271,7 +278,10 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: tabBarHeight + Spacing.xl }
+          { 
+            paddingTop: Spacing.lg,
+            paddingBottom: tabBarHeight + Spacing.xl 
+          }
         ]}
       >
         <View style={[styles.summary, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -423,11 +433,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 <View 
                   style={[
                     styles.statusBadge,
-                    { backgroundColor: getStatusColor(participant.status) }
+                    { backgroundColor: getStatusColor(getDisplayStatus(participant)) }
                   ]}
                 >
                   <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>
-                    {getStatusText(participant.status)}
+                    {getStatusText(getDisplayStatus(participant))}
                   </ThemedText>
                 </View>
               </View>

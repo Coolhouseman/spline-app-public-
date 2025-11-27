@@ -12,10 +12,11 @@ import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 
 type Friend = {
-  id: string;
-  unique_id: string;
-  name: string;
-  profile_picture: string | null;
+  uniqueId: string;
+  odooUserId: string;
+  firstName: string;
+  lastName: string;
+  profilePicture: string | null;
 };
 
 type Props = NativeStackScreenProps<any, 'CreateSplitDetails'>;
@@ -104,7 +105,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           amount: creatorAmount,
         },
         ...selectedFriends.map(friend => ({
-          userId: friend.id,
+          userId: friend.odooUserId,
           amount: friendAmount,
         })),
       ];
