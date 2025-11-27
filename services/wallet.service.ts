@@ -1,8 +1,5 @@
 import { supabase } from './supabase';
 import type { Wallet, Transaction } from '@/shared/types';
-import { resolveBackendOrigin } from '@/utils/backend';
-
-const BACKEND_URL = resolveBackendOrigin();
 
 /**
  * ==========================================================
@@ -134,19 +131,16 @@ export class WalletService {
     userId: string, 
     redirectUri: string
   ): Promise<BlinkPayConsentResponse> {
-    const response = await fetch(`${BACKEND_URL}/api/blinkpay/consent/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ redirectUri }),
+    const { data, error } = await supabase.functions.invoke('blinkpay-consent', {
+      body: { redirectUri, action: 'create' },
     });
 
-    if (!response.ok) {
+    if (error || !data) {
+      console.error('BlinkPay consent error:', error);
       throw new Error('Failed to create BlinkPay consent');
     }
 
-    const result = await response.json();
+    const result = data;
     
     console.log('Saving consent ID to wallet:', result.consentId);
     
@@ -202,13 +196,14 @@ export class WalletService {
       throw new Error('No BlinkPay consent found');
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/blinkpay/consent/${wallet.blinkpay_consent_id}`);
+    const { data: bankDetails, error: consentError } = await supabase.functions.invoke('blinkpay-consent', {
+      body: { consentId: wallet.blinkpay_consent_id, action: 'get' },
+    });
     
-    if (!response.ok) {
+    if (consentError || !bankDetails) {
+      console.error('BlinkPay get consent error:', consentError);
       throw new Error('Failed to get BlinkPay consent details');
     }
-
-    const bankDetails: BlinkPayBankDetails = await response.json();
 
     const { data, error } = await supabase
       .from('wallets')
@@ -268,12 +263,8 @@ export class WalletService {
 
     if (wallet?.blinkpay_consent_id) {
       try {
-        await fetch(`${BACKEND_URL}/api/blinkpay/consent/revoke`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ consentId: wallet.blinkpay_consent_id }),
+        await supabase.functions.invoke('blinkpay-consent', {
+          body: { consentId: wallet.blinkpay_consent_id, action: 'revoke' },
         });
       } catch (error) {
         console.error('Failed to revoke BlinkPay consent:', error);
@@ -327,35 +318,34 @@ export class WalletService {
 
     console.log(`Processing BlinkPay deposit of $${amount.toFixed(2)} for user ${userId}`);
 
-    // Charge user's bank
-    const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // Charge user's bank via Supabase Edge Function
+    const { data: paymentResult, error: paymentError } = await supabase.functions.invoke('blinkpay-payment', {
+      body: {
+        action: 'create',
         consentId: wallet.blinkpay_consent_id,
         amount: amount.toFixed(2),
         particulars: 'Add Funds',
         reference: 'WALLET_DEPOSIT'
-      }),
+      },
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to process bank payment');
+    if (paymentError || !paymentResult) {
+      console.error('BlinkPay payment error:', paymentError);
+      throw new Error('Failed to process bank payment');
     }
-
-    const paymentResult = await response.json();
 
     // Wait for payment confirmation
-    const statusResponse = await fetch(
-      `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
-    );
+    const { data: paymentStatus, error: statusError } = await supabase.functions.invoke('blinkpay-payment', {
+      body: {
+        action: 'status',
+        paymentId: paymentResult.paymentId,
+        maxWaitSeconds: 30
+      },
+    });
 
-    if (!statusResponse.ok) {
+    if (statusError || !paymentStatus) {
       throw new Error('Failed to verify payment status');
     }
-
-    const paymentStatus = await statusResponse.json();
 
     if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
       throw new Error('Payment was not completed. Your bank account was not charged.');
@@ -528,34 +518,33 @@ export class WalletService {
     if (bankPayment > 0) {
       console.log(`Processing BlinkPay charge of $${bankPayment.toFixed(2)} for split ${splitEventId}`);
       
-      const response = await fetch(`${BACKEND_URL}/api/blinkpay/payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { data: paymentResult, error: paymentError } = await supabase.functions.invoke('blinkpay-payment', {
+        body: {
+          action: 'create',
           consentId: wallet.blinkpay_consent_id,
           amount: bankPayment.toFixed(2),
           particulars: 'Split Payment',
           reference: splitEventId.substring(0, 12)
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Bank payment failed. No charges were made.');
+      if (paymentError || !paymentResult) {
+        console.error('BlinkPay payment error:', paymentError);
+        throw new Error('Bank payment failed. No charges were made.');
       }
-
-      const paymentResult = await response.json();
 
       // Wait for payment confirmation
-      const statusResponse = await fetch(
-        `${BACKEND_URL}/api/blinkpay/payment/${paymentResult.paymentId}/status?maxWaitSeconds=30`
-      );
+      const { data: paymentStatus, error: statusError } = await supabase.functions.invoke('blinkpay-payment', {
+        body: {
+          action: 'status',
+          paymentId: paymentResult.paymentId,
+          maxWaitSeconds: 30
+        },
+      });
 
-      if (!statusResponse.ok) {
+      if (statusError || !paymentStatus) {
         throw new Error('Could not verify bank payment. Please try again.');
       }
-
-      const paymentStatus = await statusResponse.json();
 
       if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
         throw new Error('Bank payment was not completed. Your account was not charged.');

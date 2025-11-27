@@ -147,15 +147,19 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split('/').filter(Boolean);
-    const action = pathParts[pathParts.length - 1];
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Method not allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log('BlinkPay Consent function called:', { method: req.method, action, path: url.pathname });
+    const body = await req.json();
+    const { action, redirectUri, maxAmount, consentId } = body;
 
-    if (req.method === 'POST' && action === 'create') {
-      const { redirectUri, maxAmount } = await req.json();
-      
+    console.log('BlinkPay Consent function called:', { action });
+
+    if (action === 'create') {
       if (!redirectUri) {
         return new Response(
           JSON.stringify({ error: 'redirectUri is required' }),
@@ -170,9 +174,7 @@ serve(async (req) => {
       );
     }
 
-    if (req.method === 'POST' && action === 'revoke') {
-      const { consentId } = await req.json();
-      
+    if (action === 'revoke') {
       if (!consentId) {
         return new Response(
           JSON.stringify({ error: 'consentId is required' }),
@@ -187,9 +189,7 @@ serve(async (req) => {
       );
     }
 
-    if (req.method === 'POST' && action === 'get') {
-      const { consentId } = await req.json();
-      
+    if (action === 'get') {
       if (!consentId) {
         return new Response(
           JSON.stringify({ error: 'consentId is required' }),
@@ -205,7 +205,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: 'Invalid action. Use /create, /get, or /revoke' }),
+      JSON.stringify({ error: 'Invalid action. Use create, get, or revoke' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

@@ -14,9 +14,6 @@ import { WalletService } from '@/services/wallet.service';
 import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
-import { resolveBackendOrigin } from '@/utils/backend';
-
-const BACKEND_URL = resolveBackendOrigin();
 
 type Props = NativeStackScreenProps<any, 'EventDetail'>;
 

@@ -148,15 +148,19 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split('/').filter(Boolean);
-    const action = pathParts[pathParts.length - 1];
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Method not allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log('BlinkPay Payment function called:', { method: req.method, action, path: url.pathname });
+    const body = await req.json();
+    const { action, consentId, amount, particulars, reference, paymentId, maxWaitSeconds } = body;
 
-    if (req.method === 'POST' && action === 'create') {
-      const { consentId, amount, particulars, reference } = await req.json();
-      
+    console.log('BlinkPay Payment function called:', { action });
+
+    if (action === 'create') {
       if (!consentId || !amount) {
         return new Response(
           JSON.stringify({ error: 'consentId and amount are required' }),
@@ -171,9 +175,7 @@ serve(async (req) => {
       );
     }
 
-    if (req.method === 'POST' && action === 'status') {
-      const { paymentId, maxWaitSeconds } = await req.json();
-      
+    if (action === 'status') {
       if (!paymentId) {
         return new Response(
           JSON.stringify({ error: 'paymentId is required' }),
@@ -189,7 +191,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: 'Invalid action. Use /create or /status' }),
+      JSON.stringify({ error: 'Invalid action. Use create or status' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
