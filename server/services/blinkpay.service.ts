@@ -51,42 +51,57 @@ export class BlinkPayService {
     redirectUri: string,
     maxAmountPerPeriod: string = '1000.00'
   ): Promise<{ consentId: string; redirectUri: string }> {
-    const client = this.getClient();
+    try {
+      console.log('BlinkPay: Starting consent creation...');
+      console.log('BlinkPay: Client ID configured:', !!process.env.BLINKPAY_CLIENT_ID);
+      console.log('BlinkPay: Client Secret configured:', !!process.env.BLINKPAY_CLIENT_SECRET);
+      console.log('BlinkPay: Redirect URI:', redirectUri);
+      
+      const client = this.getClient();
 
-    const now = new Date();
-    const oneYearLater = new Date();
-    oneYearLater.setFullYear(now.getFullYear() + 1);
+      const now = new Date();
+      const oneYearLater = new Date();
+      oneYearLater.setFullYear(now.getFullYear() + 1);
 
-    const request: EnduringConsentRequest = {
-      flow: {
-        detail: {
-          type: AuthFlowDetailTypeEnum.Gateway,
-          redirectUri
-        }
-      },
-      maximumAmountPeriod: {
-        currency: AmountCurrencyEnum.NZD,
-        total: maxAmountPerPeriod
-      },
-      maximumAmountPayment: {
-        currency: AmountCurrencyEnum.NZD,
-        total: maxAmountPerPeriod
-      },
-      period: 'monthly' as any,
-      fromTimestamp: now.toISOString() as any,
-      expiryTimestamp: oneYearLater.toISOString() as any
-    };
+      const request: EnduringConsentRequest = {
+        flow: {
+          detail: {
+            type: AuthFlowDetailTypeEnum.Gateway,
+            redirectUri
+          }
+        },
+        maximumAmountPeriod: {
+          currency: AmountCurrencyEnum.NZD,
+          total: maxAmountPerPeriod
+        },
+        maximumAmountPayment: {
+          currency: AmountCurrencyEnum.NZD,
+          total: maxAmountPerPeriod
+        },
+        period: 'monthly' as any,
+        fromTimestamp: now.toISOString() as any,
+        expiryTimestamp: oneYearLater.toISOString() as any
+      };
 
-    console.log('Creating enduring consent with request:', JSON.stringify(request, null, 2));
+      console.log('BlinkPay: Creating enduring consent with request:', JSON.stringify(request, null, 2));
 
-    const response: CreateConsentResponse = await client.createEnduringConsent(request);
+      const response: CreateConsentResponse = await client.createEnduringConsent(request);
 
-    console.log('Consent created:', { consentId: response.consentId, redirectUri: response.redirectUri });
+      console.log('BlinkPay: Consent created successfully:', { consentId: response.consentId, redirectUri: response.redirectUri });
 
-    return {
-      consentId: response.consentId || '',
-      redirectUri: response.redirectUri || ''
-    };
+      return {
+        consentId: response.consentId || '',
+        redirectUri: response.redirectUri || ''
+      };
+    } catch (error: any) {
+      console.error('BlinkPay: Error creating consent:', error);
+      console.error('BlinkPay: Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      if (error.response) {
+        console.error('BlinkPay: Response status:', error.response.status);
+        console.error('BlinkPay: Response data:', JSON.stringify(error.response.data, null, 2));
+      }
+      throw error;
+    }
   }
 
   static async getEnduringConsent(consentId: string): Promise<BlinkPayBankDetails> {
