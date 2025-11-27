@@ -267,6 +267,24 @@ export class FriendsService {
     
     console.log('Debug - Record lookup by id only:', { anyRecord, debugError });
     
+    // If no record found by ID, the friendship record doesn't exist
+    if (!anyRecord) {
+      console.error('No friends record found with id:', friendshipId);
+      throw new Error(`Friend request not found (no record with id: ${friendshipId?.substring(0, 8)}...)`);
+    }
+    
+    // Check if the current user is the recipient (friend_id)
+    if (anyRecord.friend_id !== userId) {
+      console.error('User mismatch. Record friend_id:', anyRecord.friend_id, 'Current user:', userId);
+      throw new Error(`Friend request not found (you are not the recipient)`);
+    }
+    
+    // Check if status is pending
+    if (anyRecord.status !== 'pending') {
+      console.error('Status is not pending:', anyRecord.status);
+      throw new Error(`Friend request already ${anyRecord.status}`);
+    }
+    
     const { data: friendship, error: fetchError } = await supabase
       .from('friends')
       .select('user_id, friend_id')
