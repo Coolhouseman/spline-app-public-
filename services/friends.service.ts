@@ -256,6 +256,17 @@ export class FriendsService {
   }
 
   static async acceptFriendRequest(userId: string, friendshipId: string): Promise<void> {
+    console.log('acceptFriendRequest called with:', { userId, friendshipId });
+    
+    // First, try to find the record without the friend_id filter to debug
+    const { data: anyRecord, error: debugError } = await supabase
+      .from('friends')
+      .select('id, user_id, friend_id, status')
+      .eq('id', friendshipId)
+      .maybeSingle();
+    
+    console.log('Debug - Record lookup by id only:', { anyRecord, debugError });
+    
     const { data: friendship, error: fetchError } = await supabase
       .from('friends')
       .select('user_id, friend_id')
@@ -264,7 +275,12 @@ export class FriendsService {
       .eq('status', 'pending')
       .single();
 
-    if (fetchError || !friendship) throw new Error('Friend request not found');
+    console.log('Full query result:', { friendship, fetchError });
+
+    if (fetchError || !friendship) {
+      console.error('Friend request not found. Expected friend_id:', userId, 'Actual record:', anyRecord);
+      throw new Error('Friend request not found');
+    }
 
     await supabase
       .from('friends')
