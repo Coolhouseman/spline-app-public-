@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityI
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
@@ -24,6 +25,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
+  const headerHeight = useHeaderHeight();
   const { eventId } = route.params as { eventId: string };
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -279,7 +281,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         contentContainerStyle={[
           styles.content,
           { 
-            paddingTop: Spacing.lg,
+            paddingTop: headerHeight + Spacing.md,
             paddingBottom: tabBarHeight + Spacing.xl 
           }
         ]}

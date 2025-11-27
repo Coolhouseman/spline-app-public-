@@ -126,7 +126,11 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
         receiptUri: receiptImage,
       });
 
-      navigation.navigate('HomeTab', { screen: 'MainHome' });
+      // Reset the navigation stack to show MainHome with the tab bar
+      navigation.getParent()?.reset({
+        index: 0,
+        routes: [{ name: 'HomeTab', params: { screen: 'MainHome' } }],
+      });
     } catch (error) {
       console.error('Failed to create split:', error);
       Alert.alert('Error', 'Failed to create split. Please try again.');
