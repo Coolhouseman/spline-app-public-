@@ -81,9 +81,17 @@ Preferred communication style: Simple, everyday language.
   1. **Split Invite**: When someone invites you to join a split activity.
   2. **Payment Received**: When someone pays their share to you.
   3. **Split Completed**: When a split reaches 100% (all participants have paid).
+  4. **Payment Reminder**: Daily automated reminder for unpaid splits.
 - **Badge Count**: App icon badge updates to show unread notification count.
 - **Deep Linking**: Tapping a notification navigates to the relevant event detail or notifications screen.
 - **Web Fallback**: Push notifications are not supported on web; only in-app notifications work on web platform.
+
+### Daily Payment Reminders
+- **Automated Scheduler**: Backend service (server/services/dailyReminder.service.ts) runs hourly and sends reminders at 9 AM daily.
+- **Target Users**: Users with pending or accepted split payments (excluding creators who already paid).
+- **Notification Types**: Both in-app notifications and push notifications are sent.
+- **Message Content**: Personalized reminder showing total amount owed and list of pending splits.
+- **Manual Trigger**: POST `/api/reminders/send-now` endpoint to manually trigger reminders for testing.
 
 ### Error Handling
 - **Error Boundaries**: Class-based error boundary component with fallback UI.
