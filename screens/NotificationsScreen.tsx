@@ -80,11 +80,19 @@ export default function NotificationsScreen({ navigation }: Props) {
   };
 
   const handleAcceptFriendRequest = async (notification: Notification) => {
-    if (!user || !notification.friendship_id) return;
+    console.log('handleAcceptFriendRequest - notification:', JSON.stringify(notification, null, 2));
+    console.log('handleAcceptFriendRequest - friendship_id:', notification.friendship_id);
+    console.log('handleAcceptFriendRequest - metadata:', notification.metadata);
+    
+    if (!user || !notification.friendship_id) {
+      console.error('Missing user or friendship_id. user:', user?.id, 'friendship_id:', notification.friendship_id);
+      return;
+    }
     
     setProcessingId(notification.id);
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      console.log('Calling FriendsService.acceptFriendRequest with userId:', user.id, 'friendshipId:', notification.friendship_id);
       await FriendsService.acceptFriendRequest(user.id, notification.friendship_id);
       await NotificationsService.markAsRead(notification.id);
       await loadNotifications();
