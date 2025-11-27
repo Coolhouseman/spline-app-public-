@@ -281,7 +281,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         contentContainerStyle={[
           styles.content,
           { 
-            paddingTop: headerHeight + Spacing.md,
+            paddingTop: Math.max(headerHeight, insets.top + 56) + Spacing.md,
             paddingBottom: tabBarHeight + Spacing.xl 
           }
         ]}
