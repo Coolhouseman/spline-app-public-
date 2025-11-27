@@ -70,11 +70,6 @@ export class DailyReminderService {
             id,
             name,
             creator_id
-          ),
-          users!inner (
-            id,
-            name,
-            push_token
           )
         `)
         .in('status', ['pending', 'accepted'])
@@ -90,6 +85,23 @@ export class DailyReminderService {
         return;
       }
 
+      // Get unique user IDs
+      const userIds = [...new Set(unpaidParticipants.map(p => p.user_id))];
+      
+      // Fetch user details separately - using * to get all columns
+      const { data: users, error: usersError } = await supabaseAdmin
+        .from('users')
+        .select('*')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Error fetching user details:', usersError);
+        // Continue without user details rather than returning
+        console.log('Continuing with limited user info');
+      }
+
+      const usersMap = new Map(users?.map(u => [u.id, u]) || []);
+
       const userSummaries = new Map<string, {
         userId: string;
         userName: string;
@@ -101,7 +113,7 @@ export class DailyReminderService {
 
       for (const participant of unpaidParticipants) {
         const userId = participant.user_id;
-        const user = participant.users as any;
+        const user = usersMap.get(userId);
         const event = participant.split_events as any;
 
         if (!userSummaries.has(userId)) {
