@@ -42,10 +42,6 @@ localPort = 39243
 externalPort = 3001
 
 [[ports]]
-localPort = 43763
-externalPort = 8080
-
-[[ports]]
 localPort = 45003
 externalPort = 5000
 
@@ -133,3 +129,4 @@ value = "0"
 [userenv]
 
 [userenv.shared]
+EXPO_NO_INTERACTIVE = "1"
