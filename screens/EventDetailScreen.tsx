@@ -230,7 +230,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                       { text: 'Cancel', style: 'cancel' },
                       {
                         text: 'Connect Bank',
-                        onPress: () => navigation.navigate('Wallet')
+                        onPress: () => navigation.navigate('WalletTab' as never)
                       }
                     ]
                   );
@@ -304,7 +304,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     { text: 'Cancel', style: 'cancel' },
                     {
                       text: 'Connect Bank',
-                      onPress: () => navigation.navigate('Wallet')
+                      onPress: () => navigation.navigate('WalletTab' as never)
                     }
                   ]
                 );
