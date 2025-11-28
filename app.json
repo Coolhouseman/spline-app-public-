@@ -8,12 +8,33 @@
     "scheme": "splitpaymentapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "owner": "knh-group",
+    "description": "Split bills effortlessly with friends. Create shared expenses, track who owes what, and settle up instantly with secure bank payments.",
+    "githubUrl": "https://github.com/knh-group/spline",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.splitpaymentapp.split"
+      "bundleIdentifier": "com.splitpaymentapp.split",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Spline needs camera access to capture receipt photos and profile pictures.",
+        "NSPhotoLibraryUsageDescription": "Spline needs photo library access to upload receipt images and profile pictures.",
+        "NSFaceIDUsageDescription": "Spline uses Face ID for secure authentication."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      }
     },
     "android": {
       "package": "com.splitpaymentapp.split",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -21,7 +42,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "output": "single",
@@ -40,10 +68,35 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Spline needs access to your photos to upload receipts and profile pictures.",
+          "cameraPermission": "Spline needs access to your camera to take receipt photos and profile pictures."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#2563EB"
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/your-eas-project-id"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
