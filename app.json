@@ -8,9 +8,7 @@
     "scheme": "splitpaymentapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "owner": "knh-group",
     "description": "Split bills effortlessly with friends. Create shared expenses, track who owes what, and settle up instantly with secure bank payments.",
-    "githubUrl": "https://github.com/knh-group/spline",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
@@ -86,17 +84,6 @@
     ],
     "experiments": {
       "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "your-eas-project-id"
-      }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/your-eas-project-id"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     }
   }
 }
