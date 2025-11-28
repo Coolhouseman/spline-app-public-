@@ -22,15 +22,16 @@ async function getAccessToken(): Promise<string> {
     throw new Error('BlinkPay credentials not configured');
   }
 
-  const credentials = btoa(`${clientId}:${clientSecret}`);
-  
   const response = await fetch(`${BLINKPAY_SANDBOX_URL}/oauth2/token`, {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
     },
-    body: 'grant_type=client_credentials',
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'client_credentials'
+    }),
   });
 
   if (!response.ok) {
