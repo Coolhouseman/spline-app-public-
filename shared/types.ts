@@ -55,6 +55,7 @@ export interface Wallet {
     bank_name?: string;
     account_last4?: string;
     account_type?: string;
+    is_demo?: boolean;
   };
   blinkpay_consent_id?: string;
   blinkpay_consent_status?: string;

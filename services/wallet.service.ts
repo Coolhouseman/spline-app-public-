@@ -31,7 +31,16 @@ export interface BankDetails {
   bank_name: string;
   account_last4: string;
   account_type: string;
+  is_demo?: boolean;
 }
+
+export const DEMO_BANKS = [
+  { id: 'anz', name: 'ANZ Bank', color: '#007DBA' },
+  { id: 'asb', name: 'ASB Bank', color: '#FFCC00' },
+  { id: 'bnz', name: 'BNZ', color: '#0033A0' },
+  { id: 'westpac', name: 'Westpac', color: '#D5002B' },
+  { id: 'kiwibank', name: 'Kiwibank', color: '#00A651' },
+];
 
 export interface BlinkPayConsentResponse {
   consentId: string;
@@ -257,11 +266,11 @@ export class WalletService {
   static async disconnectBank(userId: string): Promise<Wallet> {
     const { data: wallet } = await supabase
       .from('wallets')
-      .select('blinkpay_consent_id')
+      .select('blinkpay_consent_id, bank_details')
       .eq('user_id', userId)
       .single();
 
-    if (wallet?.blinkpay_consent_id) {
+    if (wallet?.blinkpay_consent_id && !wallet?.bank_details?.is_demo) {
       try {
         await supabase.functions.invoke('blinkpay-consent', {
           body: { consentId: wallet.blinkpay_consent_id, action: 'revoke' },
@@ -286,6 +295,88 @@ export class WalletService {
 
     if (error) throw error;
     return data as Wallet;
+  }
+
+  /**
+   * DEMO MODE: Connect a fake bank account for testing
+   * This allows testing the full payment flow without BlinkPay
+   * All data is saved to the cloud database
+   */
+  static async connectDemoBank(userId: string, bankId: string): Promise<Wallet> {
+    const bank = DEMO_BANKS.find(b => b.id === bankId);
+    if (!bank) throw new Error('Invalid demo bank');
+
+    const accountLast4 = Math.floor(1000 + Math.random() * 9000).toString();
+    const demoConsentId = `demo_consent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    const { data, error } = await supabase
+      .from('wallets')
+      .update({
+        bank_connected: true,
+        bank_details: {
+          bank_name: bank.name,
+          account_last4: accountLast4,
+          account_type: 'Demo Account',
+          is_demo: true
+        } as BankDetails,
+        blinkpay_consent_id: demoConsentId,
+        blinkpay_consent_status: 'active',
+        blinkpay_consent_expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    console.log(`Demo bank connected: ${bank.name} •••• ${accountLast4}`);
+    return data as Wallet;
+  }
+
+  /**
+   * DEMO MODE: Add funds without real BlinkPay charge
+   * Simulates a successful bank transfer for testing
+   */
+  static async addFundsDemo(userId: string, amount: number): Promise<Transaction> {
+    if (amount <= 0) {
+      throw new Error('Deposit amount must be greater than zero');
+    }
+
+    const { data: wallet } = await supabase
+      .from('wallets')
+      .select('bank_connected, bank_details')
+      .eq('user_id', userId)
+      .single();
+
+    if (!wallet?.bank_connected) {
+      throw new Error('Connect a bank account first to add funds');
+    }
+
+    console.log(`[DEMO] Processing deposit of $${amount.toFixed(2)} for user ${userId}`);
+    
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const currentBalance = await this.getCurrentBalance(userId);
+    const newBalance = currentBalance + amount;
+    await this.updateBalance(userId, newBalance, 'demo deposit');
+
+    const bankName = wallet.bank_details?.bank_name || 'Demo Bank';
+    const transaction = await this.logTransaction(
+      userId,
+      'deposit',
+      amount,
+      `Added funds from ${bankName}`,
+      'in'
+    );
+
+    console.log(`[DEMO] Deposit completed: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
+    return transaction;
+  }
+
+  /**
+   * Check if wallet is in demo mode
+   */
+  static isDemoMode(wallet: Wallet): boolean {
+    return wallet.bank_details?.is_demo === true;
   }
 
   /**
@@ -492,11 +583,13 @@ export class WalletService {
     // Get fresh wallet data
     const { data: wallet } = await supabase
       .from('wallets')
-      .select('balance, bank_connected, blinkpay_consent_id')
+      .select('balance, bank_connected, blinkpay_consent_id, bank_details')
       .eq('user_id', userId)
       .single();
 
     if (!wallet) throw new Error('Wallet not found');
+
+    const isDemoBank = wallet.bank_details?.is_demo === true;
 
     // Get current balance with fresh read
     const currentBalance = await this.getCurrentBalance(userId);
@@ -516,41 +609,47 @@ export class WalletService {
     // STEP 1: Process bank payment FIRST (if needed)
     // This ensures we don't deduct wallet balance if bank charge fails
     if (bankPayment > 0) {
-      console.log(`Processing BlinkPay charge of $${bankPayment.toFixed(2)} for split ${splitEventId}`);
-      
-      const { data: paymentResult, error: paymentError } = await supabase.functions.invoke('blinkpay-payment', {
-        body: {
-          action: 'create',
-          consentId: wallet.blinkpay_consent_id,
-          amount: bankPayment.toFixed(2),
-          particulars: 'Split Payment',
-          reference: splitEventId.substring(0, 12)
-        },
-      });
+      if (isDemoBank) {
+        console.log(`[DEMO] Processing bank charge of $${bankPayment.toFixed(2)} for split ${splitEventId}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`[DEMO] Bank payment confirmed: $${bankPayment.toFixed(2)}`);
+      } else {
+        console.log(`Processing BlinkPay charge of $${bankPayment.toFixed(2)} for split ${splitEventId}`);
+        
+        const { data: paymentResult, error: paymentError } = await supabase.functions.invoke('blinkpay-payment', {
+          body: {
+            action: 'create',
+            consentId: wallet.blinkpay_consent_id,
+            amount: bankPayment.toFixed(2),
+            particulars: 'Split Payment',
+            reference: splitEventId.substring(0, 12)
+          },
+        });
 
-      if (paymentError || !paymentResult) {
-        console.error('BlinkPay payment error:', paymentError);
-        throw new Error('Bank payment failed. No charges were made.');
+        if (paymentError || !paymentResult) {
+          console.error('BlinkPay payment error:', paymentError);
+          throw new Error('Bank payment failed. No charges were made.');
+        }
+
+        // Wait for payment confirmation
+        const { data: paymentStatus, error: statusError } = await supabase.functions.invoke('blinkpay-payment', {
+          body: {
+            action: 'status',
+            paymentId: paymentResult.paymentId,
+            maxWaitSeconds: 30
+          },
+        });
+
+        if (statusError || !paymentStatus) {
+          throw new Error('Could not verify bank payment. Please try again.');
+        }
+
+        if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
+          throw new Error('Bank payment was not completed. Your account was not charged.');
+        }
+
+        console.log(`BlinkPay payment confirmed: $${bankPayment.toFixed(2)}`);
       }
-
-      // Wait for payment confirmation
-      const { data: paymentStatus, error: statusError } = await supabase.functions.invoke('blinkpay-payment', {
-        body: {
-          action: 'status',
-          paymentId: paymentResult.paymentId,
-          maxWaitSeconds: 30
-        },
-      });
-
-      if (statusError || !paymentStatus) {
-        throw new Error('Could not verify bank payment. Please try again.');
-      }
-
-      if (paymentStatus.status !== 'completed' && paymentStatus.status !== 'AcceptedSettlementCompleted') {
-        throw new Error('Bank payment was not completed. Your account was not charged.');
-      }
-
-      console.log(`BlinkPay payment confirmed: $${bankPayment.toFixed(2)}`);
     }
 
     // STEP 2: Deduct from payer's wallet (ledger adjustment)
