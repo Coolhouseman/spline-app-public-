@@ -98,17 +98,12 @@ export default function MainHomeScreen({ navigation }: Props) {
     if (!userParticipant) return false;
     
     const isCreator = event.creator_id === user.id;
+    const userAccepted = userParticipant.status === 'accepted' || userParticipant.status === 'paid';
     
-    if (isCreator) {
-      const allSettled = event.participants.every((p: any) => p.status === 'paid' || p.is_creator);
-      return selectedTab === 'in_progress' ? !allSettled : allSettled;
-    } else {
-      const userAccepted = userParticipant.status === 'accepted' || userParticipant.status === 'paid';
-      if (!userAccepted) return false;
-      
-      const isPaid = userParticipant.status === 'paid';
-      return selectedTab === 'in_progress' ? !isPaid : isPaid;
-    }
+    if (!isCreator && !userAccepted) return false;
+    
+    const allSettled = event.participants.every((p: any) => p.status === 'paid' || p.is_creator);
+    return selectedTab === 'in_progress' ? !allSettled : allSettled;
   });
 
   const getProgress = (event: any) => {

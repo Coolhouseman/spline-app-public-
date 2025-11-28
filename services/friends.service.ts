@@ -40,7 +40,7 @@ export class FriendsService {
       .from('friends')
       .select('id, status, user_id, friend_id, last_reminder_at, created_at')
       .or(`and(user_id.eq.${userId},friend_id.eq.${friendUser.id}),and(user_id.eq.${friendUser.id},friend_id.eq.${userId})`)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       if (existing.status === 'accepted') {
