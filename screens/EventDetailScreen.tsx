@@ -206,7 +206,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Pay',
+            text: 'Confirm',
             onPress: async () => {
               try {
                 await WalletService.paySplitEvent(
@@ -275,7 +275,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           onPress: () => setPaymentAmount('')
         },
         {
-          text: 'Pay',
+          text: 'Confirm',
           onPress: async () => {
             try {
               // First update the participant's amount

@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 interface NotificationPayload {
@@ -16,16 +17,24 @@ const getBackendUrl = (): string => {
   return extra.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8082';
 };
 
+const isBackendAccessible = (): boolean => {
+  if (Platform.OS !== 'web') {
+    return false;
+  }
+  return true;
+};
+
 export class BackendNotificationsService {
   /**
    * Create a notification using the Express backend server
    * Falls back to Supabase RPC if backend is not accessible
    */
   static async createNotification(payload: NotificationPayload): Promise<{ success: boolean; notification?: any; error?: string }> {
-    // Try backend server first
+    if (!isBackendAccessible()) {
+      return await this.createNotificationViaSupabase(payload);
+    }
+    
     try {
-      console.log('Creating notification via backend server for user:', payload.user_id);
-      
       const backendUrl = getBackendUrl();
       const response = await fetch(`${backendUrl}/api/notifications/create`, {
         method: 'POST',
@@ -43,30 +52,23 @@ export class BackendNotificationsService {
         }),
       });
 
-      // Check if response is HTML (indicates backend not accessible)
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('text/html')) {
-        console.warn('Backend returned HTML, falling back to Supabase RPC');
         return await this.createNotificationViaSupabase(payload);
       }
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Backend server error:', response.status, errorData);
         return await this.createNotificationViaSupabase(payload);
       }
 
       const data = await response.json();
       
       if (data.success) {
-        console.log('Notification created successfully via backend');
         return { success: true, notification: data.notification };
       } else {
-        console.error('Backend returned error:', data.error);
         return await this.createNotificationViaSupabase(payload);
       }
     } catch (error: any) {
-      console.error('Failed to call backend server:', error);
       return await this.createNotificationViaSupabase(payload);
     }
   }
