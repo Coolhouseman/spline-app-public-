@@ -19,28 +19,31 @@ async function getAccessToken(): Promise<string> {
   const clientSecret = Deno.env.get('BLINKPAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
+    console.error('Missing credentials - clientId exists:', !!clientId, 'clientSecret exists:', !!clientSecret);
     throw new Error('BlinkPay credentials not configured');
   }
 
+  console.log('Attempting token request with clientId length:', clientId.length);
+
+  const credentials = btoa(`${clientId}:${clientSecret}`);
+  
   const response = await fetch(`${BLINKPAY_SANDBOX_URL}/oauth2/token`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'client_credentials'
-    }),
+    body: 'grant_type=client_credentials',
   });
 
   if (!response.ok) {
     const error = await response.text();
-    console.error('Token error:', error);
+    console.error('Token error - status:', response.status, 'response:', error);
     throw new Error('Failed to get BlinkPay access token');
   }
 
   const data: TokenResponse = await response.json();
+  console.log('Token obtained successfully');
   return data.access_token;
 }
 
