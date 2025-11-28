@@ -122,7 +122,14 @@ export class AuthService {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       
-      if (error || !session || !session.user) {
+      if (error) {
+        if (error.message?.includes('Refresh Token') || error.message?.includes('Invalid')) {
+          await supabase.auth.signOut();
+        }
+        return null;
+      }
+      
+      if (!session || !session.user) {
         return null;
       }
 
@@ -135,8 +142,12 @@ export class AuthService {
       if (!profile) return null;
 
       return { user: profile as User, session };
-    } catch (error) {
-      console.error('Session restore failed:', error);
+    } catch (error: any) {
+      if (error?.message?.includes('Refresh Token') || error?.message?.includes('Invalid')) {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+      }
       return null;
     }
   }
