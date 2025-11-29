@@ -76,6 +76,56 @@ export default function NotificationsScreen({ navigation }: Props) {
     setRefreshing(false);
   };
 
+  const navigateToRelevantScreen = (notification: Notification) => {
+    switch (notification.type) {
+      case 'friend_request':
+      case 'friend_accepted':
+        navigation.navigate('MainTabs', { screen: 'FriendsTab' });
+        break;
+      case 'split_invite':
+      case 'split_accepted':
+      case 'split_declined':
+      case 'split_paid':
+      case 'split_completed':
+        if (notification.split_event_id) {
+          navigation.navigate('MainTabs', { 
+            screen: 'HomeTab', 
+            params: { 
+              screen: 'EventDetail', 
+              params: { eventId: notification.split_event_id } 
+            } 
+          });
+        } else {
+          navigation.navigate('MainTabs', { screen: 'HomeTab' });
+        }
+        break;
+      case 'payment_reminder':
+        navigation.navigate('MainTabs', { screen: 'HomeTab' });
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleNotificationTap = async (notification: Notification) => {
+    if (processingId) return;
+    
+    setProcessingId(notification.id);
+    try {
+      if (!notification.read) {
+        await NotificationsService.markAsRead(notification.id);
+        setNotifications(prev => 
+          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        );
+      }
+      navigateToRelevantScreen(notification);
+    } catch (error) {
+      console.error('Failed to handle notification tap:', error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const handleAccept = async (notification: Notification) => {
     if (!user || !notification.split_event_id) return;
     
@@ -148,18 +198,6 @@ export default function NotificationsScreen({ navigation }: Props) {
     }
   };
 
-  const handleDismiss = async (notification: Notification) => {
-    setProcessingId(notification.id);
-    try {
-      await NotificationsService.markAsRead(notification.id);
-      await loadNotifications();
-    } catch (error) {
-      console.error('Failed to dismiss notification:', error);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'split_invite':
@@ -170,10 +208,14 @@ export default function NotificationsScreen({ navigation }: Props) {
         return 'x-circle';
       case 'split_paid':
         return 'dollar-sign';
+      case 'split_completed':
+        return 'check-circle';
       case 'friend_request':
         return 'user-plus';
       case 'friend_accepted':
         return 'user-check';
+      case 'payment_reminder':
+        return 'clock';
       default:
         return 'bell';
     }
@@ -183,12 +225,15 @@ export default function NotificationsScreen({ navigation }: Props) {
     switch (type) {
       case 'split_accepted':
       case 'split_paid':
+      case 'split_completed':
       case 'friend_accepted':
         return theme.success;
       case 'split_declined':
         return theme.danger;
       case 'friend_request':
         return theme.primary;
+      case 'payment_reminder':
+        return theme.warning;
       default:
         return theme.primary;
     }
@@ -203,24 +248,36 @@ export default function NotificationsScreen({ navigation }: Props) {
     const showFriendActions = item.type === 'friend_request' && !item.read && friendshipId && isStillPending;
     const friendRequestHandled = item.type === 'friend_request' && friendshipId && !isStillPending;
     const iconColor = getNotificationColor(item.type);
+    const hasActions = showSplitActions || showFriendActions;
+    const isTappable = !hasActions && !isProcessing;
 
     return (
-      <View style={[
-        styles.notificationCard, 
-        { 
-          backgroundColor: theme.surface, 
-          borderColor: theme.border,
-          opacity: item.read ? 0.7 : 1
-        }
-      ]}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.notificationCard, 
+          { 
+            backgroundColor: theme.surface, 
+            borderColor: item.read ? theme.border : theme.primary + '40',
+            borderWidth: item.read ? 1 : 2,
+            opacity: pressed && isTappable ? 0.7 : (item.read ? 0.7 : 1)
+          }
+        ]}
+        onPress={() => isTappable && handleNotificationTap(item)}
+        disabled={!isTappable}
+      >
         <View style={[styles.iconContainer, { backgroundColor: iconColor + '20' }]}>
           <Feather name={getNotificationIcon(item.type) as any} size={24} color={iconColor} />
         </View>
 
         <View style={styles.notificationContent}>
-          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600', marginBottom: Spacing.xs }]}>
-            {item.title}
-          </ThemedText>
+          <View style={styles.notificationHeader}>
+            <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600', flex: 1, marginBottom: Spacing.xs }]}>
+              {item.title}
+            </ThemedText>
+            {!item.read && !hasActions ? (
+              <View style={[styles.unreadDot, { backgroundColor: theme.primary }]} />
+            ) : null}
+          </View>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing.xs }]}>
             {item.message}
           </ThemedText>
@@ -299,21 +356,13 @@ export default function NotificationsScreen({ navigation }: Props) {
                 {friendshipStatus === 'accepted' ? 'Already accepted' : 'Declined'}
               </ThemedText>
             </View>
-          ) : !item.read ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.dismissButton,
-                { opacity: pressed ? 0.7 : 1 }
-              ]}
-              onPress={() => handleDismiss(item)}
-            >
-              <ThemedText style={[Typography.small, { color: theme.primary }]}>
-                Mark as read
-              </ThemedText>
-            </Pressable>
+          ) : isTappable ? (
+            <View style={styles.tapHint}>
+              <Feather name="chevron-right" size={16} color={theme.textSecondary} />
+            </View>
           ) : null}
         </View>
-      </View>
+      </Pressable>
     );
   };
 
@@ -383,7 +432,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: Spacing.lg,
     borderRadius: BorderRadius.sm,
-    borderWidth: 1,
     marginBottom: Spacing.md,
   },
   iconContainer: {
@@ -396,6 +444,17 @@ const styles = StyleSheet.create({
   notificationContent: {
     flex: 1,
     marginLeft: Spacing.md,
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: Spacing.sm,
+    marginTop: 4,
   },
   actions: {
     flexDirection: 'row',
@@ -410,8 +469,11 @@ const styles = StyleSheet.create({
   },
   acceptButton: {},
   declineButton: {},
-  dismissButton: {
-    marginTop: Spacing.md,
+  tapHint: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    marginTop: -8,
   },
   processingContainer: {
     marginTop: Spacing.md,

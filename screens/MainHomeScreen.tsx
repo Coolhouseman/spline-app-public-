@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator, AppState, AppStateStatus, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, useDerivedValue, withTiming } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
@@ -16,18 +18,300 @@ import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
 type Props = NativeStackScreenProps<any, 'MainHome'>;
 
+const DELETE_BUTTON_WIDTH = 80;
+const SWIPE_THRESHOLD = DELETE_BUTTON_WIDTH * 0.5;
+
+function SwipeableEventCard({ 
+  item, 
+  onPress, 
+  onDelete,
+  isWaitingForOthers,
+  isCreator,
+  userAmount,
+  theme,
+  swipeOpenId,
+  setSwipeOpenId,
+  scrollRef
+}: {
+  item: SplitEvent;
+  onPress: () => void;
+  onDelete: () => void;
+  isWaitingForOthers: boolean;
+  isCreator: boolean;
+  userAmount: number;
+  theme: any;
+  swipeOpenId: string | null;
+  setSwipeOpenId: (id: string | null) => void;
+  scrollRef: React.RefObject<FlatList>;
+}) {
+  const translateX = useSharedValue(0);
+  const isOpen = useSharedValue(false);
+  const itemId = useRef(item.id);
+
+  const isThisOpen = swipeOpenId === item.id;
+
+  useDerivedValue(() => {
+    if (!isThisOpen && translateX.value !== 0) {
+      translateX.value = withTiming(0, { duration: 200 });
+      isOpen.value = false;
+    }
+  }, [isThisOpen]);
+
+  if (itemId.current !== item.id) {
+    translateX.value = 0;
+    isOpen.value = false;
+    itemId.current = item.id;
+  }
+
+  const closeSwipe = useCallback(() => {
+    setSwipeOpenId(null);
+  }, [setSwipeOpenId]);
+
+  const openSwipe = useCallback(() => {
+    setSwipeOpenId(item.id);
+  }, [setSwipeOpenId, item.id]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      'Remove Split',
+      'Remove this split from your view? This won\'t affect other participants.',
+      [
+        { 
+          text: 'Cancel', 
+          style: 'cancel', 
+          onPress: () => {
+            translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+            closeSwipe();
+          }
+        },
+        { 
+          text: 'Remove', 
+          style: 'destructive', 
+          onPress: () => {
+            translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+            closeSwipe();
+            onDelete();
+          }
+        },
+      ]
+    );
+  }, [translateX, closeSwipe, onDelete]);
+
+  const panGesture = useMemo(() => 
+    Gesture.Pan()
+      .activeOffsetX([-25, 25])
+      .failOffsetY([-20, 20])
+      .maxPointers(1)
+      .onStart(() => {
+        'worklet';
+      })
+      .onUpdate((event) => {
+        'worklet';
+        const base = isOpen.value ? -DELETE_BUTTON_WIDTH : 0;
+        const newValue = base + event.translationX;
+        translateX.value = Math.max(Math.min(newValue, 0), -DELETE_BUTTON_WIDTH);
+      })
+      .onEnd(() => {
+        'worklet';
+        if (translateX.value < -SWIPE_THRESHOLD) {
+          translateX.value = withSpring(-DELETE_BUTTON_WIDTH, { damping: 20, stiffness: 200 });
+          isOpen.value = true;
+          runOnJS(openSwipe)();
+        } else {
+          translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+          isOpen.value = false;
+          runOnJS(closeSwipe)();
+        }
+      }),
+    [translateX, isOpen, openSwipe, closeSwipe]
+  );
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  return (
+    <View style={styles.swipeableContainer}>
+      <Pressable 
+        style={[styles.deleteButtonContainer, { backgroundColor: theme.danger }]}
+        onPress={handleDelete}
+      >
+        <View style={styles.deleteButton}>
+          <Feather name="trash-2" size={24} color="#FFFFFF" />
+        </View>
+      </Pressable>
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.eventCard, animatedStyle]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.eventCardInner,
+              { 
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                opacity: pressed ? 0.7 : 1
+              }
+            ]}
+            onPress={onPress}
+          >
+            {isWaitingForOthers ? (
+              <View style={styles.paidOverlay}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.06 }]} />
+              </View>
+            ) : null}
+            
+            <View style={styles.eventHeader}>
+              <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
+                {item.name}
+              </ThemedText>
+              <View style={styles.badgeContainer}>
+                {isCreator ? (
+                  <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+                    <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.eventInfo}>
+              <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
+                ${parseFloat(item.total_amount?.toString() || '0').toFixed(2)}
+              </ThemedText>
+              <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                Your share: ${parseFloat(userAmount.toString()).toFixed(2)}
+              </ThemedText>
+            </View>
+
+            <View style={styles.eventFooter}>
+              <View style={styles.participantCount}>
+                <Feather name="users" size={14} color={theme.textSecondary} />
+                <ThemedText style={[Typography.small, { color: theme.textSecondary, marginLeft: Spacing.xs }]}>
+                  {item.participants?.length || 0} participants
+                </ThemedText>
+              </View>
+              <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                {new Date(item.created_at).toLocaleDateString()}
+              </ThemedText>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  );
+}
+
+function EventCard({ 
+  item, 
+  onPress, 
+  isWaitingForOthers,
+  isCreator,
+  userAmount,
+  progress,
+  theme 
+}: {
+  item: SplitEvent;
+  onPress: () => void;
+  isWaitingForOthers: boolean;
+  isCreator: boolean;
+  userAmount: number;
+  progress: number;
+  theme: any;
+}) {
+  return (
+    <View style={styles.eventCard}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.eventCardInner,
+          { 
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            opacity: pressed ? 0.7 : 1
+          }
+        ]}
+        onPress={onPress}
+      >
+        {isWaitingForOthers ? (
+          <View style={styles.paidOverlay}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.06 }]} />
+          </View>
+        ) : null}
+        
+        <View style={styles.eventHeader}>
+          <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
+            {item.name}
+          </ThemedText>
+          <View style={styles.badgeContainer}>
+            {isCreator ? (
+              <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.eventInfo}>
+          <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
+            ${parseFloat(item.total_amount?.toString() || '0').toFixed(2)}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            Your share: ${parseFloat(userAmount.toString()).toFixed(2)}
+          </ThemedText>
+        </View>
+
+        <View style={styles.progressContainer}>
+          <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { backgroundColor: theme.primary, width: `${progress}%` }
+              ]} 
+            />
+          </View>
+          <View style={styles.progressInfo}>
+            <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+              {Math.round(progress)}% paid
+            </ThemedText>
+            {isWaitingForOthers ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Feather name="check-circle" size={12} color={theme.success} style={{ marginRight: 4 }} />
+                <ThemedText style={[Typography.small, { color: theme.success }]}>
+                  You paid - waiting for others
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.eventFooter}>
+          <View style={styles.participantCount}>
+            <Feather name="users" size={14} color={theme.textSecondary} />
+            <ThemedText style={[Typography.small, { color: theme.textSecondary, marginLeft: Spacing.xs }]}>
+              {item.participants?.length || 0} participants
+            </ThemedText>
+          </View>
+          <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+            {new Date(item.created_at).toLocaleDateString()}
+          </ThemedText>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function MainHomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
+  const scrollRef = useRef<FlatList>(null);
   const [selectedTab, setSelectedTab] = useState<'in_progress' | 'completed'>('in_progress');
   const [events, setEvents] = useState<SplitEvent[]>([]);
+  const [hiddenEventIds, setHiddenEventIds] = useState<string[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<number>(0);
   const [networkError, setNetworkError] = useState(false);
+  const [swipeOpenId, setSwipeOpenId] = useState<string | null>(null);
   const retryCountRef = useRef(0);
   const appState = useRef(AppState.currentState);
 
@@ -84,15 +368,26 @@ export default function MainHomeScreen({ navigation }: Props) {
     return () => subscription.remove();
   }, [loadData]);
 
+  useEffect(() => {
+    setSwipeOpenId(null);
+  }, [selectedTab]);
+
   const onRefresh = async () => {
     setRefreshing(true);
+    setSwipeOpenId(null);
     retryCountRef.current = 0;
     await loadData();
     setRefreshing(false);
   };
 
+  const handleHideEvent = (eventId: string) => {
+    setHiddenEventIds(prev => [...prev, eventId]);
+  };
+
   const filteredEvents = events.filter(event => {
     if (!user || !event.participants) return false;
+    
+    if (hiddenEventIds.includes(event.id)) return false;
     
     const userParticipant = event.participants.find((p: any) => p.user_id === user.id);
     if (!userParticipant) return false;
@@ -112,89 +407,43 @@ export default function MainHomeScreen({ navigation }: Props) {
     return total > 0 ? (paid / total) * 100 : 0;
   };
 
-  const renderEvent = ({ item }: { item: any }) => {
+  const renderEvent = ({ item }: { item: SplitEvent }) => {
     const progress = getProgress(item);
     const isCreator = item.creator_id === user?.id;
-    const userParticipant = item.participants.find((p: any) => p.user_id === user?.id);
+    const userParticipant = item.participants?.find((p: any) => p.user_id === user?.id);
     const userAmount = userParticipant?.amount || 0;
     const userHasPaid = userParticipant?.status === 'paid' || isCreator;
     const isWaitingForOthers = selectedTab === 'in_progress' && userHasPaid && progress < 100;
+    const isCompleted = selectedTab === 'completed';
+
+    if (isCompleted) {
+      return (
+        <SwipeableEventCard
+          key={item.id}
+          item={item}
+          onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+          onDelete={() => handleHideEvent(item.id)}
+          isWaitingForOthers={isWaitingForOthers}
+          isCreator={isCreator}
+          userAmount={userAmount}
+          theme={theme}
+          swipeOpenId={swipeOpenId}
+          setSwipeOpenId={setSwipeOpenId}
+          scrollRef={scrollRef}
+        />
+      );
+    }
 
     return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.eventCard,
-          { 
-            backgroundColor: isWaitingForOthers ? theme.backgroundSecondary : theme.surface,
-            borderColor: isWaitingForOthers ? theme.success + '40' : theme.border,
-            opacity: pressed ? 0.7 : 1
-          }
-        ]}
+      <EventCard
+        item={item}
         onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-      >
-        <View style={styles.eventHeader}>
-          <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
-            {item.name}
-          </ThemedText>
-          <View style={styles.badgeContainer}>
-            {isWaitingForOthers ? (
-              <View style={[styles.badge, { backgroundColor: theme.success }]}>
-                <Feather name="check" size={10} color="#FFFFFF" style={{ marginRight: 2 }} />
-                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>You paid</ThemedText>
-              </View>
-            ) : null}
-            {isCreator ? (
-              <View style={[styles.badge, { backgroundColor: theme.primary, marginLeft: Spacing.xs }]}>
-                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
-              </View>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.eventInfo}>
-          <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
-            ${parseFloat(item.total_amount).toFixed(2)}
-          </ThemedText>
-          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            Your share: ${parseFloat(userAmount).toFixed(2)}
-          </ThemedText>
-        </View>
-
-        {selectedTab === 'in_progress' ? (
-          <View style={styles.progressContainer}>
-            <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { backgroundColor: theme.primary, width: `${progress}%` }
-                ]} 
-              />
-            </View>
-            <View style={styles.progressInfo}>
-              <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
-                {Math.round(progress)}% paid
-              </ThemedText>
-              {isWaitingForOthers ? (
-                <ThemedText style={[Typography.small, { color: theme.warning }]}>
-                  Waiting for others
-                </ThemedText>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.eventFooter}>
-          <View style={styles.participantCount}>
-            <Feather name="users" size={14} color={theme.textSecondary} />
-            <ThemedText style={[Typography.small, { color: theme.textSecondary, marginLeft: Spacing.xs }]}>
-              {item.participants.length} participants
-            </ThemedText>
-          </View>
-          <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
-            {new Date(item.created_at).toLocaleDateString()}
-          </ThemedText>
-        </View>
-      </Pressable>
+        isWaitingForOthers={isWaitingForOthers}
+        isCreator={isCreator}
+        userAmount={userAmount}
+        progress={progress}
+        theme={theme}
+      />
     );
   };
 
@@ -292,9 +541,11 @@ export default function MainHomeScreen({ navigation }: Props) {
       </View>
 
       <FlatList
+        ref={scrollRef}
         data={filteredEvents}
         renderItem={renderEvent}
         keyExtractor={(item) => item.id}
+        extraData={swipeOpenId}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }
@@ -302,6 +553,7 @@ export default function MainHomeScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
         }
+        onScrollBeginDrag={() => setSwipeOpenId(null)}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="inbox" size={48} color={theme.textSecondary} />
@@ -361,19 +613,6 @@ const styles = StyleSheet.create({
   walletInfo: {
     flex: 1,
   },
-  walletActions: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  walletButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.xs,
-  },
   segmentedControl: {
     flexDirection: 'row',
     marginHorizontal: Spacing.xl,
@@ -390,11 +629,40 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: Spacing.xl,
   },
+  swipeableContainer: {
+    marginBottom: Spacing.lg,
+    position: 'relative',
+  },
+  deleteButtonContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: DELETE_BUTTON_WIDTH,
+    borderRadius: BorderRadius.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   eventCard: {
+    marginBottom: Spacing.lg,
+  },
+  eventCardInner: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  paidOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BorderRadius.sm,
+    overflow: 'hidden',
   },
   eventHeader: {
     flexDirection: 'row',
@@ -439,6 +707,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
     borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   emptyState: {
     alignItems: 'center',
