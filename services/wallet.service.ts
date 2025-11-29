@@ -783,30 +783,46 @@ export class WalletService {
 
     // STEP 3: Credit recipient's wallet (ledger adjustment)
     // This always happens - recipient gets full amount added to their ledger
-    const recipientBalance = await this.getCurrentBalance(recipientId).catch(() => 0);
-    const newRecipientBalance = recipientBalance + amount;
     
-    // Ensure recipient has a wallet
-    const { data: recipientWallet } = await supabase
+    // Ensure recipient has a wallet - create one if they don't
+    const { data: existingRecipientWallet } = await supabase
       .from('wallets')
-      .select('id')
+      .select('id, balance')
       .eq('user_id', recipientId)
       .single();
 
-    if (recipientWallet) {
+    if (!existingRecipientWallet) {
+      // Create wallet for recipient with the payment amount
+      const { error: createError } = await supabase
+        .from('wallets')
+        .insert({
+          user_id: recipientId,
+          balance: amount,
+          bank_connected: false
+        });
+
+      if (createError) {
+        console.error('Failed to create recipient wallet:', createError);
+        throw new Error('Failed to credit payment to recipient');
+      }
+      console.log(`Created wallet for recipient and credited $${amount.toFixed(2)}. New balance: $${amount.toFixed(2)}`);
+    } else {
+      // Update existing wallet balance
+      const recipientBalance = parseFloat(existingRecipientWallet.balance?.toString() || '0');
+      const newRecipientBalance = recipientBalance + amount;
       await this.updateBalance(recipientId, newRecipientBalance, 'split received');
       console.log(`Credited $${amount.toFixed(2)} to recipient wallet. New balance: $${newRecipientBalance.toFixed(2)}`);
-
-      // Log recipient's incoming transaction
-      await this.logTransaction(
-        recipientId,
-        'split_received',
-        amount,
-        `Received payment for ${eventName}`,
-        'in',
-        splitEventId
-      );
     }
+
+    // Log recipient's incoming transaction
+    await this.logTransaction(
+      recipientId,
+      'split_received',
+      amount,
+      `Received payment for ${eventName}`,
+      'in',
+      splitEventId
+    );
 
     // STEP 4: Log payer's transaction(s)
     let payerTransaction: Transaction;
