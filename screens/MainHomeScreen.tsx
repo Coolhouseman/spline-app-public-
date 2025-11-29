@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator, AppState, AppStateStatus, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, useDerivedValue, withTiming } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureType } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, useDerivedValue, withTiming, SharedValue } from 'react-native-reanimated';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
@@ -29,9 +29,9 @@ function SwipeableEventCard({
   isCreator,
   userAmount,
   theme,
-  swipeOpenId,
+  swipeOpenIdShared,
   setSwipeOpenId,
-  scrollRef
+  nativeScrollGesture
 }: {
   item: SplitEvent;
   onPress: () => void;
@@ -40,27 +40,26 @@ function SwipeableEventCard({
   isCreator: boolean;
   userAmount: number;
   theme: any;
-  swipeOpenId: string | null;
+  swipeOpenIdShared: SharedValue<string | null>;
   setSwipeOpenId: (id: string | null) => void;
-  scrollRef: React.RefObject<FlatList>;
+  nativeScrollGesture: GestureType;
 }) {
   const translateX = useSharedValue(0);
   const isOpen = useSharedValue(false);
-  const itemId = useRef(item.id);
-
-  const isThisOpen = swipeOpenId === item.id;
+  const itemIdRef = useRef(item.id);
 
   useDerivedValue(() => {
+    const isThisOpen = swipeOpenIdShared.value === item.id;
     if (!isThisOpen && translateX.value !== 0) {
       translateX.value = withTiming(0, { duration: 200 });
       isOpen.value = false;
     }
-  }, [isThisOpen]);
+  }, [item.id]);
 
-  if (itemId.current !== item.id) {
+  if (itemIdRef.current !== item.id) {
     translateX.value = 0;
     isOpen.value = false;
-    itemId.current = item.id;
+    itemIdRef.current = item.id;
   }
 
   const closeSwipe = useCallback(() => {
@@ -102,6 +101,7 @@ function SwipeableEventCard({
       .activeOffsetX([-25, 25])
       .failOffsetY([-20, 20])
       .maxPointers(1)
+      .simultaneousWithExternalGesture(nativeScrollGesture)
       .onStart(() => {
         'worklet';
       })
@@ -123,7 +123,7 @@ function SwipeableEventCard({
           runOnJS(closeSwipe)();
         }
       }),
-    [translateX, isOpen, openSwipe, closeSwipe]
+    [translateX, isOpen, openSwipe, closeSwipe, nativeScrollGesture]
   );
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -312,8 +312,11 @@ export default function MainHomeScreen({ navigation }: Props) {
   const [notifications, setNotifications] = useState<number>(0);
   const [networkError, setNetworkError] = useState(false);
   const [swipeOpenId, setSwipeOpenId] = useState<string | null>(null);
+  const swipeOpenIdShared = useSharedValue<string | null>(null);
   const retryCountRef = useRef(0);
   const appState = useRef(AppState.currentState);
+
+  const nativeScrollGesture = useMemo(() => Gesture.Native(), []);
 
   const loadData = useCallback(async (isRetry = false) => {
     if (!user) return;
@@ -368,13 +371,18 @@ export default function MainHomeScreen({ navigation }: Props) {
     return () => subscription.remove();
   }, [loadData]);
 
+  const updateSwipeOpenId = useCallback((id: string | null) => {
+    setSwipeOpenId(id);
+    swipeOpenIdShared.value = id;
+  }, [swipeOpenIdShared]);
+
   useEffect(() => {
-    setSwipeOpenId(null);
-  }, [selectedTab]);
+    updateSwipeOpenId(null);
+  }, [selectedTab, updateSwipeOpenId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setSwipeOpenId(null);
+    updateSwipeOpenId(null);
     retryCountRef.current = 0;
     await loadData();
     setRefreshing(false);
@@ -427,9 +435,9 @@ export default function MainHomeScreen({ navigation }: Props) {
           isCreator={isCreator}
           userAmount={userAmount}
           theme={theme}
-          swipeOpenId={swipeOpenId}
-          setSwipeOpenId={setSwipeOpenId}
-          scrollRef={scrollRef}
+          swipeOpenIdShared={swipeOpenIdShared}
+          setSwipeOpenId={updateSwipeOpenId}
+          nativeScrollGesture={nativeScrollGesture}
         />
       );
     }
@@ -540,29 +548,31 @@ export default function MainHomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      <FlatList
-        ref={scrollRef}
-        data={filteredEvents}
-        renderItem={renderEvent}
-        keyExtractor={(item) => item.id}
-        extraData={swipeOpenId}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }
-        ]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-        }
-        onScrollBeginDrag={() => setSwipeOpenId(null)}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Feather name="inbox" size={48} color={theme.textSecondary} />
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg }]}>
-              {selectedTab === 'in_progress' ? 'No active splits' : 'No completed splits'}
-            </ThemedText>
-          </View>
-        }
-      />
+      <GestureDetector gesture={nativeScrollGesture}>
+        <FlatList
+          ref={scrollRef}
+          data={filteredEvents}
+          renderItem={renderEvent}
+          keyExtractor={(item) => item.id}
+          extraData={swipeOpenId}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }
+          ]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+          }
+          onScrollBeginDrag={() => updateSwipeOpenId(null)}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Feather name="inbox" size={48} color={theme.textSecondary} />
+              <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg }]}>
+                {selectedTab === 'in_progress' ? 'No active splits' : 'No completed splits'}
+              </ThemedText>
+            </View>
+          }
+        />
+      </GestureDetector>
     </ThemedView>
   );
 }
