@@ -77,10 +77,15 @@ export default function NotificationsScreen({ navigation }: Props) {
   };
 
   const navigateToRelevantScreen = (notification: Notification) => {
+    const parentNav = navigation.getParent();
+    
     switch (notification.type) {
       case 'friend_request':
       case 'friend_accepted':
-        navigation.navigate('MainTabs', { screen: 'FriendsTab' });
+        navigation.goBack();
+        setTimeout(() => {
+          parentNav?.navigate('FriendsTab');
+        }, 100);
         break;
       case 'split_invite':
       case 'split_accepted':
@@ -88,19 +93,13 @@ export default function NotificationsScreen({ navigation }: Props) {
       case 'split_paid':
       case 'split_completed':
         if (notification.split_event_id) {
-          navigation.navigate('MainTabs', { 
-            screen: 'HomeTab', 
-            params: { 
-              screen: 'EventDetail', 
-              params: { eventId: notification.split_event_id } 
-            } 
-          });
+          navigation.navigate('EventDetail', { eventId: notification.split_event_id });
         } else {
-          navigation.navigate('MainTabs', { screen: 'HomeTab' });
+          navigation.goBack();
         }
         break;
       case 'payment_reminder':
-        navigation.navigate('MainTabs', { screen: 'HomeTab' });
+        navigation.goBack();
         break;
       default:
         break;
