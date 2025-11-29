@@ -12,9 +12,14 @@ import { NotificationsService } from '@/services/notifications.service';
 import { SplitsService } from '@/services/splits.service';
 import { FriendsService } from '@/services/friends.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/services/supabase';
 import type { Notification } from '@/shared/types';
 
 type Props = NativeStackScreenProps<any, 'Notifications'>;
+
+interface FriendshipStatus {
+  [key: string]: 'pending' | 'accepted' | 'declined' | 'unknown';
+}
 
 export default function NotificationsScreen({ navigation }: Props) {
   const { theme } = useTheme();
@@ -24,18 +29,42 @@ export default function NotificationsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [friendshipStatuses, setFriendshipStatuses] = useState<FriendshipStatus>({});
+
+  const loadFriendshipStatuses = useCallback(async (notifs: Notification[]) => {
+    const friendRequestNotifs = notifs.filter(n => n.type === 'friend_request');
+    const friendshipIds = friendRequestNotifs
+      .map(n => n.friendship_id || (n.metadata as any)?.friendship_id)
+      .filter(Boolean);
+    
+    if (friendshipIds.length === 0) return;
+
+    const { data } = await supabase
+      .from('friends')
+      .select('id, status')
+      .in('id', friendshipIds);
+
+    if (data) {
+      const statuses: FriendshipStatus = {};
+      data.forEach(f => {
+        statuses[f.id] = f.status as 'pending' | 'accepted' | 'declined';
+      });
+      setFriendshipStatuses(statuses);
+    }
+  }, []);
 
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
       const notifs = await NotificationsService.getNotifications(user.id);
       setNotifications(notifs);
+      await loadFriendshipStatuses(notifs);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, loadFriendshipStatuses]);
 
   useEffect(() => {
     loadNotifications();
@@ -168,9 +197,11 @@ export default function NotificationsScreen({ navigation }: Props) {
   const renderNotification = ({ item }: { item: Notification }) => {
     const isProcessing = processingId === item.id;
     const showSplitActions = item.type === 'split_invite' && !item.read;
-    // Check for friendship_id in the column OR in metadata (fallback)
     const friendshipId = item.friendship_id || (item.metadata as any)?.friendship_id;
-    const showFriendActions = item.type === 'friend_request' && !item.read && friendshipId;
+    const friendshipStatus = friendshipId ? friendshipStatuses[friendshipId] : undefined;
+    const isStillPending = friendshipStatus === 'pending' || friendshipStatus === undefined;
+    const showFriendActions = item.type === 'friend_request' && !item.read && friendshipId && isStillPending;
+    const friendRequestHandled = item.type === 'friend_request' && friendshipId && !isStillPending;
     const iconColor = getNotificationColor(item.type);
 
     return (
@@ -256,6 +287,17 @@ export default function NotificationsScreen({ navigation }: Props) {
                   Decline
                 </ThemedText>
               </Pressable>
+            </View>
+          ) : friendRequestHandled ? (
+            <View style={[styles.statusBadge, { backgroundColor: friendshipStatus === 'accepted' ? theme.success + '20' : theme.danger + '20' }]}>
+              <Feather 
+                name={friendshipStatus === 'accepted' ? 'check-circle' : 'x-circle'} 
+                size={14} 
+                color={friendshipStatus === 'accepted' ? theme.success : theme.danger} 
+              />
+              <ThemedText style={[Typography.small, { color: friendshipStatus === 'accepted' ? theme.success : theme.danger, marginLeft: Spacing.xs }]}>
+                {friendshipStatus === 'accepted' ? 'Already accepted' : 'Declined'}
+              </ThemedText>
             </View>
           ) : !item.read ? (
             <Pressable
@@ -374,6 +416,15 @@ const styles = StyleSheet.create({
   processingContainer: {
     marginTop: Spacing.md,
     alignItems: 'flex-start',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+    alignSelf: 'flex-start',
   },
   emptyState: {
     alignItems: 'center',

@@ -117,32 +117,42 @@ export default function MainHomeScreen({ navigation }: Props) {
     const isCreator = item.creator_id === user?.id;
     const userParticipant = item.participants.find((p: any) => p.user_id === user?.id);
     const userAmount = userParticipant?.amount || 0;
+    const userHasPaid = userParticipant?.status === 'paid' || isCreator;
+    const isWaitingForOthers = selectedTab === 'in_progress' && userHasPaid && progress < 100;
 
     return (
       <Pressable
         style={({ pressed }) => [
           styles.eventCard,
           { 
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
+            backgroundColor: isWaitingForOthers ? theme.backgroundSecondary : theme.surface,
+            borderColor: isWaitingForOthers ? theme.success + '40' : theme.border,
             opacity: pressed ? 0.7 : 1
           }
         ]}
         onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
       >
         <View style={styles.eventHeader}>
-          <ThemedText style={[Typography.h2, { color: theme.text, flex: 1 }]}>
+          <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
             {item.name}
           </ThemedText>
-          {isCreator ? (
-            <View style={[styles.badge, { backgroundColor: theme.primary }]}>
-              <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
-            </View>
-          ) : null}
+          <View style={styles.badgeContainer}>
+            {isWaitingForOthers ? (
+              <View style={[styles.badge, { backgroundColor: theme.success }]}>
+                <Feather name="check" size={10} color="#FFFFFF" style={{ marginRight: 2 }} />
+                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>You paid</ThemedText>
+              </View>
+            ) : null}
+            {isCreator ? (
+              <View style={[styles.badge, { backgroundColor: theme.primary, marginLeft: Spacing.xs }]}>
+                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
+              </View>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.eventInfo}>
-          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+          <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
             ${parseFloat(item.total_amount).toFixed(2)}
           </ThemedText>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
@@ -160,9 +170,16 @@ export default function MainHomeScreen({ navigation }: Props) {
                 ]} 
               />
             </View>
-            <ThemedText style={[Typography.small, { color: theme.textSecondary, marginTop: Spacing.xs }]}>
-              {Math.round(progress)}% paid
-            </ThemedText>
+            <View style={styles.progressInfo}>
+              <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                {Math.round(progress)}% paid
+              </ThemedText>
+              {isWaitingForOthers ? (
+                <ThemedText style={[Typography.small, { color: theme.warning }]}>
+                  Waiting for others
+                </ThemedText>
+              ) : null}
+            </View>
           </View>
         ) : null}
 
@@ -384,6 +401,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.sm,
   },
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   eventInfo: {
     marginBottom: Spacing.md,
   },
@@ -398,6 +419,12 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 4,
+  },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
   },
   eventFooter: {
     flexDirection: 'row',

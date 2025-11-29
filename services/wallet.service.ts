@@ -105,16 +105,22 @@ export class WalletService {
     splitEventId?: string,
     metadata?: Record<string, unknown>
   ): Promise<Transaction> {
+    const insertData: Record<string, unknown> = {
+      user_id: userId,
+      type,
+      amount,
+      description,
+      direction,
+      split_event_id: splitEventId || null,
+    };
+
+    if (metadata && Object.keys(metadata).length > 0) {
+      insertData.metadata = metadata;
+    }
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert({
-        user_id: userId,
-        type,
-        amount,
-        description,
-        direction,
-        split_event_id: splitEventId || null,
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -497,22 +503,77 @@ export class WalletService {
   }
 
   /**
-   * WITHDRAW FUNDS (PAYOUT)
-   * 
-   * Money Flow:
-   * Business holding account → User's personal bank
-   * User's ledger balance decreases
-   * 
-   * NOTE: BlinkPay enduring consents only support PULLING money FROM user's bank
-   * To send money TO user's bank, we need to:
-   * 1. Deduct from user's ledger immediately
-   * 2. Log as pending withdrawal
-   * 3. Process manual bank transfer (admin action)
-   * 
-   * This is REAL MONEY leaving the business account
+   * CHECK FOR POTENTIAL FUND CYCLING ABUSE
+   * Detects if user is moving money in/out rapidly to exploit the system
+   * Returns warning message if abuse detected, null if OK
    */
-  static async withdraw(userId: string, amount: number): Promise<Transaction> {
-    // Validate amount
+  static async checkWithdrawalAbuse(userId: string, withdrawalAmount: number): Promise<{ blocked: boolean; message?: string; cooldownHours?: number }> {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Get recent transactions
+    const { data: recentTxns } = await supabase
+      .from('transactions')
+      .select('type, amount, direction, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', sevenDaysAgo.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (!recentTxns || recentTxns.length === 0) {
+      return { blocked: false };
+    }
+
+    // Calculate deposits and withdrawals in the last 24 hours
+    const last24hTxns = recentTxns.filter(t => new Date(t.created_at) >= oneDayAgo);
+    const deposits24h = last24hTxns.filter(t => t.type === 'deposit').reduce((sum, t) => sum + Number(t.amount), 0);
+    const withdrawals24h = last24hTxns.filter(t => t.type === 'withdrawal').reduce((sum, t) => sum + Number(t.amount), 0);
+
+    // Rule 1: If user deposited in last 24 hours, they cannot withdraw more than earned (non-deposit) balance
+    const lastDeposit = recentTxns.find(t => t.type === 'deposit');
+    if (lastDeposit && new Date(lastDeposit.created_at) >= oneDayAgo) {
+      // Calculate "earned" balance (split payments received, etc.) vs deposited balance
+      const earnedIn7Days = recentTxns
+        .filter(t => t.type === 'split_received')
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      if (withdrawalAmount > earnedIn7Days && deposits24h > 0) {
+        const hoursSinceDeposit = Math.ceil((now.getTime() - new Date(lastDeposit.created_at).getTime()) / (1000 * 60 * 60));
+        const cooldownRemaining = Math.max(0, 24 - hoursSinceDeposit);
+        
+        if (cooldownRemaining > 0) {
+          return {
+            blocked: true,
+            message: `To prevent fund cycling, you cannot withdraw deposited funds within 24 hours. You can withdraw up to $${earnedIn7Days.toFixed(2)} (from received payments) or wait ${cooldownRemaining} more hours.`,
+            cooldownHours: cooldownRemaining
+          };
+        }
+      }
+    }
+
+    // Rule 2: Limit withdrawals to 3 per day
+    const withdrawalCount24h = last24hTxns.filter(t => t.type === 'withdrawal').length;
+    if (withdrawalCount24h >= 3) {
+      return {
+        blocked: true,
+        message: 'You have reached the maximum of 3 withdrawals per day. Please try again tomorrow.'
+      };
+    }
+
+    return { blocked: false };
+  }
+
+  /**
+   * WITHDRAW FUNDS WITH TYPE (Fast or Normal)
+   * 
+   * Fast Transfer: 2% fee, arrives in minutes to hours
+   * Normal Transfer: Free, arrives in 3-5 business days
+   */
+  static async withdrawWithType(
+    userId: string, 
+    amount: number, 
+    withdrawalType: 'fast' | 'normal'
+  ): Promise<Transaction> {
     if (amount <= 0) {
       throw new Error('Withdrawal amount must be greater than zero');
     }
@@ -529,32 +590,87 @@ export class WalletService {
       throw new Error('Connect your bank account to withdraw funds');
     }
 
-    // Get fresh balance
+    // Calculate fee for fast transfer FIRST
+    const feeRate = withdrawalType === 'fast' ? 0.02 : 0;
+    const feeAmount = amount * feeRate;
+    const totalDeduction = amount + feeAmount;
+
+    // Get fresh balance and check BEFORE any operations
     const currentBalance = await this.getCurrentBalance(userId);
     
-    if (currentBalance < amount) {
-      throw new Error(`Insufficient balance. You have $${currentBalance.toFixed(2)} available.`);
+    // Validate total deduction against current balance
+    if (currentBalance < totalDeduction) {
+      const maxWithdrawable = withdrawalType === 'fast' 
+        ? Math.floor((currentBalance / 1.02) * 100) / 100 // Round down to nearest cent
+        : currentBalance;
+      throw new Error(`Insufficient balance. You can withdraw up to $${maxWithdrawable.toFixed(2)}${withdrawalType === 'fast' ? ' (with 2% fee)' : ''}.`);
     }
 
-    console.log(`Processing withdrawal of $${amount.toFixed(2)} for user ${userId}`);
+    // Check for abuse AFTER balance validation
+    const abuseCheck = await this.checkWithdrawalAbuse(userId, amount);
+    if (abuseCheck.blocked) {
+      throw new Error(abuseCheck.message || 'Withdrawal blocked due to suspicious activity');
+    }
 
-    // Deduct from ledger immediately
-    const newBalance = currentBalance - amount;
-    await this.updateBalance(userId, newBalance, 'withdrawal');
+    // Calculate estimated arrival
+    const now = new Date();
+    let estimatedArrival: string;
+    if (withdrawalType === 'fast') {
+      const arrivalTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours
+      estimatedArrival = arrivalTime.toISOString();
+    } else {
+      const businessDays = 5;
+      let daysToAdd = 0;
+      let addedDays = 0;
+      while (addedDays < businessDays) {
+        daysToAdd++;
+        const checkDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+        const dayOfWeek = checkDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          addedDays++;
+        }
+      }
+      const arrivalDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+      estimatedArrival = arrivalDate.toISOString();
+    }
 
-    // Log the withdrawal transaction
+    console.log(`Processing ${withdrawalType} withdrawal of $${amount.toFixed(2)} (fee: $${feeAmount.toFixed(2)}, total: $${totalDeduction.toFixed(2)}) for user ${userId}`);
+
+    // Deduct FULL amount (including fee) from ledger in ONE operation
+    const newBalance = currentBalance - totalDeduction;
+    await this.updateBalance(userId, newBalance, `${withdrawalType} withdrawal`);
+
+    // Log the withdrawal transaction with metadata using the centralized logTransaction method
+    const description = withdrawalType === 'fast' 
+      ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)})`
+      : 'Standard withdrawal to bank';
+
     const transaction = await this.logTransaction(
       userId,
       'withdrawal',
-      amount,
-      'Withdrawal to bank (processing)',
-      'out'
+      totalDeduction,
+      description,
+      'out',
+      undefined,
+      {
+        withdrawal_type: withdrawalType,
+        fee_amount: feeAmount,
+        net_amount: amount,
+        estimated_arrival: estimatedArrival,
+        status: 'pending'
+      }
     );
 
-    console.log(`Withdrawal initiated: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
-    console.log(`NOTE: Manual bank transfer required to complete this withdrawal`);
+    console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal initiated: $${amount.toFixed(2)} (total: $${totalDeduction.toFixed(2)}). New balance: $${newBalance.toFixed(2)}`);
     
     return transaction;
+  }
+
+  /**
+   * WITHDRAW FUNDS (LEGACY - for backward compatibility)
+   */
+  static async withdraw(userId: string, amount: number): Promise<Transaction> {
+    return this.withdrawWithType(userId, amount, 'normal');
   }
 
   /**

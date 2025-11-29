@@ -250,18 +250,21 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
                   Enter the amount you are paying
                 </ThemedText>
               </View>
-              <TextInput
-                style={[styles.amountInput, { 
-                  backgroundColor: theme.backgroundSecondary, 
-                  color: theme.text, 
-                  borderColor: theme.border 
-                }]}
-                placeholder="0.00"
-                placeholderTextColor={theme.textSecondary}
-                value={myShare}
-                onChangeText={setMyShare}
-                keyboardType="decimal-pad"
-              />
+              <View style={styles.amountInputWrapper}>
+                <ThemedText style={[Typography.body, { color: theme.text, marginRight: Spacing.xs }]}>$</ThemedText>
+                <TextInput
+                  style={[styles.amountInput, { 
+                    backgroundColor: theme.backgroundSecondary, 
+                    color: theme.text, 
+                    borderColor: theme.border 
+                  }]}
+                  placeholder="0.00"
+                  placeholderTextColor={theme.textSecondary}
+                  value={myShare}
+                  onChangeText={setMyShare}
+                  keyboardType="decimal-pad"
+                />
+              </View>
             </View>
 
             <View style={[styles.infoBox, { backgroundColor: theme.primary + '15', marginTop: Spacing.lg }]}>
@@ -340,6 +343,10 @@ const styles = StyleSheet.create({
   },
   participantInfo: {
     flex: 1,
+  },
+  amountInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   amountInput: {
     width: 100,

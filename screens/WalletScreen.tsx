@@ -27,7 +27,6 @@ export default function WalletScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showBlinkPayErrorModal, setShowBlinkPayErrorModal] = useState(false);
   const [showDemoBankModal, setShowDemoBankModal] = useState(false);
   
@@ -147,29 +146,6 @@ export default function WalletScreen({ navigation }: Props) {
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!user || !amount) return;
-    
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount');
-      return;
-    }
-    
-    setProcessing(true);
-    try {
-      await WalletService.withdraw(user.id, numAmount);
-      await loadWalletData();
-      setAmount('');
-      setShowWithdrawModal(false);
-      Alert.alert('Success', `$${numAmount.toFixed(2)} withdrawn from your wallet`);
-    } catch (error: any) {
-      console.error('Withdraw error:', error);
-      Alert.alert('Error', error.message || 'Failed to withdraw funds');
-    } finally {
-      setProcessing(false);
-    }
-  };
 
   const handleConnectDemoBank = async (bankId: string) => {
     if (!user) return;
@@ -355,7 +331,7 @@ export default function WalletScreen({ navigation }: Props) {
                 styles.actionButton,
                 { backgroundColor: 'rgba(255,255,255,0.2)', opacity: pressed ? 0.7 : 1 }
               ]}
-              onPress={() => setShowWithdrawModal(true)}
+              onPress={() => navigation.navigate('Withdrawal')}
             >
               <Feather name="arrow-up-circle" size={20} color="#FFFFFF" />
               <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.sm }]}>
@@ -476,55 +452,6 @@ export default function WalletScreen({ navigation }: Props) {
                 ) : (
                   <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
                     Add
-                  </ThemedText>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showWithdrawModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.lg }]}>
-              Withdraw Funds
-            </ThemedText>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="Enter amount"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="decimal-pad"
-              editable={!processing}
-            />
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
-                ]}
-                onPress={() => { setAmount(''); setShowWithdrawModal(false); }}
-                disabled={processing}
-              >
-                <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-                  Cancel
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  { backgroundColor: theme.danger, opacity: pressed ? 0.7 : 1 }
-                ]}
-                onPress={handleWithdraw}
-                disabled={processing}
-              >
-                {processing ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-                    Withdraw
                   </ThemedText>
                 )}
               </Pressable>

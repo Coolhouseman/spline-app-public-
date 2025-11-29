@@ -72,6 +72,12 @@ export interface Transaction {
   description: string;
   direction: 'in' | 'out';
   split_event_id?: string;
+  metadata?: {
+    withdrawal_type?: 'fast' | 'normal';
+    fee_amount?: number;
+    estimated_arrival?: string;
+    status?: 'pending' | 'processing' | 'completed' | 'failed';
+  };
   created_at: string;
 }
 
