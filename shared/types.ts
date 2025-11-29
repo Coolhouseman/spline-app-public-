@@ -84,7 +84,7 @@ export interface Transaction {
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed' | 'friend_request' | 'friend_accepted';
+  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed' | 'friend_request' | 'friend_accepted' | 'payment_reminder';
   title: string;
   message: string;
   split_event_id?: string;

@@ -130,18 +130,28 @@ function SwipeableEventCard({
     transform: [{ translateX: translateX.value }],
   }));
 
+  const deleteButtonAnimatedStyle = useAnimatedStyle(() => {
+    const progress = Math.abs(translateX.value) / DELETE_BUTTON_WIDTH;
+    return {
+      opacity: progress,
+      transform: [{ scale: 0.8 + (progress * 0.2) }],
+    };
+  });
+
   return (
     <View style={styles.swipeableContainer}>
-      <Pressable 
-        style={[styles.deleteButtonContainer, { backgroundColor: theme.danger }]}
-        onPress={handleDelete}
+      <Animated.View 
+        style={[styles.deleteButtonContainer, { backgroundColor: theme.danger }, deleteButtonAnimatedStyle]}
       >
-        <View style={styles.deleteButton}>
-          <Feather name="trash-2" size={24} color="#FFFFFF" />
-        </View>
-      </Pressable>
+        <Pressable 
+          style={styles.deleteButton}
+          onPress={handleDelete}
+        >
+          <Feather name="trash-2" size={20} color="#FFFFFF" />
+        </Pressable>
+      </Animated.View>
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.eventCard, animatedStyle]}>
+        <Animated.View style={[styles.swipeableCard, animatedStyle]}>
           <Pressable
             style={({ pressed }) => [
               styles.eventCardInner,
@@ -652,6 +662,9 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  swipeableCard: {
+    backgroundColor: 'transparent',
   },
   eventCard: {
     marginBottom: Spacing.lg,

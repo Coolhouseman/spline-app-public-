@@ -356,10 +356,6 @@ export default function NotificationsScreen({ navigation }: Props) {
                 {friendshipStatus === 'accepted' ? 'Already accepted' : 'Declined'}
               </ThemedText>
             </View>
-          ) : isTappable ? (
-            <View style={styles.tapHint}>
-              <Feather name="chevron-right" size={16} color={theme.textSecondary} />
-            </View>
           ) : null}
         </View>
       </Pressable>
@@ -469,12 +465,6 @@ const styles = StyleSheet.create({
   },
   acceptButton: {},
   declineButton: {},
-  tapHint: {
-    position: 'absolute',
-    right: 0,
-    top: '50%',
-    marginTop: -8,
-  },
   processingContainer: {
     marginTop: Spacing.md,
     alignItems: 'flex-start',

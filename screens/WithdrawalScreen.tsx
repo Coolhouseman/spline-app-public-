@@ -54,6 +54,14 @@ export default function WithdrawalScreen({ navigation }: Props) {
     return withdrawAmount + calculateFee();
   };
 
+  const calculateReceived = () => {
+    const withdrawAmount = parseFloat(amount) || 0;
+    if (selectedMethod === 'fast') {
+      return withdrawAmount - calculateFee();
+    }
+    return withdrawAmount;
+  };
+
   const getMaxWithdrawable = () => {
     if (!wallet) return 0;
     if (selectedMethod === 'fast') {
@@ -253,16 +261,16 @@ export default function WithdrawalScreen({ navigation }: Props) {
                   Fast transfer fee (2%)
                 </ThemedText>
                 <ThemedText style={[Typography.body, { color: theme.warning }]}>
-                  ${calculateFee().toFixed(2)}
+                  -${calculateFee().toFixed(2)}
                 </ThemedText>
               </View>
             ) : null}
             <View style={[styles.summaryRow, styles.summaryTotal]}>
               <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                Total deduction
+                You will receive (approx)
               </ThemedText>
-              <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                ${calculateTotal().toFixed(2)}
+              <ThemedText style={[Typography.body, { color: theme.success, fontWeight: '600' }]}>
+                ${calculateReceived().toFixed(2)}
               </ThemedText>
             </View>
             <View style={styles.summaryRow}>
