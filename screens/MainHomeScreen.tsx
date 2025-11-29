@@ -25,7 +25,7 @@ function SwipeableEventCard({
   item, 
   onPress, 
   onDelete,
-  isWaitingForOthers,
+  showGreyOverlay,
   isCreator,
   userAmount,
   theme,
@@ -36,7 +36,7 @@ function SwipeableEventCard({
   item: SplitEvent;
   onPress: () => void;
   onDelete: () => void;
-  isWaitingForOthers: boolean;
+  showGreyOverlay: boolean;
   isCreator: boolean;
   userAmount: number;
   theme: any;
@@ -153,14 +153,14 @@ function SwipeableEventCard({
             ]}
             onPress={onPress}
           >
-            {isWaitingForOthers ? (
+            {showGreyOverlay ? (
               <View style={styles.paidOverlay}>
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.06 }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.08 }]} />
               </View>
             ) : null}
             
             <View style={styles.eventHeader}>
-              <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
+              <ThemedText style={[Typography.h2, { color: showGreyOverlay ? theme.textSecondary : theme.text, flex: 1 }]}>
                 {item.name}
               </ThemedText>
               <View style={styles.badgeContainer}>
@@ -173,7 +173,7 @@ function SwipeableEventCard({
             </View>
 
             <View style={styles.eventInfo}>
-              <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
+              <ThemedText style={[Typography.body, { color: showGreyOverlay ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
                 ${parseFloat(item.total_amount?.toString() || '0').toFixed(2)}
               </ThemedText>
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
@@ -202,7 +202,7 @@ function SwipeableEventCard({
 function EventCard({ 
   item, 
   onPress, 
-  isWaitingForOthers,
+  showGreyOverlay,
   isCreator,
   userAmount,
   progress,
@@ -210,7 +210,7 @@ function EventCard({
 }: {
   item: SplitEvent;
   onPress: () => void;
-  isWaitingForOthers: boolean;
+  showGreyOverlay: boolean;
   isCreator: boolean;
   userAmount: number;
   progress: number;
@@ -229,14 +229,14 @@ function EventCard({
         ]}
         onPress={onPress}
       >
-        {isWaitingForOthers ? (
+        {showGreyOverlay ? (
           <View style={styles.paidOverlay}>
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.06 }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.text, opacity: 0.08 }]} />
           </View>
         ) : null}
         
         <View style={styles.eventHeader}>
-          <ThemedText style={[Typography.h2, { color: isWaitingForOthers ? theme.textSecondary : theme.text, flex: 1 }]}>
+          <ThemedText style={[Typography.h2, { color: showGreyOverlay ? theme.textSecondary : theme.text, flex: 1 }]}>
             {item.name}
           </ThemedText>
           <View style={styles.badgeContainer}>
@@ -249,7 +249,7 @@ function EventCard({
         </View>
 
         <View style={styles.eventInfo}>
-          <ThemedText style={[Typography.body, { color: isWaitingForOthers ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
+          <ThemedText style={[Typography.body, { color: showGreyOverlay ? theme.textSecondary : theme.text, fontWeight: '600' }]}>
             ${parseFloat(item.total_amount?.toString() || '0').toFixed(2)}
           </ThemedText>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
@@ -258,11 +258,11 @@ function EventCard({
         </View>
 
         <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+          <View style={[styles.progressBar, { backgroundColor: showGreyOverlay ? theme.textSecondary + '30' : theme.border }]}>
             <View 
               style={[
                 styles.progressFill, 
-                { backgroundColor: theme.primary, width: `${progress}%` }
+                { backgroundColor: showGreyOverlay ? theme.textSecondary : theme.primary, width: `${progress}%` }
               ]} 
             />
           </View>
@@ -270,14 +270,6 @@ function EventCard({
             <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
               {Math.round(progress)}% paid
             </ThemedText>
-            {isWaitingForOthers ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Feather name="check-circle" size={12} color={theme.success} style={{ marginRight: 4 }} />
-                <ThemedText style={[Typography.small, { color: theme.success }]}>
-                  You paid - waiting for others
-                </ThemedText>
-              </View>
-            ) : null}
           </View>
         </View>
 
@@ -420,9 +412,11 @@ export default function MainHomeScreen({ navigation }: Props) {
     const isCreator = item.creator_id === user?.id;
     const userParticipant = item.participants?.find((p: any) => p.user_id === user?.id);
     const userAmount = userParticipant?.amount || 0;
-    const userHasPaid = userParticipant?.status === 'paid' || isCreator;
-    const isWaitingForOthers = selectedTab === 'in_progress' && userHasPaid && progress < 100;
+    const userHasPaid = userParticipant?.status === 'paid';
     const isCompleted = selectedTab === 'completed';
+    
+    // Grey overlay only shows when: user is NOT the creator AND user has paid AND split is still in progress
+    const showGreyOverlay = selectedTab === 'in_progress' && !isCreator && userHasPaid && progress < 100;
 
     if (isCompleted) {
       return (
@@ -431,7 +425,7 @@ export default function MainHomeScreen({ navigation }: Props) {
           item={item}
           onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
           onDelete={() => handleHideEvent(item.id)}
-          isWaitingForOthers={isWaitingForOthers}
+          showGreyOverlay={false}
           isCreator={isCreator}
           userAmount={userAmount}
           theme={theme}
@@ -446,7 +440,7 @@ export default function MainHomeScreen({ navigation }: Props) {
       <EventCard
         item={item}
         onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-        isWaitingForOthers={isWaitingForOthers}
+        showGreyOverlay={showGreyOverlay}
         isCreator={isCreator}
         userAmount={userAmount}
         progress={progress}
