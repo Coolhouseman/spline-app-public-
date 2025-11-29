@@ -46,11 +46,14 @@ function SwipeableEventCard({
 }) {
   const translateX = useSharedValue(0);
   const isOpen = useSharedValue(false);
+  const isGestureActive = useSharedValue(false);
   const itemIdRef = useRef(item.id);
 
   useDerivedValue(() => {
+    if (isGestureActive.value) return;
+    
     const isThisOpen = swipeOpenIdShared.value === item.id;
-    if (!isThisOpen && translateX.value !== 0) {
+    if (!isThisOpen && isOpen.value) {
       translateX.value = withTiming(0, { duration: 200 });
       isOpen.value = false;
     }
@@ -80,6 +83,7 @@ function SwipeableEventCard({
           style: 'cancel', 
           onPress: () => {
             translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+            isOpen.value = false;
             closeSwipe();
           }
         },
@@ -88,13 +92,14 @@ function SwipeableEventCard({
           style: 'destructive', 
           onPress: () => {
             translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+            isOpen.value = false;
             closeSwipe();
             onDelete();
           }
         },
       ]
     );
-  }, [translateX, closeSwipe, onDelete]);
+  }, [translateX, isOpen, closeSwipe, onDelete]);
 
   const panGesture = useMemo(() => 
     Gesture.Pan()
@@ -104,6 +109,10 @@ function SwipeableEventCard({
       .simultaneousWithExternalGesture(nativeScrollGesture)
       .onStart(() => {
         'worklet';
+        isGestureActive.value = true;
+        if (!isOpen.value) {
+          swipeOpenIdShared.value = item.id;
+        }
       })
       .onUpdate((event) => {
         'worklet';
@@ -113,6 +122,7 @@ function SwipeableEventCard({
       })
       .onEnd(() => {
         'worklet';
+        isGestureActive.value = false;
         if (translateX.value < -SWIPE_THRESHOLD) {
           translateX.value = withSpring(-DELETE_BUTTON_WIDTH, { damping: 20, stiffness: 200 });
           isOpen.value = true;
@@ -122,8 +132,12 @@ function SwipeableEventCard({
           isOpen.value = false;
           runOnJS(closeSwipe)();
         }
+      })
+      .onFinalize(() => {
+        'worklet';
+        isGestureActive.value = false;
       }),
-    [translateX, isOpen, openSwipe, closeSwipe, nativeScrollGesture]
+    [translateX, isOpen, isGestureActive, openSwipe, closeSwipe, nativeScrollGesture, swipeOpenIdShared, item.id]
   );
 
   const animatedStyle = useAnimatedStyle(() => ({

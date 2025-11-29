@@ -128,12 +128,13 @@ export default function NotificationsScreen({ navigation }: Props) {
   const handleAccept = async (notification: Notification) => {
     if (!user || !notification.split_event_id) return;
     
+    const eventId = notification.split_event_id;
     setProcessingId(notification.id);
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await SplitsService.respondToSplit(user.id, notification.split_event_id, 'accepted');
+      await SplitsService.respondToSplit(user.id, eventId, 'accepted');
       await NotificationsService.markAsRead(notification.id);
-      await loadNotifications();
+      navigation.navigate('EventDetail', { eventId });
     } catch (error) {
       console.error('Failed to accept split:', error);
     } finally {
