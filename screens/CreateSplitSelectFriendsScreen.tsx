@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, StyleSheet, Pressable, FlatList, Image, ActivityIndicator, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -35,6 +35,7 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
   const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   React.useEffect(() => {
     if (!splitType) {
@@ -58,6 +59,16 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
       setLoading(false);
     }
   };
+
+  const filteredFriends = useMemo(() => {
+    if (!searchQuery.trim()) return friends;
+    const query = searchQuery.toLowerCase().trim();
+    return friends.filter(f => {
+      const name = f.friend_details?.name?.toLowerCase() || '';
+      const uniqueId = f.friend_details?.unique_id || '';
+      return name.includes(query) || uniqueId.includes(query);
+    });
+  }, [friends, searchQuery]);
 
   const toggleSelection = (friendId: string) => {
     const newSelected = new Set(selected);
@@ -152,6 +163,26 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
         </Pressable>
       </View>
 
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Feather name="search" size={20} color={theme.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.text }]}
+            placeholder="Search by name or ID"
+            placeholderTextColor={theme.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 ? (
+            <Pressable onPress={() => setSearchQuery('')}>
+              <Feather name="x-circle" size={18} color={theme.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
       {selected.size > 0 ? (
         <View style={[styles.selectedBanner, { backgroundColor: theme.primary + '20' }]}>
           <ThemedText style={[Typography.body, { color: theme.primary }]}>
@@ -166,15 +197,16 @@ export default function CreateSplitSelectFriendsScreen({ navigation, route }: Pr
         </View>
       ) : (
         <FlatList
-          data={friends}
+          data={filteredFriends}
           renderItem={renderFriend}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="users" size={48} color={theme.textSecondary} />
+              <Feather name={searchQuery ? "search" : "users"} size={48} color={theme.textSecondary} />
               <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg }]}>
-                No friends yet. Add friends first.
+                {searchQuery ? `No friends matching "${searchQuery}"` : "No friends yet. Add friends first."}
               </ThemedText>
             </View>
           }
@@ -202,6 +234,24 @@ const styles = StyleSheet.create({
   continueButton: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
+  },
+  searchContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    gap: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: Spacing.xs,
   },
   selectedBanner: {
     paddingVertical: Spacing.md,

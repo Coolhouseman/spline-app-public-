@@ -40,8 +40,8 @@ export default function WelcomeScreen({ navigation }: Props) {
 
   const curveStartX = width * 0.08;
   const curveEndX = width * 0.92;
-  const curveY = height * 0.52;
-  const curveControlY = height * 0.38;
+  const curveY = height * 0.32;
+  const curveControlY = height * 0.18;
   const controlX = width * 0.5;
 
   const startPoint = { x: curveStartX, y: curveY };
