@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -21,6 +22,10 @@ interface FriendshipStatus {
   [key: string]: 'pending' | 'accepted' | 'declined' | 'unknown';
 }
 
+interface SplitParticipantStatus {
+  [key: string]: 'pending' | 'accepted' | 'declined' | 'paid';
+}
+
 export default function NotificationsScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -30,6 +35,7 @@ export default function NotificationsScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [friendshipStatuses, setFriendshipStatuses] = useState<FriendshipStatus>({});
+  const [splitParticipantStatuses, setSplitParticipantStatuses] = useState<SplitParticipantStatus>({});
 
   const loadFriendshipStatuses = useCallback(async (notifs: Notification[]) => {
     const friendRequestNotifs = notifs.filter(n => n.type === 'friend_request');
@@ -53,22 +59,56 @@ export default function NotificationsScreen({ navigation }: Props) {
     }
   }, []);
 
+  const loadSplitParticipantStatuses = useCallback(async (notifs: Notification[]) => {
+    if (!user) return;
+    
+    const splitInviteNotifs = notifs.filter(n => n.type === 'split_invite' && n.split_event_id);
+    const splitEventIds = splitInviteNotifs
+      .map(n => n.split_event_id)
+      .filter(Boolean) as string[];
+    
+    if (splitEventIds.length === 0) return;
+
+    const { data } = await supabase
+      .from('split_participants')
+      .select('split_event_id, status')
+      .eq('user_id', user.id)
+      .in('split_event_id', splitEventIds);
+
+    if (data) {
+      const statuses: SplitParticipantStatus = {};
+      data.forEach(p => {
+        statuses[p.split_event_id] = p.status as 'pending' | 'accepted' | 'declined' | 'paid';
+      });
+      setSplitParticipantStatuses(statuses);
+    }
+  }, [user]);
+
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
       const notifs = await NotificationsService.getNotifications(user.id);
       setNotifications(notifs);
-      await loadFriendshipStatuses(notifs);
+      await Promise.all([
+        loadFriendshipStatuses(notifs),
+        loadSplitParticipantStatuses(notifs)
+      ]);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [user, loadFriendshipStatuses]);
+  }, [user, loadFriendshipStatuses, loadSplitParticipantStatuses]);
 
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadNotifications();
+    }, [loadNotifications])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -241,7 +281,13 @@ export default function NotificationsScreen({ navigation }: Props) {
 
   const renderNotification = ({ item }: { item: Notification }) => {
     const isProcessing = processingId === item.id;
-    const showSplitActions = item.type === 'split_invite' && !item.read;
+    
+    const splitEventId = item.split_event_id;
+    const splitParticipantStatus = splitEventId ? splitParticipantStatuses[splitEventId] : undefined;
+    const isSplitStillPending = splitParticipantStatus === 'pending' || splitParticipantStatus === undefined;
+    const showSplitActions = item.type === 'split_invite' && splitEventId && isSplitStillPending;
+    const splitInviteHandled = item.type === 'split_invite' && splitEventId && !isSplitStillPending;
+    
     const friendshipId = item.friendship_id || (item.metadata as any)?.friendship_id;
     const friendshipStatus = friendshipId ? friendshipStatuses[friendshipId] : undefined;
     const isStillPending = friendshipStatus === 'pending' || friendshipStatus === undefined;
@@ -344,6 +390,17 @@ export default function NotificationsScreen({ navigation }: Props) {
                   Decline
                 </ThemedText>
               </Pressable>
+            </View>
+          ) : splitInviteHandled ? (
+            <View style={[styles.statusBadge, { backgroundColor: splitParticipantStatus === 'declined' ? theme.danger + '20' : theme.success + '20' }]}>
+              <Feather 
+                name={splitParticipantStatus === 'declined' ? 'x-circle' : 'check-circle'} 
+                size={14} 
+                color={splitParticipantStatus === 'declined' ? theme.danger : theme.success} 
+              />
+              <ThemedText style={[Typography.small, { color: splitParticipantStatus === 'declined' ? theme.danger : theme.success, marginLeft: Spacing.xs }]}>
+                {splitParticipantStatus === 'declined' ? 'Declined' : splitParticipantStatus === 'paid' ? 'Paid' : 'Accepted'}
+              </ThemedText>
             </View>
           ) : friendRequestHandled ? (
             <View style={[styles.statusBadge, { backgroundColor: friendshipStatus === 'accepted' ? theme.success + '20' : theme.danger + '20' }]}>
