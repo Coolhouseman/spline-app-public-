@@ -26,9 +26,23 @@ export class TwilioService {
 
       if (error) {
         console.error('Supabase function error:', error);
+        console.error('Error context:', error.context);
+        
+        let errorMessage = 'Failed to send verification code';
+        if (error.context?.body) {
+          try {
+            const errorBody = typeof error.context.body === 'string' 
+              ? JSON.parse(error.context.body) 
+              : error.context.body;
+            errorMessage = errorBody.error || errorMessage;
+          } catch (e) {
+            console.error('Could not parse error body:', e);
+          }
+        }
+        
         return { 
           success: false, 
-          error: error.message || 'Failed to send verification code' 
+          error: errorMessage
         };
       }
 
