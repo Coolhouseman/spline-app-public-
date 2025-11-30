@@ -16,9 +16,18 @@ Preferred communication style: Simple, everyday language.
 
 ### Backend Architecture
 - **Supabase Edge Functions**: BlinkPay payment processing runs on Supabase's serverless infrastructure.
-- **Express Server (Development)**: Optional local server for daily reminders and testing. Expo dev server runs on port 8081.
+- **Express Server**: Main backend server on port 5000 serving landing page, admin dashboard, and API endpoints.
+- **Expo Dev Server**: Runs on port 8081 for mobile app development.
 - **BlinkPay Integration**: All BlinkPay operations are processed via Supabase Edge Functions for security and cross-platform compatibility.
 - **Edge Functions Location**: `supabase/functions/blinkpay-consent` and `supabase/functions/blinkpay-payment`
+
+### Public Website (splinepay.replit.app)
+- **Landing Page**: Professional marketing page at `/` with features, security info, and download CTAs
+- **Terms and Conditions**: Legal terms at `/terms`
+- **Privacy Policy**: Data protection policy at `/privacy`
+- **Admin Access**: Hidden gear icon in footer links to `/admin` dashboard
+- **Files Location**: `server/public/index.html`, `server/public/terms.html`, `server/public/privacy.html`
+- **Development Note**: During development, Replit webview shows Expo app. After publishing, splinepay.replit.app shows the landing page.
 
 ### UI/UX Architecture
 - **Theming System**: Centralized theme constants with light/dark mode support and custom hooks (`useTheme`, `useColorScheme`).
@@ -95,7 +104,7 @@ These functions ensure:
 4. No "half-completed" states possible
 
 ### Admin Dashboard
-- **Local Development URL**: http://localhost:8082/admin/ (Express server)
+- **Local Development URL**: http://localhost:5000/admin/ (Express server)
 - **Deployment**: Express server serves static HTML dashboard
 - **API Endpoints**: `/api/admin/*` routes on Express server
 - **Authentication**: Supabase Auth with admin_roles table verification
