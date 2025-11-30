@@ -1089,8 +1089,14 @@ Deno.serve(async (req) => {
 
   try {
     if (method === "GET" && (path === "" || path === "/")) {
-      return new Response(getAdminDashboardHTML(), {
-        headers: { ...corsHeaders, "Content-Type": "text/html" }
+      const htmlHeaders = new Headers();
+      htmlHeaders.set("Content-Type", "text/html; charset=utf-8");
+      htmlHeaders.set("Access-Control-Allow-Origin", "*");
+      htmlHeaders.set("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+      htmlHeaders.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      return new Response(getAdminDashboardHTML(), { 
+        status: 200,
+        headers: htmlHeaders 
       });
     }
 

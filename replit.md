@@ -95,8 +95,9 @@ These functions ensure:
 4. No "half-completed" states possible
 
 ### Admin Dashboard
-- **URL**: https://vhicohutiocnfjwsofhy.supabase.co/functions/v1/admin-dashboard
-- **Deployment**: Supabase Edge Function (separate from mobile app, always accessible)
+- **Local Development URL**: http://localhost:8082/admin/ (Express server)
+- **Deployment**: Express server serves static HTML dashboard
+- **API Endpoints**: `/api/admin/*` routes on Express server
 - **Authentication**: Supabase Auth with admin_roles table verification
 - **Default Admin**: admin@spline.nz (super_admin)
 - **Features**:
@@ -105,10 +106,10 @@ These functions ensure:
   - Buffer/Cushion analysis with 7-day and 30-day projections
   - Transaction history with filtering and pagination
   - Admin user management (super_admin can add/remove admins)
-- **Edge Function Location**: `supabase/functions/admin-dashboard/index.ts`
-- **Admin Access**: Users must exist in both Supabase Auth AND admin_roles table
-- **Data Access**: Uses direct PostgreSQL connection (SUPABASE_DB_URL) for reliable data queries
-- **Admin Setup**: Admin users are managed via Supabase Auth admin API and the admin_roles table (no public setup endpoint for security)
+- **Files**: 
+  - HTML: `server/public/admin/index.html`
+  - Routes: `server/routes/admin.routes.ts`
+- **Note**: Supabase Edge Functions cannot serve HTML (rewrites text/html to text/plain). Admin dashboard must be hosted via Express server or external hosting (Vercel, Netlify, etc.).
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.
