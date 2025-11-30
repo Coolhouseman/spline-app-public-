@@ -504,9 +504,9 @@ export default function MainHomeScreen({ navigation }: Props) {
         >
           <Feather name="bell" size={24} color={theme.text} />
           {notifications > 0 ? (
-            <View style={[styles.badge, { backgroundColor: theme.danger, position: 'absolute', top: -4, right: -4 }]}>
-              <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>
-                {notifications}
+            <View style={[styles.notificationBadge, { backgroundColor: theme.danger }]}>
+              <ThemedText style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>
+                {notifications > 99 ? '99+' : notifications}
               </ThemedText>
             </View>
           ) : null}
@@ -617,6 +617,18 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: Spacing.sm,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   walletCard: {
     marginHorizontal: Spacing.xl,

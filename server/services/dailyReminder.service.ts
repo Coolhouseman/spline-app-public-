@@ -167,6 +167,22 @@ export class DailyReminderService {
       : `Hi ${userName}, you have $${totalAmount.toFixed(2)} pending across ${eventCount} splits (${eventList}). Tap to settle up!`;
 
     try {
+      // Check if user already received a payment reminder today (regardless of read status)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const { count: existingCount } = await supabaseAdmin
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('type', 'payment_reminder')
+        .gte('created_at', today.toISOString());
+
+      if (existingCount && existingCount > 0) {
+        console.log(`User ${userId} already received a payment reminder today, skipping`);
+        return;
+      }
+
       const { error: notifError } = await supabaseAdmin.from('notifications').insert({
         user_id: userId,
         type: 'payment_reminder',
