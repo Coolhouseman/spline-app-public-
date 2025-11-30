@@ -230,7 +230,10 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                       { text: 'Cancel', style: 'cancel' },
                       {
                         text: 'Connect Bank',
-                        onPress: () => navigation.navigate('WalletTab' as never)
+                        onPress: () => {
+                          // Navigate to parent tab navigator to switch to WalletTab
+                          navigation.getParent()?.navigate('WalletTab');
+                        }
                       }
                     ]
                   );
@@ -304,7 +307,10 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     { text: 'Cancel', style: 'cancel' },
                     {
                       text: 'Connect Bank',
-                      onPress: () => navigation.navigate('WalletTab' as never)
+                      onPress: () => {
+                        // Navigate to parent tab navigator to switch to WalletTab
+                        navigation.getParent()?.navigate('WalletTab');
+                      }
                     }
                   ]
                 );
