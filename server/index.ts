@@ -11,12 +11,24 @@ import { DailyReminderService } from './services/dailyReminder.service';
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '8082', 10);
+const PORT = parseInt(process.env.SPLINE_PORT || process.env.PORT || '5000', 10);
 
 app.use(cors());
 app.use(express.json());
 
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/index.html'));
+});
+
+app.get('/terms', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/terms.html'));
+});
+
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/privacy.html'));
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend server is running' });
@@ -39,7 +51,9 @@ app.post('/api/reminders/send-now', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend server running on port ${PORT}`);
+  console.log(`Spline server running on port ${PORT}`);
+  console.log(`Landing page: http://localhost:${PORT}`);
+  console.log(`Admin dashboard: http://localhost:${PORT}/admin`);
   
   DailyReminderService.start();
 });
