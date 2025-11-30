@@ -11,7 +11,7 @@ import { DailyReminderService } from './services/dailyReminder.service';
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.SPLINE_PORT || process.env.PORT || '5000', 10);
+const PORT = parseInt(process.env.PORT || '8081', 10);
 
 app.use(cors());
 app.use(express.json());

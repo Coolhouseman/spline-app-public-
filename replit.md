@@ -16,7 +16,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Backend Architecture
 - **Supabase Edge Functions**: BlinkPay payment processing runs on Supabase's serverless infrastructure.
-- **Express Server**: Main backend server on port 5000 serving landing page, admin dashboard, and API endpoints.
+- **Express Server**: 
+  - Development: Runs on port 8082 (via dev script)
+  - Production: Runs on port 8081 (Autoscale deployment)
 - **Expo Dev Server**: Runs on port 8081 for mobile app development.
 - **BlinkPay Integration**: All BlinkPay operations are processed via Supabase Edge Functions for security and cross-platform compatibility.
 - **Edge Functions Location**: `supabase/functions/blinkpay-consent` and `supabase/functions/blinkpay-payment`
