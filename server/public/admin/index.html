@@ -50,13 +50,18 @@
           <input type="email" id="admin-email" placeholder="admin@spline.nz" 
             class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
         </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <input type="password" id="admin-password" placeholder="Enter your password" 
+            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+        </div>
         <button onclick="login()" id="login-btn"
           class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
-          <span>Access Dashboard</span>
+          <span>Sign In</span>
         </button>
         <p id="login-error" class="text-red-500 text-sm text-center hidden"></p>
       </div>
-      <p class="text-xs text-gray-500 text-center mt-6">Only authorized emails can access this dashboard</p>
+      <p class="text-xs text-gray-500 text-center mt-6">Sign in with your Supabase account. Only authorized admin emails can access.</p>
     </div>
   </div>
 
@@ -335,11 +340,18 @@
 
   <script>
     const API_BASE = '/api/admin';
-    let adminEmail = '';
+    let accessToken = '';
+    let adminUser = null;
+    let tokenExpiresAt = null;
     let currentPage = 0;
     let totalTransactions = 0;
     const PAGE_SIZE = 50;
     let trendsChart = null;
+    
+    function isTokenExpired() {
+      if (!tokenExpiresAt) return true;
+      return Date.now() > tokenExpiresAt * 1000 - 60000;
+    }
 
     function formatCurrency(amount) {
       return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(amount || 0);
@@ -354,6 +366,7 @@
 
     async function login() {
       const email = document.getElementById('admin-email').value.trim();
+      const password = document.getElementById('admin-password').value;
       const loginBtn = document.getElementById('login-btn');
       const errorEl = document.getElementById('login-error');
       
@@ -363,27 +376,40 @@
         return;
       }
 
+      if (!password) {
+        errorEl.textContent = 'Please enter your password';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
       loginBtn.innerHTML = '<div class="loading-spinner"></div>';
       loginBtn.disabled = true;
       errorEl.classList.add('hidden');
 
       try {
-        const res = await fetch(`${API_BASE}/verify`, {
+        const res = await fetch(`${API_BASE}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, password })
         });
         const data = await res.json();
 
-        if (data.authorized) {
-          adminEmail = email;
-          localStorage.setItem('adminEmail', email);
-          document.getElementById('admin-name').textContent = data.name || email;
+        if (data.success && data.session?.access_token) {
+          accessToken = data.session.access_token;
+          tokenExpiresAt = data.session.expires_at;
+          adminUser = data.user;
+          
+          sessionStorage.setItem('adminAccessToken', accessToken);
+          sessionStorage.setItem('adminUser', JSON.stringify(adminUser));
+          sessionStorage.setItem('tokenExpiresAt', tokenExpiresAt.toString());
+          
+          document.getElementById('admin-name').textContent = adminUser.name || adminUser.email;
           document.getElementById('login-screen').classList.add('hidden');
           document.getElementById('dashboard').classList.remove('hidden');
+          document.getElementById('admin-password').value = '';
           refreshData();
         } else {
-          errorEl.textContent = 'This email is not authorized for admin access';
+          errorEl.textContent = data.error || 'Login failed';
           errorEl.classList.remove('hidden');
         }
       } catch (err) {
@@ -391,23 +417,55 @@
         errorEl.classList.remove('hidden');
       }
 
-      loginBtn.innerHTML = '<span>Access Dashboard</span>';
+      loginBtn.innerHTML = '<span>Sign In</span>';
       loginBtn.disabled = false;
     }
 
-    function logout() {
-      adminEmail = '';
-      localStorage.removeItem('adminEmail');
+    async function logout() {
+      try {
+        if (accessToken) {
+          await fetch(`${API_BASE}/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+        }
+      } catch (err) {
+        console.error('Logout API error:', err);
+      }
+      
+      accessToken = '';
+      adminUser = null;
+      tokenExpiresAt = null;
+      sessionStorage.removeItem('adminAccessToken');
+      sessionStorage.removeItem('adminUser');
+      sessionStorage.removeItem('tokenExpiresAt');
       document.getElementById('dashboard').classList.add('hidden');
       document.getElementById('login-screen').classList.remove('hidden');
       document.getElementById('admin-email').value = '';
+      document.getElementById('admin-password').value = '';
     }
 
     async function fetchWithAuth(endpoint) {
+      if (!accessToken) {
+        throw new Error('Not authenticated');
+      }
+      
+      if (isTokenExpired()) {
+        await logout();
+        throw new Error('Session expired');
+      }
+      
       const res = await fetch(`${API_BASE}${endpoint}`, {
-        headers: { 'X-Admin-Email': adminEmail }
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
       });
-      if (!res.ok) throw new Error('Unauthorized');
+      if (res.status === 401) {
+        await logout();
+        throw new Error('Session expired');
+      }
+      if (!res.ok) throw new Error('Request failed');
       return res.json();
     }
 
@@ -604,8 +662,13 @@
     async function exportCSV() {
       try {
         const res = await fetch(`${API_BASE}/export/transactions`, {
-          headers: { 'X-Admin-Email': adminEmail }
+          headers: { 'Authorization': `Bearer ${accessToken}` }
         });
+        if (res.status === 401) {
+          logout();
+          alert('Session expired. Please sign in again.');
+          return;
+        }
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -655,7 +718,7 @@
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'X-Admin-Email': adminEmail 
+            'Authorization': `Bearer ${accessToken}`
           },
           body: JSON.stringify({ email, name })
         });
@@ -679,7 +742,7 @@
       try {
         const res = await fetch(`${API_BASE}/admins/${encodeURIComponent(email)}`, {
           method: 'DELETE',
-          headers: { 'X-Admin-Email': adminEmail }
+          headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         
         if (res.ok) {
@@ -705,15 +768,53 @@
       document.getElementById(`tab-${tab}`).classList.remove('bg-white/80');
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const savedEmail = localStorage.getItem('adminEmail');
-      if (savedEmail) {
-        document.getElementById('admin-email').value = savedEmail;
-        login();
+    document.addEventListener('DOMContentLoaded', async () => {
+      const savedToken = sessionStorage.getItem('adminAccessToken');
+      const savedUser = sessionStorage.getItem('adminUser');
+      const savedExpiry = sessionStorage.getItem('tokenExpiresAt');
+      
+      if (savedToken && savedUser && savedExpiry) {
+        tokenExpiresAt = parseInt(savedExpiry);
+        
+        if (isTokenExpired()) {
+          sessionStorage.clear();
+          return;
+        }
+        
+        accessToken = savedToken;
+        
+        try {
+          const res = await fetch(`${API_BASE}/me`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          if (!res.ok) {
+            sessionStorage.clear();
+            accessToken = '';
+            tokenExpiresAt = null;
+            return;
+          }
+          
+          adminUser = JSON.parse(savedUser);
+          document.getElementById('admin-name').textContent = adminUser.name || adminUser.email;
+          document.getElementById('login-screen').classList.add('hidden');
+          document.getElementById('dashboard').classList.remove('hidden');
+          refreshData();
+        } catch (e) {
+          sessionStorage.clear();
+          accessToken = '';
+          tokenExpiresAt = null;
+        }
       }
     });
 
     document.getElementById('admin-email').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('admin-password').focus();
+      }
+    });
+
+    document.getElementById('admin-password').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') login();
     });
   </script>

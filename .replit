@@ -54,10 +54,6 @@ localPort = 43351
 externalPort = 9000
 
 [[ports]]
-localPort = 43851
-externalPort = 8081
-
-[[ports]]
 localPort = 45003
 externalPort = 5000
 
@@ -147,3 +143,5 @@ value = "0"
 [userenv.shared]
 EXPO_NO_CAPABILITY_SYNC = "1"
 EXPO_PUBLIC_BACKEND_URL = "https://2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev:3000"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzOTcwNTgsImV4cCI6MjA2Mzk3MzA1OH0.EI2qBBfKIoF5HZIFU_Ls62xi5A0EPKwylvKGl9ppwQA"
+SUPABASE_URL = "https://vhicohutiocnfjwsofhy.supabase.co"
