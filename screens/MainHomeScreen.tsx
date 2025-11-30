@@ -230,8 +230,7 @@ function EventCard({
   isCreator,
   userAmount,
   progress,
-  theme,
-  userStatus
+  theme 
 }: {
   item: SplitEvent;
   onPress: () => void;
@@ -240,10 +239,7 @@ function EventCard({
   userAmount: number;
   progress: number;
   theme: any;
-  userStatus?: string;
 }) {
-  const isPending = userStatus === 'pending' || userStatus === 'accepted';
-  
   return (
     <View style={styles.eventCard}>
       <Pressable
@@ -251,8 +247,7 @@ function EventCard({
           styles.eventCardInner,
           { 
             backgroundColor: theme.surface,
-            borderColor: isPending && !isCreator ? theme.warning : theme.border,
-            borderWidth: isPending && !isCreator ? 2 : 1,
+            borderColor: theme.border,
             opacity: pressed ? 0.7 : 1
           }
         ]}
@@ -272,10 +267,6 @@ function EventCard({
             {isCreator ? (
               <View style={[styles.badge, { backgroundColor: theme.primary }]}>
                 <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Creator</ThemedText>
-              </View>
-            ) : isPending ? (
-              <View style={[styles.badge, { backgroundColor: theme.warning }]}>
-                <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>Action Required</ThemedText>
               </View>
             ) : null}
           </View>
@@ -426,11 +417,9 @@ export default function MainHomeScreen({ navigation }: Props) {
     if (!userParticipant) return false;
     
     const isCreator = event.creator_id === user.id;
+    const userAccepted = userParticipant.status === 'accepted' || userParticipant.status === 'paid';
     
-    // Hide splits only if user explicitly declined
-    // Show splits for pending, accepted, and paid statuses
-    const userDeclined = userParticipant.status === 'declined';
-    if (!isCreator && userDeclined) return false;
+    if (!isCreator && !userAccepted) return false;
     
     const allSettled = event.participants.every((p: any) => p.status === 'paid' || p.is_creator);
     return selectedTab === 'in_progress' ? !allSettled : allSettled;
@@ -448,7 +437,6 @@ export default function MainHomeScreen({ navigation }: Props) {
     const userParticipant = item.participants?.find((p: any) => p.user_id === user?.id);
     const userAmount = userParticipant?.amount || 0;
     const userHasPaid = userParticipant?.status === 'paid';
-    const userStatus = userParticipant?.status;
     const isCompleted = selectedTab === 'completed';
     
     // Grey overlay only shows when: user is NOT the creator AND user has paid AND split is still in progress
@@ -481,7 +469,6 @@ export default function MainHomeScreen({ navigation }: Props) {
         userAmount={userAmount}
         progress={progress}
         theme={theme}
-        userStatus={userStatus}
       />
     );
   };

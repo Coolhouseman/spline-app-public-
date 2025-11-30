@@ -77,9 +77,8 @@ Preferred communication style: Simple, everyday language.
 - **Status Tracking**: Tracks pending, accepted, paid, and declined states for participants.
 - **Visibility Rules**: 
   - Creators always see their splits
-  - Invited participants see splits with status: pending, accepted, or paid
-  - Declined splits are hidden from the participant who declined
-  - "Action Required" badge shown for pending/accepted participants who need to pay
+  - Invited participants see splits with status: accepted or paid (pending/declined are hidden from main list)
+  - Users receive notification invites for pending splits and must accept to see them in their list
 - **Settlement**: Wallet-based payment system.
 
 ### Wallet System & Payment Processing
