@@ -122,9 +122,20 @@ export class WalletService {
       throw new Error('Failed to record transaction');
     }
 
+    // Validate RPC result - must have success flag and transaction_id
+    if (!result || typeof result !== 'object') {
+      console.error('CRITICAL: Transaction RPC returned invalid result:', result);
+      throw new Error('Failed to record transaction: Invalid response from server');
+    }
+
     if (!result.success) {
       console.error('CRITICAL: Transaction logging failed:', result.error);
       throw new Error('Failed to record transaction');
+    }
+
+    if (!result.transaction_id) {
+      console.error('CRITICAL: Transaction RPC missing transaction_id:', result);
+      throw new Error('Failed to record transaction: Transaction ID not returned');
     }
 
     // Return a transaction object
