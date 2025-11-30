@@ -279,10 +279,13 @@
   <style>
     html { scroll-behavior: smooth; }
     .hero-bg {
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.85) 0%, rgba(37, 99, 235, 0.9) 100%),
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.6) 0%, rgba(37, 99, 235, 0.65) 100%),
                   url('/images/hero-banner.jpg');
       background-size: cover;
       background-position: center;
+    }
+    .hero-cta-bg {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.85) 0%, rgba(37, 99, 235, 0.9) 100%);
     }
     .glass-card {
       background: rgba(255, 255, 255, 0.95);
@@ -320,6 +323,29 @@
       border-radius: 50%;
       opacity: 0.08;
     }
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-underline {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .logo-underline-bar {
+      width: 28px;
+      height: 2px;
+      background: #3B82F6;
+      border-radius: 1px;
+    }
+    .logo-underline-dot {
+      width: 4px;
+      height: 4px;
+      background: #3B82F6;
+      border-radius: 50%;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -328,9 +354,15 @@
     <nav class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100" aria-label="Main navigation">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
-          <a href="/" class="flex items-center gap-3" aria-label="Spline Home">
-            <img src="/images/logo.png" alt="Spline Logo" class="w-10 h-10 rounded-xl" width="40" height="40">
-            <span class="text-xl font-bold text-gray-900">Spline</span>
+          <a href="/" class="flex flex-col" aria-label="Spline Home">
+            <div class="flex items-baseline">
+              <span class="logo-text text-primary">Sp</span>
+              <span class="logo-text text-gray-900">line</span>
+            </div>
+            <div class="logo-underline">
+              <div class="logo-underline-bar"></div>
+              <div class="logo-underline-dot"></div>
+            </div>
           </a>
           <div class="hidden md:flex items-center gap-8">
             <a href="#features" class="text-gray-600 hover:text-primary transition">Features</a>
@@ -557,7 +589,7 @@
     </section>
 
     <!-- Download CTA -->
-    <section id="download" class="py-20 hero-bg" aria-labelledby="download-heading">
+    <section id="download" class="py-20 hero-cta-bg" aria-labelledby="download-heading">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 id="download-heading" class="text-3xl md:text-4xl font-bold text-white mb-6">Ready to Simplify Bill Splitting?</h2>
         <p class="text-blue-100 text-lg mb-8 max-w-2xl mx-auto">Join thousands of Kiwis who've made shared expenses stress-free. Download Spline today.</p>
@@ -598,9 +630,15 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid md:grid-cols-4 gap-8 mb-8">
         <div>
-          <div class="flex items-center gap-3 mb-4">
-            <img src="/images/logo.png" alt="Spline Logo" class="w-10 h-10 rounded-xl" width="40" height="40">
-            <span class="text-xl font-bold text-white">Spline</span>
+          <div class="flex flex-col mb-4">
+            <div class="flex items-baseline">
+              <span class="logo-text text-primary">Sp</span>
+              <span class="logo-text text-white">line</span>
+            </div>
+            <div class="logo-underline">
+              <div class="logo-underline-bar"></div>
+              <div class="logo-underline-dot"></div>
+            </div>
           </div>
           <p class="text-sm">Making bill splitting simple and stress-free for friends everywhere in New Zealand.</p>
         </div>
