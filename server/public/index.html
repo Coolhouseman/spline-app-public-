@@ -407,10 +407,18 @@
           <div class="hidden md:flex justify-center" aria-hidden="true">
             <div class="relative">
               <!-- Phone Mockup with App Screenshot -->
-              <div class="w-72 h-[580px] bg-gray-900 rounded-[3rem] p-3 shadow-2xl float-animation">
-                <div class="w-full h-full rounded-[2.5rem] overflow-hidden">
-                  <img src="/images/app-mockup.png" alt="Spline App - Split bills screen showing wallet balance and active splits" class="w-full h-full object-cover object-top">
+              <div class="relative float-animation">
+                <!-- Phone frame -->
+                <div class="w-[280px] h-[560px] bg-gray-900 rounded-[3rem] p-2 shadow-2xl relative">
+                  <!-- Notch -->
+                  <div class="absolute top-0 left-1/2 transform -translate-x-1/2 w-24 h-6 bg-gray-900 rounded-b-2xl z-20"></div>
+                  <!-- Screen -->
+                  <div class="w-full h-full bg-white rounded-[2.5rem] overflow-hidden relative">
+                    <img src="/images/app-mockup.png" alt="Spline App - Split bills screen showing wallet balance and active splits" class="w-full h-full object-contain">
+                  </div>
                 </div>
+                <!-- Reflection effect -->
+                <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-[3rem] pointer-events-none"></div>
               </div>
             </div>
           </div>
