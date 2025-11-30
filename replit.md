@@ -70,14 +70,15 @@ Preferred communication style: Simple, everyday language.
 - **Balance Management**: Tracks available funds, persisted in Supabase.
 - **BlinkPay Integration**: OAuth-based bank connection for enduring consent and direct debit payments. All BlinkPay operations are handled by Supabase Edge Functions.
 - **Payment Flow**: Users connect their bank via BlinkPay, authorize enduring consent, and then can make seamless split payments.
+- **Creator Wallet Credits**: When a participant pays their share, the creator's wallet is credited via the `credit_recipient_wallet` RPC function. The creator's own share (auto-marked as 'paid' at creation) is NOT credited to their wallet.
 - **Withdrawal Types**:
-  - **Fast Transfer**: 2% fee, arrives in minutes to hours. Good for urgent needs.
+  - **Fast Transfer**: 2% fee INCLUDED in withdrawal amount (not added on top). User enters $14, fee of $0.28 is deducted, user receives $13.72 in bank. Fee stays with business as revenue.
   - **Normal Transfer**: Free, arrives in 3-5 business days. Standard bank transfer.
 - **Anti-Abuse Mechanism**:
   - 24-hour hold on deposited funds before withdrawal (earned funds from split payments can be withdrawn immediately)
   - Maximum 3 withdrawals per day
   - Prevents fund cycling/money laundering attempts
-- **Transaction Metadata**: Withdrawal transactions store type, fee amount, estimated arrival, and status in a JSONB metadata field.
+- **Transaction Metadata**: Withdrawal transactions store type, fee amount, net amount (what user receives), estimated arrival, and status in a JSONB metadata field.
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.

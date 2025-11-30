@@ -590,20 +590,19 @@ export class WalletService {
       throw new Error('Connect your bank account to withdraw funds');
     }
 
-    // Calculate fee for fast transfer FIRST
+    // Calculate fee for fast transfer - fee is INCLUDED in the withdrawal amount
+    // User enters $14, fee is $0.28, they receive $13.72, wallet deducted $14
     const feeRate = withdrawalType === 'fast' ? 0.02 : 0;
     const feeAmount = amount * feeRate;
-    const totalDeduction = amount + feeAmount;
+    const netAmount = amount - feeAmount; // Amount user actually receives in bank
+    const totalDeduction = amount; // Wallet is deducted exactly what user entered
 
     // Get fresh balance and check BEFORE any operations
     const currentBalance = await this.getCurrentBalance(userId);
     
     // Validate total deduction against current balance
     if (currentBalance < totalDeduction) {
-      const maxWithdrawable = withdrawalType === 'fast' 
-        ? Math.floor((currentBalance / 1.02) * 100) / 100 // Round down to nearest cent
-        : currentBalance;
-      throw new Error(`Insufficient balance. You can withdraw up to $${maxWithdrawable.toFixed(2)}${withdrawalType === 'fast' ? ' (with 2% fee)' : ''}.`);
+      throw new Error(`Insufficient balance. You can withdraw up to $${currentBalance.toFixed(2)}.`);
     }
 
     // Check for abuse AFTER balance validation
@@ -634,15 +633,15 @@ export class WalletService {
       estimatedArrival = arrivalDate.toISOString();
     }
 
-    console.log(`Processing ${withdrawalType} withdrawal of $${amount.toFixed(2)} (fee: $${feeAmount.toFixed(2)}, total: $${totalDeduction.toFixed(2)}) for user ${userId}`);
+    console.log(`Processing ${withdrawalType} withdrawal: wallet deducted $${amount.toFixed(2)}, fee $${feeAmount.toFixed(2)}, user receives $${netAmount.toFixed(2)}`);
 
-    // Deduct FULL amount (including fee) from ledger in ONE operation
+    // Deduct the withdrawal amount from wallet (fee is included, not added on top)
     const newBalance = currentBalance - totalDeduction;
     await this.updateBalance(userId, newBalance, `${withdrawalType} withdrawal`);
 
     // Log the withdrawal transaction with metadata using the centralized logTransaction method
     const description = withdrawalType === 'fast' 
-      ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)})`
+      ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)}, You receive: $${netAmount.toFixed(2)})`
       : 'Standard withdrawal to bank';
 
     const transaction = await this.logTransaction(
@@ -655,13 +654,13 @@ export class WalletService {
       {
         withdrawal_type: withdrawalType,
         fee_amount: feeAmount,
-        net_amount: amount,
+        net_amount: netAmount, // What user actually receives in their bank
         estimated_arrival: estimatedArrival,
         status: 'pending'
       }
     );
 
-    console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal initiated: $${amount.toFixed(2)} (total: $${totalDeduction.toFixed(2)}). New balance: $${newBalance.toFixed(2)}`);
+    console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal initiated: wallet deducted $${amount.toFixed(2)}, user receives $${netAmount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
     
     return transaction;
   }

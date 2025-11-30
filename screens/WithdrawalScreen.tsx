@@ -51,7 +51,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
 
   const calculateTotal = () => {
     const withdrawAmount = parseFloat(amount) || 0;
-    return withdrawAmount + calculateFee();
+    return withdrawAmount;
   };
 
   const calculateReceived = () => {
@@ -64,9 +64,6 @@ export default function WithdrawalScreen({ navigation }: Props) {
 
   const getMaxWithdrawable = () => {
     if (!wallet) return 0;
-    if (selectedMethod === 'fast') {
-      return wallet.balance / 1.02;
-    }
     return wallet.balance;
   };
 
@@ -100,16 +97,17 @@ export default function WithdrawalScreen({ navigation }: Props) {
     const totalDeduction = calculateTotal();
     if (totalDeduction > wallet.balance) {
       const maxAmount = getMaxWithdrawable();
-      Alert.alert('Insufficient Funds', `You can withdraw up to $${maxAmount.toFixed(2)}${selectedMethod === 'fast' ? ' (including 2% fee)' : ''}`);
+      Alert.alert('Insufficient Funds', `You can withdraw up to $${maxAmount.toFixed(2)}`);
       return;
     }
 
     const fee = calculateFee();
+    const received = calculateReceived();
     const arrivalText = selectedMethod === 'fast' ? 'within a few hours' : 'in 3-5 business days';
 
     Alert.alert(
       'Confirm Withdrawal',
-      `You are withdrawing $${withdrawAmount.toFixed(2)}${fee > 0 ? `\n\nFast transfer fee: $${fee.toFixed(2)}\nTotal deduction: $${totalDeduction.toFixed(2)}` : ''}\n\nFunds will arrive ${arrivalText}.`,
+      `Withdrawing $${withdrawAmount.toFixed(2)} from wallet${fee > 0 ? `\n\nFast transfer fee: $${fee.toFixed(2)}\nYou will receive: $${received.toFixed(2)}` : ''}\n\nFunds will arrive ${arrivalText}.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -121,7 +119,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
               
               Alert.alert(
                 'Withdrawal Initiated',
-                `$${withdrawAmount.toFixed(2)} will arrive ${arrivalText}`,
+                `$${received.toFixed(2)} will arrive in your bank ${arrivalText}`,
                 [{ text: 'OK', onPress: () => navigation.goBack() }]
               );
             } catch (error: any) {
