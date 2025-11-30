@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spline Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .status-healthy { background-color: #10B981; }
+    .status-warning { background-color: #F59E0B; }
+    .status-critical { background-color: #EF4444; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    body {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+      min-height: 100vh;
+    }
+    .tab-active {
+      background-color: #2563EB;
+      color: white;
+    }
+    .loading-spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #2563EB;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="font-sans">
+  <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass-card rounded-2xl p-8 w-full max-w-md shadow-2xl">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-800">Spline Admin</h1>
+        <p class="text-gray-600 mt-2">Business Management Dashboard</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
+          <input type="email" id="admin-email" placeholder="admin@spline.nz" 
+            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+        </div>
+        <button onclick="login()" id="login-btn"
+          class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+          <span>Access Dashboard</span>
+        </button>
+        <p id="login-error" class="text-red-500 text-sm text-center hidden"></p>
+      </div>
+      <p class="text-xs text-gray-500 text-center mt-6">Only authorized emails can access this dashboard</p>
+    </div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <nav class="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <h1 class="text-xl font-bold text-blue-600">Spline Admin</h1>
+          <span id="admin-name" class="text-sm text-gray-500"></span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span id="last-updated" class="text-xs text-gray-400"></span>
+          <button onclick="refreshData()" class="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Refresh
+          </button>
+          <button onclick="logout()" class="text-gray-500 hover:text-gray-700 text-sm">Logout</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <button onclick="showTab('overview')" id="tab-overview" class="tab-active px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">Overview</button>
+        <button onclick="showTab('buffer')" id="tab-buffer" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Buffer Analysis</button>
+        <button onclick="showTab('transactions')" id="tab-transactions" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Transactions</button>
+        <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Settings</button>
+      </div>
+
+      <div id="content-overview">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Wallet Liabilities</p>
+            <p id="metric-liabilities" class="text-2xl font-bold text-gray-800 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">What we owe users</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Deposits</p>
+            <p id="metric-deposits" class="text-2xl font-bold text-green-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Withdrawals</p>
+            <p id="metric-withdrawals" class="text-2xl font-bold text-red-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Active Wallets</p>
+            <p id="metric-wallets" class="text-2xl font-bold text-blue-600 mt-1">0</p>
+            <p class="text-xs text-gray-400 mt-1">With balance > $0</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">BlinkPay Fees Absorbed</p>
+            <p id="metric-blinkpay-fees" class="text-2xl font-bold text-orange-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">0.1% of deposits (our cost)</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Fast Withdrawal Revenue</p>
+            <p id="metric-fast-fees" class="text-2xl font-bold text-green-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">2% fee on fast transfers</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Net Fee Position</p>
+            <p id="metric-net-fees" class="text-2xl font-bold mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">Revenue - Costs</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <h3 class="font-semibold text-gray-800 mb-4">Activity (Last 7 Days)</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-green-50 rounded-lg p-3">
+                <p class="text-xs text-green-600">Deposits</p>
+                <p id="metric-deposits-7d" class="text-xl font-bold text-green-700">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3">
+                <p class="text-xs text-red-600">Withdrawals</p>
+                <p id="metric-withdrawals-7d" class="text-xl font-bold text-red-700">$0.00</p>
+              </div>
+            </div>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <h3 class="font-semibold text-gray-800 mb-4">Activity (Last 30 Days)</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-green-50 rounded-lg p-3">
+                <p class="text-xs text-green-600">Deposits</p>
+                <p id="metric-deposits-30d" class="text-xl font-bold text-green-700">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3">
+                <p class="text-xs text-red-600">Withdrawals</p>
+                <p id="metric-withdrawals-30d" class="text-xl font-bold text-red-700">$0.00</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-5">
+          <h3 class="font-semibold text-gray-800 mb-4">Transaction Trends (30 Days)</h3>
+          <div style="height: 300px;">
+            <canvas id="trends-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-buffer" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-gray-800">Buffer/Cushion Status</h3>
+            <div id="buffer-status-badge" class="px-4 py-2 rounded-full text-white font-semibold text-sm">
+              Loading...
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-50 rounded-lg p-4">
+              <p class="text-xs text-blue-600">Total Wallet Liabilities</p>
+              <p id="buffer-liabilities" class="text-xl font-bold text-blue-800">$0.00</p>
+              <p class="text-xs text-blue-500 mt-1">What we owe users</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4">
+              <p class="text-xs text-green-600">Net Cash Position</p>
+              <p id="buffer-cash" class="text-xl font-bold text-green-800">$0.00</p>
+              <p class="text-xs text-green-500 mt-1">Deposits - Fees - Withdrawals</p>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-4">
+              <p class="text-xs text-orange-600">BlinkPay Fees Paid</p>
+              <p id="buffer-blinkpay" class="text-xl font-bold text-orange-800">$0.00</p>
+              <p class="text-xs text-orange-500 mt-1">0.1% of all deposits</p>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-4">
+              <p class="text-xs text-purple-600">Fast Fee Revenue</p>
+              <p id="buffer-fast-fees" class="text-xl font-bold text-purple-800">$0.00</p>
+              <p class="text-xs text-purple-500 mt-1">2% of fast withdrawals</p>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 rounded-xl p-6 mb-6">
+            <h4 class="font-semibold text-gray-700 mb-4">Buffer Requirement Calculator</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="text-center">
+                <p class="text-sm text-gray-500">Current Buffer Required</p>
+                <p id="buffer-required" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Liabilities - Cash Position</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">7-Day Projection</p>
+                <p id="buffer-7d" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Based on avg daily withdrawals</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">30-Day Projection</p>
+                <p id="buffer-30d" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Based on avg daily withdrawals</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <h4 class="font-semibold text-yellow-800 mb-2">Understanding the Buffer</h4>
+            <ul class="text-sm text-yellow-700 space-y-1">
+              <li>When users deposit $100, BlinkPay charges 0.1% fee, so you receive $99.90</li>
+              <li>User's wallet shows $100, creating a $0.10 buffer requirement</li>
+              <li>Fast withdrawals (2% fee) help offset this - user deposits $100, withdraws fast, you keep $2</li>
+              <li>Normal withdrawals are free - if user withdraws $100, you need full $100 to send</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-5">
+          <h3 class="font-semibold text-gray-800 mb-4">Withdrawal Patterns</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Average Daily Withdrawals (7 days)</p>
+              <p id="avg-withdrawal-7d" class="text-2xl font-bold text-gray-800">$0.00</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Average Daily Withdrawals (30 days)</p>
+              <p id="avg-withdrawal-30d" class="text-2xl font-bold text-gray-800">$0.00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-transactions" class="hidden">
+        <div class="glass-card rounded-xl p-5 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <h3 class="font-semibold text-gray-800">Transaction History</h3>
+            <div class="flex gap-2">
+              <select id="tx-filter" onchange="loadTransactions()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="">All Types</option>
+                <option value="deposit">Deposits</option>
+                <option value="withdrawal">Withdrawals</option>
+                <option value="split_payment">Split Payments</option>
+                <option value="split_received">Split Received</option>
+              </select>
+              <button onclick="exportCSV()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                Export CSV
+              </button>
+            </div>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-gray-500 border-b">
+                  <th class="pb-3 pr-4">Date</th>
+                  <th class="pb-3 pr-4">User</th>
+                  <th class="pb-3 pr-4">Type</th>
+                  <th class="pb-3 pr-4">Amount</th>
+                  <th class="pb-3 pr-4">BlinkPay Fee</th>
+                  <th class="pb-3 pr-4">Fast Fee</th>
+                  <th class="pb-3">Description</th>
+                </tr>
+              </thead>
+              <tbody id="transactions-table">
+                <tr><td colspan="7" class="py-8 text-center text-gray-400">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="flex items-center justify-between mt-4 pt-4 border-t">
+            <p id="tx-count" class="text-sm text-gray-500">Showing 0 of 0 transactions</p>
+            <div class="flex gap-2">
+              <button onclick="prevPage()" id="btn-prev" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Previous</button>
+              <button onclick="nextPage()" id="btn-next" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-settings" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Admin Users</h3>
+          <div id="admin-list" class="space-y-3 mb-4">
+            <p class="text-gray-400">Loading...</p>
+          </div>
+          
+          <div class="border-t pt-4 mt-4">
+            <h4 class="font-medium text-gray-700 mb-3">Add New Admin</h4>
+            <div class="flex flex-wrap gap-2">
+              <input type="email" id="new-admin-email" placeholder="email@example.com" 
+                class="flex-1 min-w-48 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+              <input type="text" id="new-admin-name" placeholder="Name (optional)" 
+                class="flex-1 min-w-32 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+              <button onclick="addAdmin()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                Add Admin
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Fee Configuration</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">BlinkPay Fee Rate</p>
+              <p class="text-xl font-bold text-gray-800">0.1%</p>
+              <p class="text-xs text-gray-400">Charged on deposits and bank-funded split payments</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Fast Withdrawal Fee</p>
+              <p class="text-xl font-bold text-gray-800">2%</p>
+              <p class="text-xs text-gray-400">Included in withdrawal amount (not additional)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/admin';
+    let adminEmail = '';
+    let currentPage = 0;
+    let totalTransactions = 0;
+    const PAGE_SIZE = 50;
+    let trendsChart = null;
+
+    function formatCurrency(amount) {
+      return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(amount || 0);
+    }
+
+    function formatDate(dateStr) {
+      return new Date(dateStr).toLocaleString('en-NZ', { 
+        dateStyle: 'medium', 
+        timeStyle: 'short' 
+      });
+    }
+
+    async function login() {
+      const email = document.getElementById('admin-email').value.trim();
+      const loginBtn = document.getElementById('login-btn');
+      const errorEl = document.getElementById('login-error');
+      
+      if (!email) {
+        errorEl.textContent = 'Please enter your email';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      loginBtn.innerHTML = '<div class="loading-spinner"></div>';
+      loginBtn.disabled = true;
+      errorEl.classList.add('hidden');
+
+      try {
+        const res = await fetch(`${API_BASE}/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+
+        if (data.authorized) {
+          adminEmail = email;
+          localStorage.setItem('adminEmail', email);
+          document.getElementById('admin-name').textContent = data.name || email;
+          document.getElementById('login-screen').classList.add('hidden');
+          document.getElementById('dashboard').classList.remove('hidden');
+          refreshData();
+        } else {
+          errorEl.textContent = 'This email is not authorized for admin access';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = 'Connection error. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+
+      loginBtn.innerHTML = '<span>Access Dashboard</span>';
+      loginBtn.disabled = false;
+    }
+
+    function logout() {
+      adminEmail = '';
+      localStorage.removeItem('adminEmail');
+      document.getElementById('dashboard').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('admin-email').value = '';
+    }
+
+    async function fetchWithAuth(endpoint) {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        headers: { 'X-Admin-Email': adminEmail }
+      });
+      if (!res.ok) throw new Error('Unauthorized');
+      return res.json();
+    }
+
+    async function refreshData() {
+      document.getElementById('last-updated').textContent = 'Updating...';
+      
+      try {
+        await Promise.all([
+          loadMetrics(),
+          loadBuffer(),
+          loadTrends(),
+          loadTransactions(),
+          loadAdmins()
+        ]);
+        document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        console.error('Refresh error:', err);
+        document.getElementById('last-updated').textContent = 'Update failed';
+      }
+    }
+
+    async function loadMetrics() {
+      try {
+        const data = await fetchWithAuth('/metrics');
+        
+        document.getElementById('metric-liabilities').textContent = formatCurrency(data.total_wallet_liabilities);
+        document.getElementById('metric-deposits').textContent = formatCurrency(data.total_deposits);
+        document.getElementById('metric-withdrawals').textContent = formatCurrency(data.total_withdrawals);
+        document.getElementById('metric-wallets').textContent = data.active_wallet_count || 0;
+        document.getElementById('metric-blinkpay-fees').textContent = formatCurrency(data.blinkpay_fees_absorbed);
+        document.getElementById('metric-fast-fees').textContent = formatCurrency(data.fast_withdrawal_fee_revenue);
+        
+        const netFees = data.net_fee_position || 0;
+        const netFeesEl = document.getElementById('metric-net-fees');
+        netFeesEl.textContent = formatCurrency(netFees);
+        netFeesEl.className = `text-2xl font-bold mt-1 ${netFees >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        
+        document.getElementById('metric-deposits-7d').textContent = formatCurrency(data.deposits_7days);
+        document.getElementById('metric-withdrawals-7d').textContent = formatCurrency(data.withdrawals_7days);
+        document.getElementById('metric-deposits-30d').textContent = formatCurrency(data.deposits_30days);
+        document.getElementById('metric-withdrawals-30d').textContent = formatCurrency(data.withdrawals_30days);
+      } catch (err) {
+        console.error('Metrics error:', err);
+      }
+    }
+
+    async function loadBuffer() {
+      try {
+        const data = await fetchWithAuth('/buffer');
+        
+        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_wallet_liabilities);
+        document.getElementById('buffer-cash').textContent = formatCurrency(data.net_cash_position);
+        document.getElementById('buffer-blinkpay').textContent = formatCurrency(data.blinkpay_fees_paid);
+        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_withdrawal_fees_earned);
+        document.getElementById('buffer-required').textContent = formatCurrency(data.buffer_required);
+        document.getElementById('buffer-7d').textContent = formatCurrency(data.projected_buffer_7d);
+        document.getElementById('buffer-30d').textContent = formatCurrency(data.projected_buffer_30d);
+        document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.avg_daily_withdrawal_7d);
+        document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.avg_daily_withdrawal_30d);
+        
+        const statusBadge = document.getElementById('buffer-status-badge');
+        const status = data.buffer_status || 'healthy';
+        statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
+      } catch (err) {
+        console.error('Buffer error:', err);
+      }
+    }
+
+    async function loadTrends() {
+      try {
+        const data = await fetchWithAuth('/trends?days=30');
+        
+        if (trendsChart) {
+          trendsChart.destroy();
+        }
+
+        const ctx = document.getElementById('trends-chart').getContext('2d');
+        const trends = data.trends || [];
+        
+        trendsChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: trends.map(t => new Date(t.date).toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' })),
+            datasets: [
+              {
+                label: 'Deposits',
+                data: trends.map(t => t.deposits || 0),
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.3
+              },
+              {
+                label: 'Withdrawals',
+                data: trends.map(t => t.withdrawals || 0),
+                borderColor: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                fill: true,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top' }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => '$' + value
+                }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Trends error:', err);
+      }
+    }
+
+    async function loadTransactions() {
+      try {
+        const filter = document.getElementById('tx-filter').value;
+        const offset = currentPage * PAGE_SIZE;
+        let url = `/transactions?limit=${PAGE_SIZE}&offset=${offset}`;
+        if (filter) url += `&type=${filter}`;
+        
+        const data = await fetchWithAuth(url);
+        totalTransactions = data.total_count || 0;
+        
+        const tbody = document.getElementById('transactions-table');
+        
+        if (!data.transactions || data.transactions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-gray-400">No transactions found</td></tr>';
+        } else {
+          tbody.innerHTML = data.transactions.map(tx => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+              <td class="py-3 pr-4 whitespace-nowrap">${formatDate(tx.created_at)}</td>
+              <td class="py-3 pr-4">
+                <div class="font-medium text-gray-800">${tx.user_name || 'Unknown'}</div>
+                <div class="text-xs text-gray-400">${tx.user_email || ''}</div>
+              </td>
+              <td class="py-3 pr-4">
+                <span class="px-2 py-1 rounded text-xs font-medium ${getTypeClass(tx.type)}">${tx.type}</span>
+              </td>
+              <td class="py-3 pr-4 font-medium ${tx.direction === 'in' ? 'text-green-600' : 'text-red-600'}">
+                ${tx.direction === 'in' ? '+' : '-'}${formatCurrency(tx.amount)}
+              </td>
+              <td class="py-3 pr-4 text-orange-600">${tx.estimated_blinkpay_fee > 0 ? formatCurrency(tx.estimated_blinkpay_fee) : '-'}</td>
+              <td class="py-3 pr-4 text-green-600">${tx.fast_withdrawal_fee > 0 ? formatCurrency(tx.fast_withdrawal_fee) : '-'}</td>
+              <td class="py-3 text-gray-600 text-xs">${tx.description || '-'}</td>
+            </tr>
+          `).join('');
+        }
+        
+        document.getElementById('tx-count').textContent = 
+          `Showing ${offset + 1}-${Math.min(offset + PAGE_SIZE, totalTransactions)} of ${totalTransactions} transactions`;
+        
+        document.getElementById('btn-prev').disabled = currentPage === 0;
+        document.getElementById('btn-next').disabled = (currentPage + 1) * PAGE_SIZE >= totalTransactions;
+      } catch (err) {
+        console.error('Transactions error:', err);
+      }
+    }
+
+    function getTypeClass(type) {
+      const classes = {
+        deposit: 'bg-green-100 text-green-800',
+        withdrawal: 'bg-red-100 text-red-800',
+        split_payment: 'bg-blue-100 text-blue-800',
+        split_received: 'bg-purple-100 text-purple-800'
+      };
+      return classes[type] || 'bg-gray-100 text-gray-800';
+    }
+
+    function prevPage() {
+      if (currentPage > 0) {
+        currentPage--;
+        loadTransactions();
+      }
+    }
+
+    function nextPage() {
+      if ((currentPage + 1) * PAGE_SIZE < totalTransactions) {
+        currentPage++;
+        loadTransactions();
+      }
+    }
+
+    async function exportCSV() {
+      try {
+        const res = await fetch(`${API_BASE}/export/transactions`, {
+          headers: { 'X-Admin-Email': adminEmail }
+        });
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `spline-transactions-${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+      } catch (err) {
+        alert('Export failed');
+      }
+    }
+
+    async function loadAdmins() {
+      try {
+        const data = await fetchWithAuth('/admins');
+        
+        const listEl = document.getElementById('admin-list');
+        listEl.innerHTML = data.map(admin => `
+          <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+            <div>
+              <p class="font-medium text-gray-800">${admin.name || admin.email}</p>
+              <p class="text-sm text-gray-500">${admin.email}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-1 rounded text-xs ${admin.role === 'super_admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">${admin.role}</span>
+              ${admin.email !== 'admin@spline.nz' ? 
+                `<button onclick="removeAdmin('${admin.email}')" class="text-red-500 hover:text-red-700 text-sm">Remove</button>` : 
+                ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Admins error:', err);
+      }
+    }
+
+    async function addAdmin() {
+      const email = document.getElementById('new-admin-email').value.trim();
+      const name = document.getElementById('new-admin-name').value.trim();
+      
+      if (!email) {
+        alert('Please enter an email');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/admins`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Admin-Email': adminEmail 
+          },
+          body: JSON.stringify({ email, name })
+        });
+        
+        if (res.ok) {
+          document.getElementById('new-admin-email').value = '';
+          document.getElementById('new-admin-name').value = '';
+          loadAdmins();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to add admin');
+        }
+      } catch (err) {
+        alert('Failed to add admin');
+      }
+    }
+
+    async function removeAdmin(email) {
+      if (!confirm(`Remove admin access for ${email}?`)) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/admins/${encodeURIComponent(email)}`, {
+          method: 'DELETE',
+          headers: { 'X-Admin-Email': adminEmail }
+        });
+        
+        if (res.ok) {
+          loadAdmins();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to remove admin');
+        }
+      } catch (err) {
+        alert('Failed to remove admin');
+      }
+    }
+
+    function showTab(tab) {
+      ['overview', 'buffer', 'transactions', 'settings'].forEach(t => {
+        document.getElementById(`content-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).classList.remove('tab-active');
+        document.getElementById(`tab-${t}`).classList.add('bg-white/80');
+      });
+      
+      document.getElementById(`content-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).classList.add('tab-active');
+      document.getElementById(`tab-${tab}`).classList.remove('bg-white/80');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedEmail = localStorage.getItem('adminEmail');
+      if (savedEmail) {
+        document.getElementById('admin-email').value = savedEmail;
+        login();
+      }
+    });
+
+    document.getElementById('admin-email').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>

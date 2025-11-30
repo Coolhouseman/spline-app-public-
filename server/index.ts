@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
+import adminRouter from './routes/admin.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 
 dotenv.config();
@@ -14,6 +16,8 @@ const PORT = parseInt(process.env.PORT || '8082', 10);
 app.use(cors());
 app.use(express.json());
 
+app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend server is running' });
 });
@@ -21,6 +25,7 @@ app.get('/health', (req, res) => {
 app.use('/api/blinkpay', blinkpayRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/twilio', twilioRouter);
+app.use('/api/admin', adminRouter);
 
 app.post('/api/reminders/send-now', async (req, res) => {
   try {
