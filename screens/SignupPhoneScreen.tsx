@@ -66,10 +66,6 @@ export default function SignupPhoneScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleSkip = () => {
-    navigation.navigate('SignupDOB', { ...params, phone: '' });
-  };
-
   return (
     <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
       <ThemedView style={styles.content}>
@@ -142,14 +138,6 @@ export default function SignupPhoneScreen({ navigation, route }: Props) {
           )}
         </Pressable>
 
-        <Pressable
-          style={styles.skipButton}
-          onPress={handleSkip}
-        >
-          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            Skip for now
-          </ThemedText>
-        </Pressable>
       </View>
     </ScreenKeyboardAwareScrollView>
   );
@@ -193,10 +181,5 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  skipButton: {
-    alignItems: 'center',
-    marginTop: Spacing.lg,
-    paddingVertical: Spacing.sm,
   },
 });
