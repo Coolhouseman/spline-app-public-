@@ -74,7 +74,12 @@ Preferred communication style: Simple, everyday language.
 ### Split Payment Features
 - **Split Types**: Supports equal and specified amount splitting.
 - **Creation Flow**: User selects split type, chooses friends, enters event details, and finalizes the split.
-- **Status Tracking**: Tracks pending, paid, and declined states for participants.
+- **Status Tracking**: Tracks pending, accepted, paid, and declined states for participants.
+- **Visibility Rules**: 
+  - Creators always see their splits
+  - Invited participants see splits with status: pending, accepted, or paid
+  - Declined splits are hidden from the participant who declined
+  - "Action Required" badge shown for pending/accepted participants who need to pay
 - **Settlement**: Wallet-based payment system.
 
 ### Wallet System & Payment Processing
