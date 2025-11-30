@@ -781,13 +781,16 @@ export class WalletService {
       console.log(`Deducted $${walletPayment.toFixed(2)} from payer wallet. New balance: $${newPayerBalance.toFixed(2)}`);
     }
 
-    // STEP 3: Credit recipient's wallet (ledger adjustment)
+    // STEP 3: Credit recipient's wallet AND log transaction (ledger adjustment)
     // This always happens - recipient gets full amount added to their ledger
     // Use RPC function to bypass RLS (one user can't create/update another's wallet directly)
+    // The RPC also logs the transaction for the recipient
     
     const { data: creditResult, error: creditError } = await supabase.rpc('credit_recipient_wallet', {
       p_recipient_id: recipientId,
-      p_amount: amount
+      p_amount: amount,
+      p_event_name: eventName,
+      p_split_event_id: splitEventId
     });
 
     if (creditError) {
@@ -822,19 +825,23 @@ export class WalletService {
         await this.updateBalance(recipientId, newRecipientBalance, 'split received');
         console.log(`Credited $${amount.toFixed(2)} to recipient wallet. New balance: $${newRecipientBalance.toFixed(2)}`);
       }
+      
+      // Fallback: Log recipient's incoming transaction (may fail due to RLS)
+      try {
+        await this.logTransaction(
+          recipientId,
+          'split_received',
+          amount,
+          `Received payment for ${eventName}`,
+          'in',
+          splitEventId
+        );
+      } catch (txError) {
+        console.warn('Could not log recipient transaction (RLS may be blocking):', txError);
+      }
     } else {
       console.log(`Credited $${amount.toFixed(2)} to recipient wallet via RPC. New balance: $${creditResult?.new_balance?.toFixed(2) || 'unknown'}`);
     }
-
-    // Log recipient's incoming transaction
-    await this.logTransaction(
-      recipientId,
-      'split_received',
-      amount,
-      `Received payment for ${eventName}`,
-      'in',
-      splitEventId
-    );
 
     // STEP 4: Log payer's transaction(s)
     let payerTransaction: Transaction;
