@@ -1,28 +1,4 @@
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-
-const getBackendUrl = (): string => {
-  const extra = Constants.expoConfig?.extra || {};
-  
-  if (extra.backendUrl) {
-    return extra.backendUrl;
-  }
-  
-  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
-    return process.env.EXPO_PUBLIC_BACKEND_URL;
-  }
-  
-  if (Platform.OS === 'web') {
-    return window.location.origin.replace(':5000', ':8082');
-  }
-  
-  const replitDomain = process.env.REPLIT_DEV_DOMAIN || Constants.expoConfig?.hostUri?.split(':')[0];
-  if (replitDomain) {
-    return `https://${replitDomain}`.replace(':8081', '');
-  }
-  
-  return 'http://localhost:8082';
-};
+import { supabase } from './supabase';
 
 export interface SendOTPResult {
   success: boolean;
@@ -41,24 +17,28 @@ export class TwilioService {
     try {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
       
-      const backendUrl = getBackendUrl();
-      const response = await fetch(`${backendUrl}/api/twilio/send-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const { data, error } = await supabase.functions.invoke('twilio-sms', {
+        body: { 
+          action: 'send',
+          phoneNumber: formattedPhone 
         },
-        body: JSON.stringify({ phoneNumber: formattedPhone }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (error) {
+        console.error('Supabase function error:', error);
         return { 
           success: false, 
-          error: errorData.error || 'Failed to send verification code' 
+          error: error.message || 'Failed to send verification code' 
         };
       }
 
-      const data = await response.json();
+      if (!data.success) {
+        return { 
+          success: false, 
+          error: data.error || 'Failed to send verification code' 
+        };
+      }
+
       return { 
         success: true, 
         status: data.status 
@@ -76,25 +56,31 @@ export class TwilioService {
     try {
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
       
-      const backendUrl = getBackendUrl();
-      const response = await fetch(`${backendUrl}/api/twilio/verify-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const { data, error } = await supabase.functions.invoke('twilio-sms', {
+        body: { 
+          action: 'verify',
+          phoneNumber: formattedPhone,
+          code 
         },
-        body: JSON.stringify({ phoneNumber: formattedPhone, code }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (error) {
+        console.error('Supabase function error:', error);
         return { 
           success: false, 
           valid: false,
-          error: errorData.error || 'Failed to verify code' 
+          error: error.message || 'Failed to verify code' 
         };
       }
 
-      const data = await response.json();
+      if (!data.success) {
+        return { 
+          success: false, 
+          valid: false,
+          error: data.error || 'Failed to verify code' 
+        };
+      }
+
       return { 
         success: true, 
         valid: data.valid === true,
