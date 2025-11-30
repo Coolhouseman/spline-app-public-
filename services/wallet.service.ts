@@ -94,7 +94,8 @@ export class WalletService {
   }
 
   /**
-   * Log a transaction - MUST be called for every balance change
+   * Log a transaction - Uses RPC function to bypass schema cache issues
+   * MUST be called for every balance change
    */
   private static async logTransaction(
     userId: string,
@@ -105,31 +106,38 @@ export class WalletService {
     splitEventId?: string,
     metadata?: Record<string, unknown>
   ): Promise<Transaction> {
-    const insertData: Record<string, unknown> = {
+    // Use RPC function to bypass PostgREST schema cache issues
+    const { data: result, error: rpcError } = await supabase.rpc('log_transaction_rpc', {
+      p_user_id: userId,
+      p_type: type,
+      p_amount: amount,
+      p_description: description,
+      p_direction: direction,
+      p_split_event_id: splitEventId || null,
+      p_metadata: metadata && Object.keys(metadata).length > 0 ? metadata : null
+    });
+
+    if (rpcError) {
+      console.error('CRITICAL: Failed to log transaction (RPC):', rpcError);
+      throw new Error('Failed to record transaction');
+    }
+
+    if (!result.success) {
+      console.error('CRITICAL: Transaction logging failed:', result.error);
+      throw new Error('Failed to record transaction');
+    }
+
+    // Return a transaction object
+    return {
+      id: result.transaction_id,
       user_id: userId,
       type,
       amount,
       description,
       direction,
       split_event_id: splitEventId || null,
-    };
-
-    if (metadata && Object.keys(metadata).length > 0) {
-      insertData.metadata = metadata;
-    }
-
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('CRITICAL: Failed to log transaction:', error);
-      throw new Error('Failed to record transaction');
-    }
-
-    return data as Transaction;
+      created_at: new Date().toISOString()
+    } as Transaction;
   }
   static async getWallet(userId: string): Promise<Wallet> {
     const { data, error } = await supabase
@@ -341,6 +349,7 @@ export class WalletService {
   /**
    * DEMO MODE: Add funds without real BlinkPay charge
    * Simulates a successful bank transfer for testing
+   * Uses atomic RPC function to ensure transaction logging and balance update happen together
    */
   static async addFundsDemo(userId: string, amount: number): Promise<Transaction> {
     if (amount <= 0) {
@@ -361,21 +370,59 @@ export class WalletService {
     
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const currentBalance = await this.getCurrentBalance(userId);
-    const newBalance = currentBalance + amount;
-    await this.updateBalance(userId, newBalance, 'demo deposit');
-
     const bankName = wallet.bank_details?.bank_name || 'Demo Bank';
-    const transaction = await this.logTransaction(
-      userId,
-      'deposit',
-      amount,
-      `Added funds from ${bankName}`,
-      'in'
-    );
+    const description = `Added funds from ${bankName}`;
 
-    console.log(`[DEMO] Deposit completed: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
-    return transaction;
+    // Use atomic RPC function
+    const { data: result, error: rpcError } = await supabase.rpc('process_deposit', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_description: description
+    });
+
+    if (rpcError) {
+      console.error('Deposit RPC error:', rpcError);
+      throw new Error(`Deposit failed: ${rpcError.message}`);
+    }
+
+    // Validate RPC result - must have success flag and transaction_id
+    if (!result || typeof result !== 'object') {
+      console.error('Deposit RPC returned invalid result:', result);
+      throw new Error('Deposit failed: Invalid response from server');
+    }
+
+    if (!result.success) {
+      console.error('Deposit failed:', result.error);
+      throw new Error(result.error || 'Deposit failed');
+    }
+
+    if (!result.transaction_id) {
+      console.error('Deposit RPC missing transaction_id:', result);
+      throw new Error('Deposit failed: Transaction was not recorded');
+    }
+
+    console.log(`[DEMO] Deposit completed: $${amount.toFixed(2)}. New balance: $${result.new_balance}`);
+
+    // Fetch and return the transaction
+    const { data: transaction, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', result.transaction_id)
+      .single();
+
+    if (txError || !transaction) {
+      return {
+        id: result.transaction_id,
+        user_id: userId,
+        type: 'deposit',
+        amount: amount,
+        description: description,
+        direction: 'in',
+        created_at: new Date().toISOString()
+      } as Transaction;
+    }
+
+    return transaction as Transaction;
   }
 
   /**
@@ -450,22 +497,61 @@ export class WalletService {
 
     console.log(`BlinkPay deposit confirmed: $${amount.toFixed(2)}`);
 
-    // Credit user's ledger balance
-    const currentBalance = await this.getCurrentBalance(userId);
-    const newBalance = currentBalance + amount;
-    await this.updateBalance(userId, newBalance, 'deposit');
+    const description = 'Added funds from bank';
 
-    // Log the transaction
-    const transaction = await this.logTransaction(
-      userId,
-      'deposit',
-      amount,
-      'Added funds from bank',
-      'in'
-    );
+    // Use atomic RPC function to ensure transaction logging and balance update happen together
+    const { data: result, error: rpcError } = await supabase.rpc('process_deposit', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_description: description
+    });
 
-    console.log(`Deposit completed: $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
-    return { transaction, paymentId: paymentResult.paymentId };
+    if (rpcError) {
+      console.error('Deposit RPC error:', rpcError);
+      throw new Error(`Deposit failed: ${rpcError.message}`);
+    }
+
+    // Validate RPC result - must have success flag and transaction_id
+    if (!result || typeof result !== 'object') {
+      console.error('Deposit RPC returned invalid result:', result);
+      throw new Error('Deposit failed: Invalid response from server');
+    }
+
+    if (!result.success) {
+      console.error('Deposit failed:', result.error);
+      throw new Error(result.error || 'Deposit failed');
+    }
+
+    if (!result.transaction_id) {
+      console.error('Deposit RPC missing transaction_id:', result);
+      throw new Error('Deposit failed: Transaction was not recorded');
+    }
+
+    console.log(`Deposit completed: $${amount.toFixed(2)}. New balance: $${result.new_balance}`);
+
+    // Fetch and return the transaction
+    const { data: transaction, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', result.transaction_id)
+      .single();
+
+    if (txError || !transaction) {
+      return { 
+        transaction: {
+          id: result.transaction_id,
+          user_id: userId,
+          type: 'deposit',
+          amount: amount,
+          description: description,
+          direction: 'in',
+          created_at: new Date().toISOString()
+        } as Transaction, 
+        paymentId: paymentResult.paymentId 
+      };
+    }
+
+    return { transaction: transaction as Transaction, paymentId: paymentResult.paymentId };
   }
 
   /**
@@ -477,6 +563,7 @@ export class WalletService {
    * - Testing
    * - Promotional credits
    * 
+   * Uses atomic RPC function for transaction safety.
    * In production, use addFundsViaBlinkPay for real deposits
    */
   static async addFunds(userId: string, amount: number): Promise<Transaction> {
@@ -484,22 +571,58 @@ export class WalletService {
       throw new Error('Amount must be greater than zero');
     }
 
-    // Get fresh balance
-    const currentBalance = await this.getCurrentBalance(userId);
-    const newBalance = currentBalance + amount;
+    const description = 'Credit added to wallet';
 
-    await this.updateBalance(userId, newBalance, 'admin deposit');
+    // Use atomic RPC function
+    const { data: result, error: rpcError } = await supabase.rpc('process_deposit', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_description: description
+    });
 
-    const transaction = await this.logTransaction(
-      userId,
-      'deposit',
-      amount,
-      'Credit added to wallet',
-      'in'
-    );
+    if (rpcError) {
+      console.error('Admin deposit RPC error:', rpcError);
+      throw new Error(`Deposit failed: ${rpcError.message}`);
+    }
 
-    console.log(`Admin deposit: $${amount.toFixed(2)} to user ${userId}. New balance: $${newBalance.toFixed(2)}`);
-    return transaction;
+    // Validate RPC result - must have success flag and transaction_id
+    if (!result || typeof result !== 'object') {
+      console.error('Admin deposit RPC returned invalid result:', result);
+      throw new Error('Deposit failed: Invalid response from server');
+    }
+
+    if (!result.success) {
+      console.error('Admin deposit failed:', result.error);
+      throw new Error(result.error || 'Deposit failed');
+    }
+
+    if (!result.transaction_id) {
+      console.error('Admin deposit RPC missing transaction_id:', result);
+      throw new Error('Deposit failed: Transaction was not recorded');
+    }
+
+    console.log(`Admin deposit: $${amount.toFixed(2)} to user ${userId}. New balance: $${result.new_balance}`);
+
+    // Fetch and return the transaction
+    const { data: transaction, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', result.transaction_id)
+      .single();
+
+    if (txError || !transaction) {
+      return {
+        id: result.transaction_id,
+        user_id: userId,
+        type: 'deposit',
+        amount: amount,
+        description: description,
+        direction: 'in',
+        created_at: new Date().toISOString()
+      } as Transaction;
+    }
+
+    return transaction as Transaction;
   }
 
   /**
@@ -566,7 +689,10 @@ export class WalletService {
   /**
    * WITHDRAW FUNDS WITH TYPE (Fast or Normal)
    * 
-   * Fast Transfer: 2% fee, arrives in minutes to hours
+   * Uses atomic RPC function to ensure transaction is logged and balance is updated together.
+   * If either operation fails, the entire withdrawal is rolled back.
+   * 
+   * Fast Transfer: 2% fee INCLUDED in amount (not added on top), arrives in minutes to hours
    * Normal Transfer: Free, arrives in 3-5 business days
    */
   static async withdrawWithType(
@@ -595,13 +721,12 @@ export class WalletService {
     const feeRate = withdrawalType === 'fast' ? 0.02 : 0;
     const feeAmount = amount * feeRate;
     const netAmount = amount - feeAmount; // Amount user actually receives in bank
-    const totalDeduction = amount; // Wallet is deducted exactly what user entered
 
     // Get fresh balance and check BEFORE any operations
     const currentBalance = await this.getCurrentBalance(userId);
     
-    // Validate total deduction against current balance
-    if (currentBalance < totalDeduction) {
+    // Validate against current balance
+    if (currentBalance < amount) {
       throw new Error(`Insufficient balance. You can withdraw up to $${currentBalance.toFixed(2)}.`);
     }
 
@@ -613,10 +738,9 @@ export class WalletService {
 
     // Calculate estimated arrival
     const now = new Date();
-    let estimatedArrival: string;
+    let estimatedArrival: Date;
     if (withdrawalType === 'fast') {
-      const arrivalTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours
-      estimatedArrival = arrivalTime.toISOString();
+      estimatedArrival = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours
     } else {
       const businessDays = 5;
       let daysToAdd = 0;
@@ -629,40 +753,68 @@ export class WalletService {
           addedDays++;
         }
       }
-      const arrivalDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-      estimatedArrival = arrivalDate.toISOString();
+      estimatedArrival = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
     }
 
-    console.log(`Processing ${withdrawalType} withdrawal: wallet deducted $${amount.toFixed(2)}, fee $${feeAmount.toFixed(2)}, user receives $${netAmount.toFixed(2)}`);
+    console.log(`Processing ${withdrawalType} withdrawal via atomic RPC: wallet deducted $${amount.toFixed(2)}, fee $${feeAmount.toFixed(2)}, user receives $${netAmount.toFixed(2)}`);
 
-    // Deduct the withdrawal amount from wallet (fee is included, not added on top)
-    const newBalance = currentBalance - totalDeduction;
-    await this.updateBalance(userId, newBalance, `${withdrawalType} withdrawal`);
+    // Use atomic RPC function - this ensures transaction is logged AND balance updated together
+    // If either fails, both are rolled back
+    const { data: result, error: rpcError } = await supabase.rpc('process_withdrawal', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_withdrawal_type: withdrawalType,
+      p_fee_amount: feeAmount,
+      p_net_amount: netAmount,
+      p_estimated_arrival: estimatedArrival.toISOString()
+    });
 
-    // Log the withdrawal transaction with metadata using the centralized logTransaction method
-    const description = withdrawalType === 'fast' 
-      ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)}, You receive: $${netAmount.toFixed(2)})`
-      : 'Standard withdrawal to bank';
+    if (rpcError) {
+      console.error('Withdrawal RPC error:', rpcError);
+      throw new Error(`Withdrawal failed: ${rpcError.message}`);
+    }
 
-    const transaction = await this.logTransaction(
-      userId,
-      'withdrawal',
-      totalDeduction,
-      description,
-      'out',
-      undefined,
-      {
-        withdrawal_type: withdrawalType,
-        fee_amount: feeAmount,
-        net_amount: netAmount, // What user actually receives in their bank
-        estimated_arrival: estimatedArrival,
-        status: 'pending'
-      }
-    );
+    // Validate RPC result - must have success flag and transaction_id
+    if (!result || typeof result !== 'object') {
+      console.error('Withdrawal RPC returned invalid result:', result);
+      throw new Error('Withdrawal failed: Invalid response from server');
+    }
 
-    console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal initiated: wallet deducted $${amount.toFixed(2)}, user receives $${netAmount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
+    if (!result.success) {
+      console.error('Withdrawal failed:', result.error);
+      throw new Error(result.error || 'Withdrawal failed');
+    }
+
+    if (!result.transaction_id) {
+      console.error('Withdrawal RPC missing transaction_id:', result);
+      throw new Error('Withdrawal failed: Transaction was not recorded');
+    }
+
+    console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal completed atomically: wallet deducted $${amount.toFixed(2)}, user receives $${netAmount.toFixed(2)}. New balance: $${result.new_balance}`);
     
-    return transaction;
+    // Fetch and return the transaction
+    const { data: transaction, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', result.transaction_id)
+      .single();
+
+    if (txError || !transaction) {
+      // Transaction was created, just can't fetch it - return a constructed object
+      return {
+        id: result.transaction_id,
+        user_id: userId,
+        type: 'withdrawal',
+        amount: amount,
+        description: withdrawalType === 'fast' 
+          ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)}, You receive: $${netAmount.toFixed(2)})`
+          : 'Standard withdrawal to bank',
+        direction: 'out',
+        created_at: new Date().toISOString()
+      } as Transaction;
+    }
+
+    return transaction as Transaction;
   }
 
   /**
