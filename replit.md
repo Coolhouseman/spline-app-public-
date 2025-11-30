@@ -79,6 +79,25 @@ Preferred communication style: Simple, everyday language.
   - Maximum 3 withdrawals per day
   - Prevents fund cycling/money laundering attempts
 - **Transaction Metadata**: Withdrawal transactions store type, fee amount, net amount (what user receives), estimated arrival, and status in a JSONB metadata field.
+- **BlinkPay Fee Absorption**: When users pay splits from their bank, BlinkPay charges 0.1% fee. This fee is absorbed by the company - the split creator receives the full amount shown in UI.
+
+### Wallet Race Condition Protection (Atomic RPC Functions)
+All wallet balance changes use PostgreSQL RPC functions with `FOR UPDATE` row locks:
+- **`process_deposit`**: Atomically adds funds + logs transaction. Creates wallet if needed.
+- **`process_withdrawal`**: Atomically deducts funds + logs transaction. Validates sufficient balance.
+- **`credit_recipient_wallet`**: Atomically credits split payment recipient + logs transaction. Creates wallet if needed.
+- **`log_transaction_rpc`**: Standalone transaction logging with validation.
+
+These functions ensure:
+1. Row-level locking prevents concurrent modifications
+2. Balance update and transaction log happen together or not at all
+3. Automatic rollback on any failure
+4. No "half-completed" states possible
+
+### Future Admin Dashboard (Deferred)
+To be built later:
+1. **BlinkPay Fee Tracking**: Per-transaction fees + running totals for business accounting
+2. **Cushion/Buffer Modeling**: Scenario analysis for withdrawal coverage requirements
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.
