@@ -94,10 +94,18 @@ These functions ensure:
 3. Automatic rollback on any failure
 4. No "half-completed" states possible
 
-### Future Admin Dashboard (Deferred)
-To be built later:
-1. **BlinkPay Fee Tracking**: Per-transaction fees + running totals for business accounting
-2. **Cushion/Buffer Modeling**: Scenario analysis for withdrawal coverage requirements
+### Admin Dashboard
+- **URL**: https://vhicohutiocnfjwsofhy.supabase.co/functions/v1/admin-dashboard
+- **Deployment**: Supabase Edge Function (separate from mobile app, always accessible)
+- **Authentication**: Supabase Auth with admin_roles table verification
+- **Features**:
+  - Financial KPIs: Total liabilities, deposits, withdrawals, active wallets
+  - BlinkPay fee tracking and fast withdrawal revenue
+  - Buffer/Cushion analysis with 7-day and 30-day projections
+  - Transaction history with filtering and pagination
+  - Admin user management (super_admin can add/remove admins)
+- **Edge Function Location**: `supabase/functions/admin-dashboard/index.ts`
+- **Admin Access**: Users must exist in both Supabase Auth AND admin_roles table
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.
