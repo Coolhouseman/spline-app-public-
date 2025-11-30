@@ -98,6 +98,7 @@ These functions ensure:
 - **URL**: https://vhicohutiocnfjwsofhy.supabase.co/functions/v1/admin-dashboard
 - **Deployment**: Supabase Edge Function (separate from mobile app, always accessible)
 - **Authentication**: Supabase Auth with admin_roles table verification
+- **Default Admin**: admin@spline.nz (super_admin)
 - **Features**:
   - Financial KPIs: Total liabilities, deposits, withdrawals, active wallets
   - BlinkPay fee tracking and fast withdrawal revenue
@@ -106,6 +107,8 @@ These functions ensure:
   - Admin user management (super_admin can add/remove admins)
 - **Edge Function Location**: `supabase/functions/admin-dashboard/index.ts`
 - **Admin Access**: Users must exist in both Supabase Auth AND admin_roles table
+- **Data Access**: Uses direct PostgreSQL connection (SUPABASE_DB_URL) for reliable data queries
+- **Admin Setup**: Admin users are managed via Supabase Auth admin API and the admin_roles table (no public setup endpoint for security)
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.

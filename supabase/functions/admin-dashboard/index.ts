@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Client } from "https://deno.land/x/postgres@v0.19.3/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,10 +9,85 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const databaseUrl = Deno.env.get("SUPABASE_DB_URL") ?? "";
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
+
+async function runQuery(query: string, params: any[] = []): Promise<{ rows: any[]; error: string | null }> {
+  const client = new Client(databaseUrl);
+  try {
+    await client.connect();
+    const result = await client.queryObject(query, params);
+    return { rows: result.rows as any[], error: null };
+  } catch (err) {
+    return { rows: [], error: err instanceof Error ? err.message : "Database error" };
+  } finally {
+    try { await client.end(); } catch {}
+  }
+}
+
+let dbInitialized = false;
+
+async function initializeDatabase(): Promise<void> {
+  if (dbInitialized) return;
+  
+  const client = new Client(databaseUrl);
+  try {
+    await client.connect();
+    
+    await client.queryObject(`
+      CREATE TABLE IF NOT EXISTS public.admin_roles (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        name VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        created_by VARCHAR(255)
+      )
+    `);
+    
+    await client.queryObject(`
+      INSERT INTO public.admin_roles (email, role, name, created_by)
+      VALUES ('admin@spline.nz', 'super_admin', 'System Admin', 'system')
+      ON CONFLICT (email) DO NOTHING
+    `);
+    
+    console.log("Database initialized successfully");
+    dbInitialized = true;
+  } catch (err) {
+    console.error("Database init error:", err);
+  } finally {
+    try { await client.end(); } catch {}
+  }
+}
+
+
+async function callRpc(functionName: string, params: Record<string, any> = {}): Promise<{ data: any; error: string | null }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { data: null, error: errorText };
+    }
+    
+    const data = await response.json();
+    return { data, error: null };
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
 
 async function verifyAdmin(authHeader: string | null): Promise<{ user: any; error: string | null }> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -25,16 +101,18 @@ async function verifyAdmin(authHeader: string | null): Promise<{ user: any; erro
     return { user: null, error: "Invalid token" };
   }
 
-  const { data: adminRole } = await supabaseAdmin
-    .from("admin_roles")
-    .select("*")
-    .eq("email", userData.user.email)
-    .single();
+  await initializeDatabase();
 
-  if (!adminRole) {
+  const { rows, error: dbError } = await runQuery(
+    "SELECT id, email, role, name FROM public.admin_roles WHERE email = LOWER($1)",
+    [userData.user.email]
+  );
+
+  if (dbError || rows.length === 0) {
     return { user: null, error: "Not an admin" };
   }
 
+  const adminRole = rows[0];
   return { user: { ...userData.user, role: adminRole.role, name: adminRole.name }, error: null };
 }
 
@@ -48,18 +126,21 @@ async function handleLogin(body: any): Promise<Response> {
     });
   }
 
-  const { data: adminRole } = await supabaseAdmin
-    .from("admin_roles")
-    .select("*")
-    .eq("email", email.toLowerCase())
-    .single();
+  await initializeDatabase();
 
-  if (!adminRole) {
+  const { rows, error: dbError } = await runQuery(
+    "SELECT id, email, role, name FROM public.admin_roles WHERE email = LOWER($1)",
+    [email]
+  );
+
+  if (dbError || rows.length === 0) {
     return new Response(JSON.stringify({ success: false, error: "Not authorized as admin" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
+
+  const adminRole = rows[0];
 
   const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
     email,
@@ -119,17 +200,36 @@ async function handleMetrics(authHeader: string | null): Promise<Response> {
     });
   }
 
-  const { data, error: rpcError } = await supabaseAdmin.rpc("get_admin_dashboard_metrics");
-  if (rpcError) {
-    return new Response(JSON.stringify({ error: rpcError.message }), {
+  try {
+    const { rows: liabilityRows } = await runQuery(`SELECT COALESCE(SUM(balance), 0) as total FROM wallets`);
+    const { rows: depositRows } = await runQuery(`SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'deposit'`);
+    const { rows: withdrawalRows } = await runQuery(`SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'withdrawal'`);
+    const { rows: walletRows } = await runQuery(`SELECT COUNT(*) as count FROM wallets WHERE balance > 0`);
+    const { rows: blinkFeeRows } = await runQuery(`SELECT COALESCE(SUM((metadata->>'blinkpay_fee')::numeric), 0) as total FROM transactions WHERE type = 'deposit' AND metadata->>'blinkpay_fee' IS NOT NULL`);
+    const { rows: fastWithdrawalRows } = await runQuery(`SELECT COALESCE(SUM((metadata->>'fee_amount')::numeric), 0) as total FROM transactions WHERE type = 'withdrawal' AND metadata->>'withdrawal_type' = 'fast'`);
+    const { rows: normalWithdrawalRows } = await runQuery(`SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'withdrawal' AND (metadata->>'withdrawal_type' IS NULL OR metadata->>'withdrawal_type' = 'normal')`);
+    const { rows: fastWithdrawalCountRows } = await runQuery(`SELECT COALESCE(SUM((metadata->>'net_amount')::numeric), 0) as total FROM transactions WHERE type = 'withdrawal' AND metadata->>'withdrawal_type' = 'fast'`);
+
+    const metrics = {
+      total_liabilities: parseFloat(liabilityRows[0]?.total || '0'),
+      total_deposits: parseFloat(depositRows[0]?.total || '0'),
+      total_withdrawals: parseFloat(withdrawalRows[0]?.total || '0'),
+      active_wallets: parseInt(walletRows[0]?.count || '0'),
+      blinkpay_fees_absorbed: parseFloat(blinkFeeRows[0]?.total || '0'),
+      fast_withdrawal_revenue: parseFloat(fastWithdrawalRows[0]?.total || '0'),
+      normal_withdrawals: parseFloat(normalWithdrawalRows[0]?.total || '0'),
+      fast_withdrawals: parseFloat(fastWithdrawalCountRows[0]?.total || '0')
+    };
+
+    return new Response(JSON.stringify(metrics), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to fetch metrics" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify(data || {}), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleBuffer(authHeader: string | null): Promise<Response> {
@@ -141,17 +241,52 @@ async function handleBuffer(authHeader: string | null): Promise<Response> {
     });
   }
 
-  const { data, error: rpcError } = await supabaseAdmin.rpc("get_buffer_analysis");
-  if (rpcError) {
-    return new Response(JSON.stringify({ error: rpcError.message }), {
+  try {
+    const { rows: liabilityRows } = await runQuery(`SELECT COALESCE(SUM(balance), 0) as total FROM wallets`);
+    const { rows: revenueRows } = await runQuery(`SELECT COALESCE(SUM((metadata->>'fee_amount')::numeric), 0) as total FROM transactions WHERE type = 'withdrawal' AND metadata->>'withdrawal_type' = 'fast'`);
+    
+    const { rows: avgDaily7Rows } = await runQuery(`
+      SELECT COALESCE(AVG(daily_total), 0) as avg FROM (
+        SELECT DATE(created_at) as day, SUM(amount) as daily_total 
+        FROM transactions 
+        WHERE type = 'withdrawal' AND created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY DATE(created_at)
+      ) daily
+    `);
+    
+    const { rows: avgDaily30Rows } = await runQuery(`
+      SELECT COALESCE(AVG(daily_total), 0) as avg FROM (
+        SELECT DATE(created_at) as day, SUM(amount) as daily_total 
+        FROM transactions 
+        WHERE type = 'withdrawal' AND created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(created_at)
+      ) daily
+    `);
+
+    const totalLiabilities = parseFloat(liabilityRows[0]?.total || '0');
+    const totalRevenue = parseFloat(revenueRows[0]?.total || '0');
+    const avgDailyWithdrawals7 = parseFloat(avgDaily7Rows[0]?.avg || '0');
+    const avgDailyWithdrawals30 = parseFloat(avgDaily30Rows[0]?.avg || '0');
+
+    const bufferData = {
+      current_buffer: totalRevenue,
+      total_liabilities: totalLiabilities,
+      buffer_ratio: totalLiabilities > 0 ? (totalRevenue / totalLiabilities) * 100 : 0,
+      avg_daily_withdrawals_7d: avgDailyWithdrawals7,
+      avg_daily_withdrawals_30d: avgDailyWithdrawals30,
+      days_of_runway_7d: avgDailyWithdrawals7 > 0 ? totalRevenue / avgDailyWithdrawals7 : 0,
+      days_of_runway_30d: avgDailyWithdrawals30 > 0 ? totalRevenue / avgDailyWithdrawals30 : 0
+    };
+
+    return new Response(JSON.stringify(bufferData), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to fetch buffer data" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify(data || {}), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleTrends(authHeader: string | null): Promise<Response> {
@@ -163,17 +298,35 @@ async function handleTrends(authHeader: string | null): Promise<Response> {
     });
   }
 
-  const { data, error: rpcError } = await supabaseAdmin.rpc("get_transaction_trends");
-  if (rpcError) {
-    return new Response(JSON.stringify({ error: rpcError.message }), {
+  try {
+    const { rows } = await runQuery(`
+      SELECT 
+        DATE(created_at) as date,
+        type,
+        COUNT(*) as count,
+        COALESCE(SUM(amount), 0) as total
+      FROM transactions
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(created_at), type
+      ORDER BY date DESC
+    `);
+
+    const trends = rows.map(row => ({
+      date: row.date,
+      type: row.type,
+      count: parseInt(row.count || '0'),
+      total: parseFloat(row.total || '0')
+    }));
+
+    return new Response(JSON.stringify(trends), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to fetch trends" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify(data || []), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleTransactions(authHeader: string | null, url: URL): Promise<Response> {
@@ -185,31 +338,45 @@ async function handleTransactions(authHeader: string | null, url: URL): Promise<
     });
   }
 
-  const type = url.searchParams.get("type") || null;
-  const limit = parseInt(url.searchParams.get("limit") || "50");
-  const offset = parseInt(url.searchParams.get("offset") || "0");
+  try {
+    const type = url.searchParams.get("type") || null;
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50"), 1), 100);
+    const offset = Math.max(parseInt(url.searchParams.get("offset") || "0"), 0);
 
-  let query = supabaseAdmin
-    .from("wallet_transactions")
-    .select("*, users!wallet_transactions_user_id_fkey(email, first_name, last_name)", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    let countQuery = "SELECT COUNT(*) as total FROM transactions";
+    let dataQuery = `SELECT id, user_id, type, amount, description, metadata, created_at FROM transactions`;
+    const params: any[] = [];
+    
+    if (type) {
+      countQuery += " WHERE type = $1";
+      dataQuery += " WHERE type = $1";
+      params.push(type);
+    }
 
-  if (type) {
-    query = query.eq("type", type);
-  }
+    dataQuery += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
 
-  const { data, count, error: queryError } = await query;
-  if (queryError) {
-    return new Response(JSON.stringify({ error: queryError.message }), {
+    const { rows: countRows } = await runQuery(countQuery, params);
+    const { rows, error: dataError } = await runQuery(dataQuery, params);
+
+    if (dataError) {
+      return new Response(JSON.stringify({ error: dataError }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    return new Response(JSON.stringify({
+      transactions: rows,
+      total: parseInt(countRows[0]?.total || '0')
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to fetch transactions" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify({ transactions: data || [], total: count || 0 }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleAdmins(authHeader: string | null): Promise<Response> {
@@ -221,21 +388,22 @@ async function handleAdmins(authHeader: string | null): Promise<Response> {
     });
   }
 
-  const { data, error: queryError } = await supabaseAdmin
-    .from("admin_roles")
-    .select("*")
-    .order("created_at", { ascending: false });
+  try {
+    const { rows } = await runQuery(`
+      SELECT id, email, role, name, created_at, created_by
+      FROM admin_roles
+      ORDER BY created_at DESC
+    `);
 
-  if (queryError) {
-    return new Response(JSON.stringify({ error: queryError.message }), {
+    return new Response(JSON.stringify(rows), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to fetch admins" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify(data || []), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleAddAdmin(authHeader: string | null, body: any): Promise<Response> {
@@ -255,20 +423,34 @@ async function handleAddAdmin(authHeader: string | null, body: any): Promise<Res
     });
   }
 
-  const { error: insertError } = await supabaseAdmin
-    .from("admin_roles")
-    .insert({ email: email.toLowerCase(), name: name || null, role: "admin" });
+  try {
+    const { rows: existing } = await runQuery(
+      `SELECT id FROM admin_roles WHERE email = LOWER($1)`,
+      [email]
+    );
 
-  if (insertError) {
-    return new Response(JSON.stringify({ error: insertError.message }), {
+    if (existing.length > 0) {
+      return new Response(JSON.stringify({ error: "Admin already exists" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    await runQuery(
+      `INSERT INTO admin_roles (email, role, name, created_by)
+       VALUES (LOWER($1), 'admin', $2, $3)`,
+      [email, name || null, user.email]
+    );
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to add admin" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify({ success: true }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 async function handleRemoveAdmin(authHeader: string | null, body: any): Promise<Response> {
@@ -288,21 +470,40 @@ async function handleRemoveAdmin(authHeader: string | null, body: any): Promise<
     });
   }
 
-  const { error: deleteError } = await supabaseAdmin
-    .from("admin_roles")
-    .delete()
-    .eq("email", email.toLowerCase());
+  try {
+    const { rows: existing } = await runQuery(
+      `SELECT id, role FROM admin_roles WHERE email = LOWER($1)`,
+      [email]
+    );
 
-  if (deleteError) {
-    return new Response(JSON.stringify({ error: deleteError.message }), {
+    if (existing.length === 0) {
+      return new Response(JSON.stringify({ error: "Admin not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    if (existing[0].role === 'super_admin') {
+      return new Response(JSON.stringify({ error: "Cannot remove super admin" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    await runQuery(
+      `DELETE FROM admin_roles WHERE email = LOWER($1)`,
+      [email]
+    );
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to remove admin" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-
-  return new Response(JSON.stringify({ success: true }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 }
 
 function getAdminDashboardHTML(): string {
