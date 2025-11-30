@@ -138,3 +138,4 @@ value = "0"
 
 [userenv.shared]
 EXPO_NO_CAPABILITY_SYNC = "1"
+EXPO_PUBLIC_BACKEND_URL = "https://2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev"

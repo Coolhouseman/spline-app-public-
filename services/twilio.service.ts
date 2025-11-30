@@ -3,7 +3,25 @@ import { Platform } from 'react-native';
 
 const getBackendUrl = (): string => {
   const extra = Constants.expoConfig?.extra || {};
-  return extra.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8082';
+  
+  if (extra.backendUrl) {
+    return extra.backendUrl;
+  }
+  
+  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
+    return process.env.EXPO_PUBLIC_BACKEND_URL;
+  }
+  
+  if (Platform.OS === 'web') {
+    return window.location.origin.replace(':5000', ':8082');
+  }
+  
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN || Constants.expoConfig?.hostUri?.split(':')[0];
+  if (replitDomain) {
+    return `https://${replitDomain}`.replace(':8081', '');
+  }
+  
+  return 'http://localhost:8082';
 };
 
 export interface SendOTPResult {
