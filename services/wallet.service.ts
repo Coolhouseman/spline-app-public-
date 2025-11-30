@@ -783,35 +783,47 @@ export class WalletService {
 
     // STEP 3: Credit recipient's wallet (ledger adjustment)
     // This always happens - recipient gets full amount added to their ledger
+    // Use RPC function to bypass RLS (one user can't create/update another's wallet directly)
     
-    // Ensure recipient has a wallet - create one if they don't
-    const { data: existingRecipientWallet } = await supabase
-      .from('wallets')
-      .select('id, balance')
-      .eq('user_id', recipientId)
-      .single();
+    const { data: creditResult, error: creditError } = await supabase.rpc('credit_recipient_wallet', {
+      p_recipient_id: recipientId,
+      p_amount: amount
+    });
 
-    if (!existingRecipientWallet) {
-      // Create wallet for recipient with the payment amount
-      const { error: createError } = await supabase
+    if (creditError) {
+      console.error('Failed to credit recipient wallet via RPC:', creditError);
+      
+      // Fallback: Try direct approach (will work if RLS allows it)
+      const { data: existingRecipientWallet } = await supabase
         .from('wallets')
-        .insert({
-          user_id: recipientId,
-          balance: amount,
-          bank_connected: false
-        });
+        .select('id, balance')
+        .eq('user_id', recipientId)
+        .single();
 
-      if (createError) {
-        console.error('Failed to create recipient wallet:', createError);
-        throw new Error('Failed to credit payment to recipient');
+      if (!existingRecipientWallet) {
+        // Try to create wallet for recipient
+        const { error: createError } = await supabase
+          .from('wallets')
+          .insert({
+            user_id: recipientId,
+            balance: amount,
+            bank_connected: false
+          });
+
+        if (createError) {
+          console.error('Fallback: Failed to create recipient wallet:', createError);
+          throw new Error('Failed to credit payment to recipient');
+        }
+        console.log(`Created wallet for recipient and credited $${amount.toFixed(2)}. New balance: $${amount.toFixed(2)}`);
+      } else {
+        // Update existing wallet balance
+        const recipientBalance = parseFloat(existingRecipientWallet.balance?.toString() || '0');
+        const newRecipientBalance = recipientBalance + amount;
+        await this.updateBalance(recipientId, newRecipientBalance, 'split received');
+        console.log(`Credited $${amount.toFixed(2)} to recipient wallet. New balance: $${newRecipientBalance.toFixed(2)}`);
       }
-      console.log(`Created wallet for recipient and credited $${amount.toFixed(2)}. New balance: $${amount.toFixed(2)}`);
     } else {
-      // Update existing wallet balance
-      const recipientBalance = parseFloat(existingRecipientWallet.balance?.toString() || '0');
-      const newRecipientBalance = recipientBalance + amount;
-      await this.updateBalance(recipientId, newRecipientBalance, 'split received');
-      console.log(`Credited $${amount.toFixed(2)} to recipient wallet. New balance: $${newRecipientBalance.toFixed(2)}`);
+      console.log(`Credited $${amount.toFixed(2)} to recipient wallet via RPC. New balance: $${creditResult?.new_balance?.toFixed(2) || 'unknown'}`);
     }
 
     // Log recipient's incoming transaction
