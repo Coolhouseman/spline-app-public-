@@ -1,23 +1,73 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { TwilioService } from '@/services/twilio.service';
 
 type Props = NativeStackScreenProps<any, 'SignupPhone'>;
 
 export default function SignupPhoneScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const params = route.params as { firstName: string; lastName: string; email: string; password: string };
 
-  const handleContinue = () => {
-    if (phone.trim().length >= 10) {
-      navigation.navigate('SignupDOB', { ...params, phone });
+  const formatPhoneDisplay = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits;
+  };
+
+  const handlePhoneChange = (text: string) => {
+    const formatted = formatPhoneDisplay(text);
+    setPhone(formatted);
+    if (error) setError('');
+  };
+
+  const getFullPhoneNumber = () => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+      return '+64' + cleaned.substring(1);
     }
+    return '+64' + cleaned;
+  };
+
+  const isValidPhone = () => {
+    const cleaned = phone.replace(/\D/g, '');
+    return cleaned.length >= 8 && cleaned.length <= 11;
+  };
+
+  const handleContinue = async () => {
+    if (!isValidPhone()) {
+      setError('Please enter a valid phone number');
+      return;
+    }
+
+    const fullPhone = getFullPhoneNumber();
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await TwilioService.sendOTP(fullPhone);
+
+      if (result.success) {
+        navigation.navigate('SignupPhoneOTP', { ...params, phone: fullPhone });
+      } else {
+        setError(result.error || 'Failed to send verification code');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkip = () => {
+    navigation.navigate('SignupDOB', { ...params, phone: '' });
   };
 
   return (
@@ -27,23 +77,48 @@ export default function SignupPhoneScreen({ navigation, route }: Props) {
           Step 5 of 8
         </ThemedText>
 
-        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.xl }]}>
+        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.md }]}>
           What's your phone number?
         </ThemedText>
 
-        <TextInput
-          style={[styles.input, { 
+        <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.xl }]}>
+          We'll send you a verification code via SMS
+        </ThemedText>
+
+        <View style={styles.phoneInputContainer}>
+          <View style={[styles.prefixContainer, { 
             backgroundColor: theme.surface, 
-            color: theme.text, 
-            borderColor: theme.border 
-          }]}
-          placeholder="Phone number"
-          placeholderTextColor={theme.textSecondary}
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          autoFocus
-        />
+            borderColor: error ? Colors.light.danger : theme.border 
+          }]}>
+            <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+              +64
+            </ThemedText>
+          </View>
+          <TextInput
+            style={[styles.phoneInput, { 
+              backgroundColor: theme.surface, 
+              color: theme.text, 
+              borderColor: error ? Colors.light.danger : theme.border 
+            }]}
+            placeholder="21 123 4567"
+            placeholderTextColor={theme.textSecondary}
+            value={phone}
+            onChangeText={handlePhoneChange}
+            keyboardType="phone-pad"
+            autoFocus
+            maxLength={11}
+          />
+        </View>
+
+        {error ? (
+          <ThemedText style={[Typography.caption, { color: Colors.light.danger, marginTop: Spacing.sm }]}>
+            {error}
+          </ThemedText>
+        ) : null}
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.md }]}>
+          Standard SMS rates may apply
+        </ThemedText>
       </ThemedView>
 
       <View style={styles.footer}>
@@ -52,14 +127,27 @@ export default function SignupPhoneScreen({ navigation, route }: Props) {
             styles.button,
             { 
               backgroundColor: theme.primary, 
-              opacity: pressed ? 0.7 : (phone.trim().length < 10 ? 0.4 : 1)
+              opacity: pressed || loading ? 0.7 : (isValidPhone() ? 1 : 0.4)
             }
           ]}
           onPress={handleContinue}
-          disabled={phone.trim().length < 10}
+          disabled={!isValidPhone() || loading}
         >
-          <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
-            Continue
+          {loading ? (
+            <ActivityIndicator color={Colors.light.buttonText} />
+          ) : (
+            <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
+              Send Verification Code
+            </ThemedText>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={styles.skipButton}
+          onPress={handleSkip}
+        >
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            Skip for now
           </ThemedText>
         </Pressable>
       </View>
@@ -76,7 +164,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.xl,
   },
-  input: {
+  phoneInputContainer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  prefixContainer: {
+    height: Spacing.inputHeight,
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phoneInput: {
+    flex: 1,
     height: Spacing.inputHeight,
     borderWidth: 1,
     borderRadius: BorderRadius.xs,
@@ -92,5 +193,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  skipButton: {
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
 });

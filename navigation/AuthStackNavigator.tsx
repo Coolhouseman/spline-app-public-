@@ -3,11 +3,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import WelcomeScreen from '@/screens/WelcomeScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
 import SignupFirstNameScreen from '@/screens/SignupFirstNameScreen';
 import SignupLastNameScreen from '@/screens/SignupLastNameScreen';
 import SignupEmailScreen from '@/screens/SignupEmailScreen';
 import SignupPasswordScreen from '@/screens/SignupPasswordScreen';
 import SignupPhoneScreen from '@/screens/SignupPhoneScreen';
+import SignupPhoneOTPScreen from '@/screens/SignupPhoneOTPScreen';
 import SignupDOBScreen from '@/screens/SignupDOBScreen';
 import SignupProfilePictureScreen from '@/screens/SignupProfilePictureScreen';
 import SignupBioScreen from '@/screens/SignupBioScreen';
@@ -37,6 +39,15 @@ export default function AuthStackNavigator() {
       <Stack.Screen 
         name="ForgotPassword" 
         component={ForgotPasswordScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="ResetPassword" 
+        component={ResetPasswordScreen}
         options={{ 
           headerTransparent: true,
           headerTitle: '',
@@ -82,6 +93,15 @@ export default function AuthStackNavigator() {
       <Stack.Screen 
         name="SignupPhone" 
         component={SignupPhoneScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SignupPhoneOTP" 
+        component={SignupPhoneOTPScreen}
         options={{ 
           headerTransparent: true,
           headerTitle: '',

@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
+import twilioRouter from './routes/twilio.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 
 dotenv.config();
@@ -19,6 +20,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/blinkpay', blinkpayRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/twilio', twilioRouter);
 
 app.post('/api/reminders/send-now', async (req, res) => {
   try {

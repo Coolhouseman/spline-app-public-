@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '@/services/supabase';
+import * as Linking from 'expo-linking';
 
 type Props = NativeStackScreenProps<any, 'ForgotPassword'>;
 
@@ -17,6 +18,14 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+
+  const getRedirectUrl = (): string => {
+    if (Platform.OS === 'web') {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      return `${origin}/reset-password`;
+    }
+    return Linking.createURL('reset-password');
+  };
 
   const handleResetPassword = async () => {
     setError('');
@@ -34,8 +43,11 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
     setLoading(true);
     try {
+      const redirectUrl = getRedirectUrl();
+      console.log('Password reset redirect URL:', redirectUrl);
+      
       const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: undefined,
+        redirectTo: redirectUrl,
       });
 
       if (supabaseError) {
@@ -126,7 +138,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           style={[styles.input, { 
             backgroundColor: theme.surface, 
             color: theme.text, 
-            borderColor: error ? Colors.light.error : theme.border,
+            borderColor: error ? Colors.light.danger : theme.border,
             marginTop: Spacing['2xl']
           }]}
           placeholder="Email address"
@@ -143,7 +155,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
         />
 
         {error ? (
-          <ThemedText style={[Typography.caption, { color: Colors.light.error, marginTop: Spacing.sm }]}>
+          <ThemedText style={[Typography.caption, { color: Colors.light.danger, marginTop: Spacing.sm }]}>
             {error}
           </ThemedText>
         ) : null}

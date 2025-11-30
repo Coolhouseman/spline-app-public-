@@ -70,7 +70,8 @@
     "react-native-svg": "^15.15.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "twilio": "^5.10.6"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
