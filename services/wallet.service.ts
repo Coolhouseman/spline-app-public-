@@ -1008,15 +1008,49 @@ export class WalletService {
   }
 
   /**
+   * REFUND WALLET DEDUCTION
+   * Used to reverse a wallet deduction if the subsequent card payment fails.
+   * This ensures atomicity across the blended wallet+card payment flow.
+   */
+  private static async refundWalletDeduction(
+    userId: string,
+    amount: number,
+    eventName: string,
+    splitEventId: string
+  ): Promise<void> {
+    try {
+      const { data: result, error } = await supabase.rpc('process_deposit', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_description: `Refund: ${eventName} (card payment failed)`
+      });
+
+      if (error) {
+        console.error('Failed to refund wallet deduction:', error);
+        throw new Error(`Critical: Failed to refund wallet after card failure: ${error.message}`);
+      }
+
+      console.log(`Wallet deduction refunded: $${amount.toFixed(2)} returned to user ${userId}`);
+    } catch (err) {
+      console.error('Critical error during wallet refund:', err);
+      throw err;
+    }
+  }
+
+  /**
    * PAY FOR A SPLIT EVENT
    * 
-   * Money Flow:
-   * 1. If payer has wallet balance: deduct from ledger (no real money moves)
-   * 2. If shortfall: charge payer's card via Stripe → money goes to business Stripe account
-   * 3. Credit recipient's ledger balance (they can withdraw later)
+   * Money Flow (COMPENSATING TRANSACTION PATTERN):
+   * 1. Atomically deduct from wallet using process_split_payment RPC (FOR UPDATE lock prevents race conditions)
+   * 2. If shortfall exists: charge payer's card via Stripe
+   * 3. If card charge fails: run compensating transaction to refund wallet (via process_deposit RPC)
+   * 4. Credit recipient's ledger balance (only after all payer charges succeed)
    * 
-   * This is an INTERNAL TRANSFER - money stays in business holding account
-   * Only the ledger balances change
+   * This pattern ensures:
+   * - Wallet balance is locked during the transaction (prevents double-spending)
+   * - If card fails, wallet is restored to original balance
+   * - Recipient is only credited after full payment is confirmed
+   * - No money is ever lost due to partial transaction completion
    */
   static async paySplitEvent(
     userId: string, 
@@ -1042,6 +1076,7 @@ export class WalletService {
     const walletPayment = Math.min(currentBalance, amount);
     const cardPayment = amount - walletPayment;
 
+    // Validate card is available if needed
     if (cardPayment > 0 && (!wallet.bank_connected || !wallet.stripe_customer_id || !wallet.stripe_payment_method_id)) {
       throw new Error(
         `Insufficient wallet balance ($${currentBalance.toFixed(2)}). ` +
@@ -1049,39 +1084,67 @@ export class WalletService {
       );
     }
 
+    // STEP 1: Deduct from payer's wallet FIRST using atomic RPC (prevents race conditions)
+    // This uses FOR UPDATE lock to ensure balance can't change during transaction
+    let walletTransactionId: string | null = null;
+    if (walletPayment > 0) {
+      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment', {
+        p_user_id: userId,
+        p_amount: walletPayment,
+        p_description: `Paid ${eventName} (from wallet)`,
+        p_split_event_id: splitEventId,
+        p_metadata: { split_event_id: splitEventId, payer_id: userId }
+      });
+
+      if (splitError) {
+        console.error('Split payment RPC error:', splitError);
+        throw new Error(`Failed to process wallet deduction: ${splitError.message}`);
+      }
+
+      if (!splitResult || !splitResult.success) {
+        console.error('Split payment failed:', splitResult?.error);
+        throw new Error(splitResult?.error || 'Wallet deduction was declined');
+      }
+
+      walletTransactionId = splitResult.transaction_id;
+      console.log(`Atomic wallet deduction: $${walletPayment.toFixed(2)}. New balance: $${splitResult.new_balance?.toFixed(2)}`);
+    }
+
+    // STEP 2: Charge card for any shortfall (only after wallet deduction succeeds)
     if (cardPayment > 0) {
       console.log(`Processing Stripe charge of $${cardPayment.toFixed(2)} for split ${splitEventId}`);
       
-      const chargeResult = await StripeService.chargeCard(
-        wallet.stripe_customer_id!,
-        wallet.stripe_payment_method_id!,
-        cardPayment,
-        `Split payment: ${eventName}`,
-        { 
-          user_id: userId, 
-          split_event_id: splitEventId,
-          type: 'split_payment'
+      try {
+        const chargeResult = await StripeService.chargeCard(
+          wallet.stripe_customer_id!,
+          wallet.stripe_payment_method_id!,
+          cardPayment,
+          `Split payment: ${eventName}`,
+          { 
+            user_id: userId, 
+            split_event_id: splitEventId,
+            type: 'split_payment'
+          }
+        );
+
+        if (!chargeResult.success) {
+          // Card failed - need to refund the wallet deduction
+          if (walletTransactionId && walletPayment > 0) {
+            console.error('Card payment failed - reversing wallet deduction');
+            await this.refundWalletDeduction(userId, walletPayment, eventName, splitEventId);
+          }
+          throw new Error('Card payment failed. No charges were made.');
         }
-      );
 
-      if (!chargeResult.success) {
-        throw new Error('Card payment failed. No charges were made.');
+        console.log(`Stripe payment confirmed: $${cardPayment.toFixed(2)}`);
+      } catch (cardError) {
+        // Card processing error - refund wallet if we already deducted
+        if (walletTransactionId && walletPayment > 0) {
+          console.error('Card processing error - reversing wallet deduction:', cardError);
+          await this.refundWalletDeduction(userId, walletPayment, eventName, splitEventId);
+        }
+        throw cardError;
       }
-
-      console.log(`Stripe payment confirmed: $${cardPayment.toFixed(2)}`);
-    }
-
-    // STEP 2: Deduct from payer's wallet (ledger adjustment)
-    if (walletPayment > 0) {
-      // Re-verify balance hasn't changed (race condition protection)
-      const verifyBalance = await this.getCurrentBalance(userId);
-      if (verifyBalance < walletPayment) {
-        throw new Error('Balance changed during transaction. Please try again.');
-      }
-
-      const newPayerBalance = verifyBalance - walletPayment;
-      await this.updateBalance(userId, newPayerBalance, 'split payment');
-      console.log(`Deducted $${walletPayment.toFixed(2)} from payer wallet. New balance: $${newPayerBalance.toFixed(2)}`);
     }
 
     // STEP 3: Credit recipient's wallet AND log transaction (ledger adjustment)
@@ -1146,19 +1209,11 @@ export class WalletService {
       console.log(`Credited $${amount.toFixed(2)} to recipient wallet via RPC. New balance: $${creditResult?.new_balance?.toFixed(2) || 'unknown'}`);
     }
 
-    // STEP 4: Log payer's transaction(s)
+    // STEP 4: Log payer's card transaction (if any) - wallet transaction already logged by RPC
     let payerTransaction: Transaction;
 
-    if (walletPayment > 0 && cardPayment > 0) {
-      await this.logTransaction(
-        userId,
-        'split_payment',
-        walletPayment,
-        `Paid ${eventName} (from wallet)`,
-        'out',
-        splitEventId
-      );
-
+    if (cardPayment > 0) {
+      // Log the card payment portion
       payerTransaction = await this.logTransaction(
         userId,
         'split_payment',
@@ -1167,24 +1222,32 @@ export class WalletService {
         'out',
         splitEventId
       );
-    } else if (cardPayment > 0) {
-      payerTransaction = await this.logTransaction(
-        userId,
-        'split_payment',
-        amount,
-        `Paid ${eventName} (from card)`,
-        'out',
-        splitEventId
-      );
+    } else if (walletTransactionId) {
+      // Wallet-only payment - fetch the transaction that was created by the RPC
+      const { data: existingTx } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', walletTransactionId)
+        .single();
+      
+      if (existingTx) {
+        payerTransaction = existingTx as Transaction;
+      } else {
+        // Fallback: create a reference transaction
+        payerTransaction = {
+          id: walletTransactionId,
+          user_id: userId,
+          type: 'split_payment',
+          amount: walletPayment,
+          description: `Paid ${eventName}`,
+          direction: 'out',
+          split_event_id: splitEventId,
+          created_at: new Date().toISOString()
+        } as Transaction;
+      }
     } else {
-      payerTransaction = await this.logTransaction(
-        userId,
-        'split_payment',
-        amount,
-        `Paid ${eventName}`,
-        'out',
-        splitEventId
-      );
+      // Edge case: no payment made (shouldn't happen with valid amount)
+      throw new Error('No payment was processed');
     }
 
     console.log(`Split payment completed: $${amount.toFixed(2)} from ${userId} to ${recipientId}`);

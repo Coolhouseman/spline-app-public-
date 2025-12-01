@@ -123,9 +123,9 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div class="glass-card rounded-xl p-5">
-            <p class="text-sm text-gray-500">BlinkPay Fees Absorbed</p>
-            <p id="metric-blinkpay-fees" class="text-2xl font-bold text-orange-600 mt-1">$0.00</p>
-            <p class="text-xs text-gray-400 mt-1">0.1% of deposits (our cost)</p>
+            <p class="text-sm text-gray-500">Stripe Fees Absorbed</p>
+            <p id="metric-stripe-fees" class="text-2xl font-bold text-orange-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">~2.9% + 30c per transaction (our cost)</p>
           </div>
           <div class="glass-card rounded-xl p-5">
             <p class="text-sm text-gray-500">Fast Withdrawal Revenue</p>
@@ -197,9 +197,9 @@
               <p class="text-xs text-green-500 mt-1">Deposits - Fees - Withdrawals</p>
             </div>
             <div class="bg-orange-50 rounded-lg p-4">
-              <p class="text-xs text-orange-600">BlinkPay Fees Paid</p>
-              <p id="buffer-blinkpay" class="text-xl font-bold text-orange-800">$0.00</p>
-              <p class="text-xs text-orange-500 mt-1">0.1% of all deposits</p>
+              <p class="text-xs text-orange-600">Stripe Fees Paid</p>
+              <p id="buffer-stripe" class="text-xl font-bold text-orange-800">$0.00</p>
+              <p class="text-xs text-orange-500 mt-1">~2.9% + 30c per transaction</p>
             </div>
             <div class="bg-purple-50 rounded-lg p-4">
               <p class="text-xs text-purple-600">Fast Fee Revenue</p>
@@ -232,10 +232,11 @@
           <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
             <h4 class="font-semibold text-yellow-800 mb-2">Understanding the Buffer</h4>
             <ul class="text-sm text-yellow-700 space-y-1">
-              <li>When users deposit $100, BlinkPay charges 0.1% fee, so you receive $99.90</li>
-              <li>User's wallet shows $100, creating a $0.10 buffer requirement</li>
+              <li>When users deposit $100, Stripe charges ~2.9% + 30c (~$3.20), so you receive ~$96.80</li>
+              <li>User's wallet shows $100, creating a $3.20 buffer requirement</li>
               <li>Fast withdrawals (2% fee) help offset this - user deposits $100, withdraws fast, you keep $2</li>
               <li>Normal withdrawals are free - if user withdraws $100, you need full $100 to send</li>
+              <li>Stripe fees are significantly higher than bank transfers - factor this into pricing</li>
             </ul>
           </div>
         </div>
@@ -281,7 +282,7 @@
                   <th class="pb-3 pr-4">User</th>
                   <th class="pb-3 pr-4">Type</th>
                   <th class="pb-3 pr-4">Amount</th>
-                  <th class="pb-3 pr-4">BlinkPay Fee</th>
+                  <th class="pb-3 pr-4">Stripe Fee</th>
                   <th class="pb-3 pr-4">Fast Fee</th>
                   <th class="pb-3">Description</th>
                 </tr>
@@ -394,9 +395,9 @@
           <h3 class="font-semibold text-gray-800 mb-4">Fee Configuration</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-50 rounded-lg p-4">
-              <p class="text-sm text-gray-600">BlinkPay Fee Rate</p>
-              <p class="text-xl font-bold text-gray-800">0.1%</p>
-              <p class="text-xs text-gray-400">Charged on deposits and bank-funded split payments</p>
+              <p class="text-sm text-gray-600">Stripe Fee Rate</p>
+              <p class="text-xl font-bold text-gray-800">2.9% + 30c</p>
+              <p class="text-xs text-gray-400">Charged on all card transactions (deposits, split payments)</p>
             </div>
             <div class="bg-gray-50 rounded-lg p-4">
               <p class="text-sm text-gray-600">Fast Withdrawal Fee</p>
@@ -567,7 +568,7 @@
         document.getElementById('metric-deposits').textContent = formatCurrency(data.total_deposits);
         document.getElementById('metric-withdrawals').textContent = formatCurrency(data.total_withdrawals);
         document.getElementById('metric-wallets').textContent = data.active_wallet_count || 0;
-        document.getElementById('metric-blinkpay-fees').textContent = formatCurrency(data.blinkpay_fees_absorbed);
+        document.getElementById('metric-stripe-fees').textContent = formatCurrency(data.stripe_fees_absorbed || 0);
         document.getElementById('metric-fast-fees').textContent = formatCurrency(data.fast_withdrawal_fee_revenue);
         
         const netFees = data.net_fee_position || 0;
@@ -590,7 +591,7 @@
         
         document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_liabilities);
         document.getElementById('buffer-cash').textContent = formatCurrency(data.net_cash_position);
-        document.getElementById('buffer-blinkpay').textContent = formatCurrency(data.blinkpay_fees_paid);
+        document.getElementById('buffer-stripe').textContent = formatCurrency(data.stripe_fees_paid || 0);
         document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_fee_revenue);
         document.getElementById('buffer-required').textContent = formatCurrency(data.buffer_required);
         document.getElementById('buffer-7d').textContent = formatCurrency(data.projection_7d);
@@ -690,7 +691,7 @@
               <td class="py-3 pr-4 font-medium ${tx.direction === 'in' ? 'text-green-600' : 'text-red-600'}">
                 ${tx.direction === 'in' ? '+' : '-'}${formatCurrency(tx.amount)}
               </td>
-              <td class="py-3 pr-4 text-orange-600">${tx.estimated_blinkpay_fee > 0 ? formatCurrency(tx.estimated_blinkpay_fee) : '-'}</td>
+              <td class="py-3 pr-4 text-orange-600">${(tx.estimated_stripe_fee || tx.estimated_blinkpay_fee) > 0 ? formatCurrency(tx.estimated_stripe_fee || tx.estimated_blinkpay_fee) : '-'}</td>
               <td class="py-3 pr-4 text-green-600">${tx.fast_withdrawal_fee > 0 ? formatCurrency(tx.fast_withdrawal_fee) : '-'}</td>
               <td class="py-3 text-gray-600 text-xs">${tx.description || '-'}</td>
             </tr>

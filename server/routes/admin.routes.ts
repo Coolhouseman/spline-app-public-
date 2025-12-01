@@ -327,7 +327,7 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
     // Note: For production with >1000 transactions, use PostgreSQL RPC for aggregation
     const { data: txData, error: txError } = await supabaseAdmin
       .from('transactions')
-      .select('type, amount, metadata, created_at')
+      .select('type, amount, metadata, created_at, description')
       .range(0, 99999);
     
     if (txError) {
@@ -346,6 +346,8 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
     let deposits30d = 0;
     let withdrawals30d = 0;
     let fastWithdrawalFeeRevenue = 0;
+    let depositTransactionCount = 0;
+    let cardPaymentTransactionCount = 0;
 
     txData?.forEach(tx => {
       const amount = Number(tx.amount || 0);
@@ -353,6 +355,7 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
 
       if (tx.type === 'deposit') {
         totalDeposits += amount;
+        depositTransactionCount++;
         if (createdAt >= thirtyDaysAgo) deposits30d += amount;
         if (createdAt >= sevenDaysAgo) deposits7d += amount;
       } else if (tx.type === 'withdrawal') {
@@ -360,23 +363,27 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
         if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
         if (createdAt >= sevenDaysAgo) withdrawals7d += amount;
         
-        // Calculate fast withdrawal fee revenue
         if (tx.metadata?.withdrawal_type === 'fast' && tx.metadata?.fee_amount) {
           fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
         }
+      } else if (tx.type === 'split_payment' && tx.description?.includes('from card')) {
+        cardPaymentTransactionCount++;
       }
     });
 
-    // BlinkPay fees absorbed (0.1% of deposits)
-    const blinkpayFeesAbsorbed = totalDeposits * 0.001;
-    const netFeePosition = fastWithdrawalFeeRevenue - blinkpayFeesAbsorbed;
+    // Stripe fees absorbed: 2.9% + 30c per transaction (deposits + card-funded split payments)
+    const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
+    const stripePercentageFee = totalDeposits * 0.029;
+    const stripeFixedFee = totalCardTransactions * 0.30;
+    const stripeFeesAbsorbed = stripePercentageFee + stripeFixedFee;
+    const netFeePosition = fastWithdrawalFeeRevenue - stripeFeesAbsorbed;
 
     res.json({
       total_wallet_liabilities: totalLiabilities,
       total_deposits: totalDeposits,
       total_withdrawals: totalWithdrawals,
       active_wallet_count: activeWalletCount,
-      blinkpay_fees_absorbed: blinkpayFeesAbsorbed,
+      stripe_fees_absorbed: stripeFeesAbsorbed,
       fast_withdrawal_fee_revenue: fastWithdrawalFeeRevenue,
       net_fee_position: netFeePosition,
       deposits_7days: deposits7d,
@@ -409,7 +416,7 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     // Note: For production with >1000 transactions, use PostgreSQL RPC for aggregation
     const { data: txData, error: txError } = await supabaseAdmin
       .from('transactions')
-      .select('type, amount, metadata, created_at')
+      .select('type, amount, metadata, created_at, description')
       .range(0, 99999);
     
     if (txError) {
@@ -425,6 +432,8 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     let withdrawals7d = 0;
     let withdrawals30d = 0;
     let fastWithdrawalFeeRevenue = 0;
+    let depositTransactionCount = 0;
+    let cardPaymentTransactionCount = 0;
 
     txData?.forEach(tx => {
       const amount = Number(tx.amount || 0);
@@ -432,6 +441,7 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
 
       if (tx.type === 'deposit') {
         totalDeposits += amount;
+        depositTransactionCount++;
       } else if (tx.type === 'withdrawal') {
         totalWithdrawals += amount;
         if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
@@ -440,14 +450,19 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
         if (tx.metadata?.withdrawal_type === 'fast' && tx.metadata?.fee_amount) {
           fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
         }
+      } else if (tx.type === 'split_payment' && (tx.description as string)?.includes('from card')) {
+        cardPaymentTransactionCount++;
       }
     });
 
-    // Calculate BlinkPay fees (0.1% of deposits)
-    const blinkpayFeesAbsorbed = totalDeposits * 0.001;
+    // Calculate Stripe fees (2.9% + 30c per transaction)
+    const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
+    const stripePercentageFee = totalDeposits * 0.029;
+    const stripeFixedFee = totalCardTransactions * 0.30;
+    const stripeFeesAbsorbed = stripePercentageFee + stripeFixedFee;
 
-    // Net cash position = deposits received - BlinkPay fees paid - withdrawals sent out
-    const netCashPosition = totalDeposits - blinkpayFeesAbsorbed - totalWithdrawals;
+    // Net cash position = deposits received - Stripe fees paid - withdrawals sent out
+    const netCashPosition = totalDeposits - stripeFeesAbsorbed - totalWithdrawals;
 
     // Buffer required = liabilities - cash position (what we need to cover shortfall)
     const bufferRequired = Math.max(0, totalLiabilities - netCashPosition);
@@ -479,7 +494,7 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     res.json({
       total_liabilities: totalLiabilities,
       net_cash_position: netCashPosition,
-      blinkpay_fees_paid: blinkpayFeesAbsorbed,
+      stripe_fees_paid: stripeFeesAbsorbed,
       fast_fee_revenue: fastWithdrawalFeeRevenue,
       buffer_required: bufferRequired,
       projection_7d: projection7d,
@@ -590,9 +605,12 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
     // Combine transaction data with user info
     const transactions = txData?.map(tx => {
       const user = userMap.get(tx.user_id);
+      const amount = Number(tx.amount);
       
-      // Calculate BlinkPay fee estimate for deposits (0.1%)
-      const blinkpayFee = tx.type === 'deposit' ? Number(tx.amount) * 0.001 : 0;
+      // Calculate Stripe fee estimate: 2.9% + 30c for deposits and card payments
+      const isCardTransaction = tx.type === 'deposit' || 
+        (tx.type === 'split_payment' && tx.description?.includes('from card'));
+      const stripeFee = isCardTransaction ? (amount * 0.029 + 0.30) : 0;
       
       // Get fast withdrawal fee from metadata
       const fastFee = tx.metadata?.fee_amount || 0;
@@ -604,11 +622,12 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
         user_email: user?.email || '',
         user_unique_id: user?.unique_id || '',
         type: tx.type,
-        amount: Number(tx.amount),
+        amount: amount,
         description: tx.description,
         direction: tx.direction,
         metadata: tx.metadata,
-        estimated_blinkpay_fee: blinkpayFee,
+        estimated_stripe_fee: stripeFee,
+        estimated_blinkpay_fee: stripeFee,
         fast_withdrawal_fee: fastFee,
         created_at: tx.created_at
       };
@@ -721,14 +740,18 @@ router.get('/export/transactions', adminAuthMiddleware, async (req: Authenticate
 
     const transactions = txData?.map(tx => {
       const user = userMap.get(tx.user_id);
-      const blinkpayFee = tx.type === 'deposit' ? Number(tx.amount) * 0.001 : 0;
+      const amount = Number(tx.amount);
+      // Stripe fee: 2.9% + 30c for deposits and card payments
+      const isCardTransaction = tx.type === 'deposit' || 
+        (tx.type === 'split_payment' && tx.description?.includes('from card'));
+      const stripeFee = isCardTransaction ? (amount * 0.029 + 0.30) : 0;
       const fastFee = tx.metadata?.fee_amount || 0;
-      return { ...tx, user_name: user?.name, user_email: user?.email, blinkpayFee, fastFee };
+      return { ...tx, user_name: user?.name, user_email: user?.email, stripeFee, fastFee };
     }) || [];
 
-    const csvHeader = 'ID,User ID,User Name,User Email,Type,Amount,Description,Direction,BlinkPay Fee,Fast Fee,Created At\n';
+    const csvHeader = 'ID,User ID,User Name,User Email,Type,Amount,Description,Direction,Stripe Fee,Fast Fee,Created At\n';
     const csvRows = transactions.map((tx: any) => 
-      `"${tx.id}","${tx.user_id}","${tx.user_name || ''}","${tx.user_email || ''}","${tx.type}","${tx.amount}","${tx.description || ''}","${tx.direction}","${tx.blinkpayFee || 0}","${tx.fastFee || 0}","${tx.created_at}"`
+      `"${tx.id}","${tx.user_id}","${tx.user_name || ''}","${tx.user_email || ''}","${tx.type}","${tx.amount}","${tx.description || ''}","${tx.direction}","${tx.stripeFee || 0}","${tx.fastFee || 0}","${tx.created_at}"`
     ).join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
