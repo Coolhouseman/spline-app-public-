@@ -114,7 +114,7 @@ app.get('/reset-password', (req, res) => {
     <div class="logo"><span class="logo-sp">Sp</span><span class="logo-line">line</span></div>
     <h1>Reset Your Password</h1>
     <p>To reset your password, please open this link in the Spline app on your phone.</p>
-    <a href="spline://reset-password${token ? '?access_token=' + token : ''}${type ? '&type=' + type : ''}" class="btn">Open in Spline App</a>
+    <a href="splitpaymentapp://reset-password${token ? '?access_token=' + token : ''}${type ? '&type=' + type : ''}" class="btn">Open in Spline App</a>
     <p class="secondary">Don't have the app? <a href="/#download">Download Spline</a></p>
   </div>
 </body>
