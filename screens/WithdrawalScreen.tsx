@@ -28,9 +28,13 @@ export default function WithdrawalScreen({ navigation }: Props) {
   const [accountHolderName, setAccountHolderName] = useState('');
   const [savingBank, setSavingBank] = useState(false);
   const [showBankPicker, setShowBankPicker] = useState(false);
+  const [monthlyLimits, setMonthlyLimits] = useState<{ fast: number; normal: number }>({ fast: 0, normal: 0 });
+
+  const MAX_WITHDRAWALS_PER_MONTH = 4;
 
   useEffect(() => {
     loadWallet();
+    loadMonthlyLimits();
   }, [user]);
 
   const loadWallet = async () => {
@@ -53,10 +57,20 @@ export default function WithdrawalScreen({ navigation }: Props) {
     }
   };
 
+  const loadMonthlyLimits = async () => {
+    if (!user) return;
+    try {
+      const limits = await WalletService.getMonthlyWithdrawalCounts(user.id);
+      setMonthlyLimits(limits);
+    } catch (error) {
+      console.error('Failed to load monthly limits:', error);
+    }
+  };
+
   const calculateFee = () => {
     const withdrawAmount = parseFloat(amount) || 0;
     if (selectedMethod === 'fast') {
-      return withdrawAmount * 0.02;
+      return withdrawAmount * 0.035;
     }
     return 0;
   };
@@ -226,10 +240,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
               backgroundColor: theme.surface,
               borderColor: selectedMethod === 'fast' ? theme.warning : theme.border,
               borderWidth: selectedMethod === 'fast' ? 2 : 1,
-              opacity: pressed ? 0.7 : 1
+              opacity: pressed || monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH ? 0.5 : 1
             }
           ]}
           onPress={() => setSelectedMethod('fast')}
+          disabled={monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH}
         >
           <View style={styles.methodHeader}>
             <View style={[styles.iconContainer, { backgroundColor: theme.warning + '20' }]}>
@@ -242,11 +257,14 @@ export default function WithdrawalScreen({ navigation }: Props) {
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                 Arrives in minutes to hours
               </ThemedText>
+              <ThemedText style={[Typography.small, { color: monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH ? theme.danger : theme.textSecondary }]}>
+                {monthlyLimits.fast}/{MAX_WITHDRAWALS_PER_MONTH} used this month
+              </ThemedText>
             </View>
           </View>
           <View style={styles.feeContainer}>
             <ThemedText style={[Typography.body, { color: theme.warning, fontWeight: '600' }]}>
-              2% fee
+              3.5% fee
             </ThemedText>
             {selectedMethod === 'fast' && parseFloat(amount) > 0 ? (
               <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
@@ -263,10 +281,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
               backgroundColor: theme.surface,
               borderColor: selectedMethod === 'normal' ? theme.success : theme.border,
               borderWidth: selectedMethod === 'normal' ? 2 : 1,
-              opacity: pressed ? 0.7 : 1
+              opacity: pressed || monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH ? 0.5 : 1
             }
           ]}
           onPress={() => setSelectedMethod('normal')}
+          disabled={monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH}
         >
           <View style={styles.methodHeader}>
             <View style={[styles.iconContainer, { backgroundColor: theme.success + '20' }]}>
@@ -278,6 +297,9 @@ export default function WithdrawalScreen({ navigation }: Props) {
               </ThemedText>
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                 Arrives in 3-5 business days
+              </ThemedText>
+              <ThemedText style={[Typography.small, { color: monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH ? theme.danger : theme.textSecondary }]}>
+                {monthlyLimits.normal}/{MAX_WITHDRAWALS_PER_MONTH} used this month
               </ThemedText>
             </View>
           </View>
@@ -302,7 +324,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
             {selectedMethod === 'fast' ? (
               <View style={styles.summaryRow}>
                 <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-                  Fast transfer fee (2%)
+                  Fast transfer fee (3.5%)
                 </ThemedText>
                 <ThemedText style={[Typography.body, { color: theme.warning }]}>
                   -${calculateFee().toFixed(2)}
