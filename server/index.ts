@@ -42,8 +42,9 @@ app.get('/privacy', (req, res) => {
 });
 
 app.get('/reset-password', (req, res) => {
-  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+  // Use the known Supabase credentials (anon key is meant to be public)
+  const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
+  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzOTcwNTgsImV4cCI6MjA2Mzk3MzA1OH0.EI2qBBfKIoF5HZIFU_Ls62xi5A0EPKwylvKGl9ppwQA';
   
   // Get token from query params (some email clients pass it there)
   const tokenFromQuery = req.query.token || req.query.access_token || '';
