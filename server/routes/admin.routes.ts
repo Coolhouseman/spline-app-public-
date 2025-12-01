@@ -38,17 +38,27 @@ async function verifyAuthToken(token: string): Promise<{ id: string; email: stri
 }
 
 async function checkAdminRole(email: string): Promise<{ authorized: boolean; role?: string; name?: string }> {
-  const { data, error } = await supabaseAdmin
-    .from('admin_roles')
-    .select('role, name')
-    .eq('email', email.toLowerCase())
-    .single();
-  
-  if (error || !data) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('admin_roles')
+      .select('role, name')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
+    
+    if (error) {
+      console.error('Admin role check error:', error.message);
+      return { authorized: false };
+    }
+    
+    if (!data) {
+      return { authorized: false };
+    }
+    
+    return { authorized: true, role: data.role, name: data.name };
+  } catch (err) {
+    console.error('Admin role check exception:', err);
     return { authorized: false };
   }
-  
-  return { authorized: true, role: data.role, name: data.name };
 }
 
 async function adminAuthMiddleware(
@@ -298,14 +308,82 @@ router.get('/me', adminAuthMiddleware, async (req: AuthenticatedRequest, res) =>
 
 router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_admin_dashboard_metrics');
-
-    if (error) {
-      console.error('Metrics error:', error);
-      return res.status(500).json({ error: error.message });
+    // Get total wallet liabilities (sum of all wallet balances)
+    // Note: For production with >1000 wallets, use PostgreSQL RPC for aggregation
+    const { data: walletData, error: walletError } = await supabaseAdmin
+      .from('wallets')
+      .select('balance')
+      .range(0, 99999);
+    
+    if (walletError) {
+      console.error('Wallet query error:', walletError);
+      return res.status(500).json({ error: walletError.message });
     }
 
-    res.json(data);
+    const totalLiabilities = walletData?.reduce((sum, w) => sum + Number(w.balance || 0), 0) || 0;
+    const activeWalletCount = walletData?.filter(w => Number(w.balance || 0) > 0).length || 0;
+
+    // Get transaction totals
+    // Note: For production with >1000 transactions, use PostgreSQL RPC for aggregation
+    const { data: txData, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .select('type, amount, metadata, created_at')
+      .range(0, 99999);
+    
+    if (txError) {
+      console.error('Transaction query error:', txError);
+      return res.status(500).json({ error: txError.message });
+    }
+
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let totalDeposits = 0;
+    let totalWithdrawals = 0;
+    let deposits7d = 0;
+    let withdrawals7d = 0;
+    let deposits30d = 0;
+    let withdrawals30d = 0;
+    let fastWithdrawalFeeRevenue = 0;
+
+    txData?.forEach(tx => {
+      const amount = Number(tx.amount || 0);
+      const createdAt = new Date(tx.created_at);
+
+      if (tx.type === 'deposit') {
+        totalDeposits += amount;
+        if (createdAt >= thirtyDaysAgo) deposits30d += amount;
+        if (createdAt >= sevenDaysAgo) deposits7d += amount;
+      } else if (tx.type === 'withdrawal') {
+        totalWithdrawals += amount;
+        if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
+        if (createdAt >= sevenDaysAgo) withdrawals7d += amount;
+        
+        // Calculate fast withdrawal fee revenue
+        if (tx.metadata?.withdrawal_type === 'fast' && tx.metadata?.fee_amount) {
+          fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
+        }
+      }
+    });
+
+    // BlinkPay fees absorbed (0.1% of deposits)
+    const blinkpayFeesAbsorbed = totalDeposits * 0.001;
+    const netFeePosition = fastWithdrawalFeeRevenue - blinkpayFeesAbsorbed;
+
+    res.json({
+      total_wallet_liabilities: totalLiabilities,
+      total_deposits: totalDeposits,
+      total_withdrawals: totalWithdrawals,
+      active_wallet_count: activeWalletCount,
+      blinkpay_fees_absorbed: blinkpayFeesAbsorbed,
+      fast_withdrawal_fee_revenue: fastWithdrawalFeeRevenue,
+      net_fee_position: netFeePosition,
+      deposits_7days: deposits7d,
+      withdrawals_7days: withdrawals7d,
+      deposits_30days: deposits30d,
+      withdrawals_30days: withdrawals30d
+    });
   } catch (error: any) {
     console.error('Metrics error:', error);
     res.status(500).json({ error: error.message });
@@ -314,14 +392,103 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
 
 router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_buffer_analysis');
-
-    if (error) {
-      console.error('Buffer analysis error:', error);
-      return res.status(500).json({ error: error.message });
+    // Get total wallet liabilities
+    // Note: For production with >1000 wallets, use PostgreSQL RPC for aggregation
+    const { data: walletData, error: walletError } = await supabaseAdmin
+      .from('wallets')
+      .select('balance')
+      .range(0, 99999);
+    
+    if (walletError) {
+      return res.status(500).json({ error: walletError.message });
     }
 
-    res.json(data);
+    const totalLiabilities = walletData?.reduce((sum, w) => sum + Number(w.balance || 0), 0) || 0;
+
+    // Get transaction data
+    // Note: For production with >1000 transactions, use PostgreSQL RPC for aggregation
+    const { data: txData, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .select('type, amount, metadata, created_at')
+      .range(0, 99999);
+    
+    if (txError) {
+      return res.status(500).json({ error: txError.message });
+    }
+
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let totalDeposits = 0;
+    let totalWithdrawals = 0;
+    let withdrawals7d = 0;
+    let withdrawals30d = 0;
+    let fastWithdrawalFeeRevenue = 0;
+
+    txData?.forEach(tx => {
+      const amount = Number(tx.amount || 0);
+      const createdAt = new Date(tx.created_at);
+
+      if (tx.type === 'deposit') {
+        totalDeposits += amount;
+      } else if (tx.type === 'withdrawal') {
+        totalWithdrawals += amount;
+        if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
+        if (createdAt >= sevenDaysAgo) withdrawals7d += amount;
+        
+        if (tx.metadata?.withdrawal_type === 'fast' && tx.metadata?.fee_amount) {
+          fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
+        }
+      }
+    });
+
+    // Calculate BlinkPay fees (0.1% of deposits)
+    const blinkpayFeesAbsorbed = totalDeposits * 0.001;
+
+    // Net cash position = deposits received - BlinkPay fees paid - withdrawals sent out
+    const netCashPosition = totalDeposits - blinkpayFeesAbsorbed - totalWithdrawals;
+
+    // Buffer required = liabilities - cash position (what we need to cover shortfall)
+    const bufferRequired = Math.max(0, totalLiabilities - netCashPosition);
+
+    // Calculate average daily withdrawals for projections
+    const daysIn7d = 7;
+    const daysIn30d = 30;
+    const avgDaily7d = withdrawals7d / daysIn7d;
+    const avgDaily30d = withdrawals30d / daysIn30d;
+
+    // Projections based on current withdrawal patterns
+    const projection7d = bufferRequired + (avgDaily7d * 7);
+    const projection30d = bufferRequired + (avgDaily30d * 30);
+
+    // Determine status
+    let status = 'healthy';
+    let statusMessage = 'Cash position covers all liabilities';
+    
+    if (bufferRequired > 0) {
+      if (bufferRequired > totalLiabilities * 0.5) {
+        status = 'critical';
+        statusMessage = 'Significant buffer shortfall';
+      } else if (bufferRequired > totalLiabilities * 0.1) {
+        status = 'warning';
+        statusMessage = 'Minor buffer shortfall';
+      }
+    }
+
+    res.json({
+      total_liabilities: totalLiabilities,
+      net_cash_position: netCashPosition,
+      blinkpay_fees_paid: blinkpayFeesAbsorbed,
+      fast_fee_revenue: fastWithdrawalFeeRevenue,
+      buffer_required: bufferRequired,
+      projection_7d: projection7d,
+      projection_30d: projection30d,
+      avg_daily_withdrawal_7d: avgDaily7d,
+      avg_daily_withdrawal_30d: avgDaily30d,
+      status,
+      status_message: statusMessage
+    });
   } catch (error: any) {
     console.error('Buffer analysis error:', error);
     res.status(500).json({ error: error.message });
@@ -331,17 +498,56 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
 router.get('/trends', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const days = parseInt(req.query.days as string) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-    const { data, error } = await supabaseAdmin.rpc('get_transaction_trends', {
-      p_days: days
-    });
+    const { data: txData, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .select('type, amount, created_at')
+      .gte('created_at', startDate.toISOString())
+      .order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('Trends error:', error);
-      return res.status(500).json({ error: error.message });
+    if (txError) {
+      return res.status(500).json({ error: txError.message });
     }
 
-    res.json(data);
+    // Group by date
+    const dailyData: Record<string, { deposits: number; withdrawals: number }> = {};
+    
+    // Initialize all days with 0
+    for (let i = 0; i < days; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyData[dateStr] = { deposits: 0, withdrawals: 0 };
+    }
+
+    // Aggregate transaction amounts
+    txData?.forEach(tx => {
+      const dateStr = tx.created_at.split('T')[0];
+      const amount = Number(tx.amount || 0);
+      
+      if (!dailyData[dateStr]) {
+        dailyData[dateStr] = { deposits: 0, withdrawals: 0 };
+      }
+      
+      if (tx.type === 'deposit') {
+        dailyData[dateStr].deposits += amount;
+      } else if (tx.type === 'withdrawal') {
+        dailyData[dateStr].withdrawals += amount;
+      }
+    });
+
+    // Convert to array format for chart
+    const trends = Object.entries(dailyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, data]) => ({
+        date,
+        deposits: data.deposits,
+        withdrawals: data.withdrawals
+      }));
+
+    res.json(trends);
   } catch (error: any) {
     console.error('Trends error:', error);
     res.status(500).json({ error: error.message });
@@ -354,18 +560,64 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
     const offset = parseInt(req.query.offset as string) || 0;
     const type = req.query.type as string || null;
 
-    const { data, error } = await supabaseAdmin.rpc('get_admin_transactions', {
-      p_limit: limit,
-      p_offset: offset,
-      p_type: type
-    });
+    // Build query
+    let query = supabaseAdmin
+      .from('transactions')
+      .select('*', { count: 'exact' });
+    
+    if (type) {
+      query = query.eq('type', type);
+    }
+    
+    const { data: txData, error: txError, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    if (error) {
-      console.error('Transactions error:', error);
-      return res.status(500).json({ error: error.message });
+    if (txError) {
+      return res.status(500).json({ error: txError.message });
     }
 
-    res.json(data);
+    // Get user info for each transaction
+    const userIds = [...new Set(txData?.map(tx => tx.user_id) || [])];
+    
+    const { data: usersData } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email, phone, unique_id')
+      .in('id', userIds);
+
+    const userMap = new Map(usersData?.map(u => [u.id, u]) || []);
+
+    // Combine transaction data with user info
+    const transactions = txData?.map(tx => {
+      const user = userMap.get(tx.user_id);
+      
+      // Calculate BlinkPay fee estimate for deposits (0.1%)
+      const blinkpayFee = tx.type === 'deposit' ? Number(tx.amount) * 0.001 : 0;
+      
+      // Get fast withdrawal fee from metadata
+      const fastFee = tx.metadata?.fee_amount || 0;
+      
+      return {
+        id: tx.id,
+        user_id: tx.user_id,
+        user_name: user?.name || 'Unknown',
+        user_email: user?.email || '',
+        user_unique_id: user?.unique_id || '',
+        type: tx.type,
+        amount: Number(tx.amount),
+        description: tx.description,
+        direction: tx.direction,
+        metadata: tx.metadata,
+        estimated_blinkpay_fee: blinkpayFee,
+        fast_withdrawal_fee: fastFee,
+        created_at: tx.created_at
+      };
+    }) || [];
+
+    res.json({
+      transactions,
+      total_count: count || 0
+    });
   } catch (error: any) {
     console.error('Transactions error:', error);
     res.status(500).json({ error: error.message });
@@ -448,19 +700,35 @@ router.delete('/admins/:email', adminAuthMiddleware, async (req: AuthenticatedRe
 
 router.get('/export/transactions', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_admin_transactions', {
-      p_limit: 10000,
-      p_offset: 0,
-      p_type: null
-    });
+    // Query transactions directly
+    const { data: txData, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10000);
 
-    if (error || !data?.transactions) {
-      return res.status(500).json({ error: error?.message || 'No data' });
+    if (txError) {
+      return res.status(500).json({ error: txError.message });
     }
 
+    // Get user info
+    const userIds = [...new Set(txData?.map(tx => tx.user_id) || [])];
+    const { data: usersData } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email')
+      .in('id', userIds);
+    const userMap = new Map(usersData?.map(u => [u.id, u]) || []);
+
+    const transactions = txData?.map(tx => {
+      const user = userMap.get(tx.user_id);
+      const blinkpayFee = tx.type === 'deposit' ? Number(tx.amount) * 0.001 : 0;
+      const fastFee = tx.metadata?.fee_amount || 0;
+      return { ...tx, user_name: user?.name, user_email: user?.email, blinkpayFee, fastFee };
+    }) || [];
+
     const csvHeader = 'ID,User ID,User Name,User Email,Type,Amount,Description,Direction,BlinkPay Fee,Fast Fee,Created At\n';
-    const csvRows = data.transactions.map((tx: any) => 
-      `"${tx.id}","${tx.user_id}","${tx.user_name || ''}","${tx.user_email || ''}","${tx.type}","${tx.amount}","${tx.description || ''}","${tx.direction}","${tx.estimated_blinkpay_fee || 0}","${tx.fast_withdrawal_fee || 0}","${tx.created_at}"`
+    const csvRows = transactions.map((tx: any) => 
+      `"${tx.id}","${tx.user_id}","${tx.user_name || ''}","${tx.user_email || ''}","${tx.type}","${tx.amount}","${tx.description || ''}","${tx.direction}","${tx.blinkpayFee || 0}","${tx.fastFee || 0}","${tx.created_at}"`
     ).join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
@@ -468,6 +736,158 @@ router.get('/export/transactions', adminAuthMiddleware, async (req: Authenticate
     res.send(csvHeader + csvRows);
   } catch (error: any) {
     console.error('Export error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ======== WITHDRAWAL TRACKING ========
+// Get all pending withdrawal requests with user details for manual processing
+router.get('/withdrawals', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const status = req.query.status as string || 'all'; // pending, processing, completed, failed, all
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    // Query withdrawal transactions
+    let query = supabaseAdmin
+      .from('transactions')
+      .select('*', { count: 'exact' })
+      .eq('type', 'withdrawal');
+
+    // Filter by status if specified
+    if (status !== 'all') {
+      query = query.eq('metadata->>status', status);
+    }
+
+    const { data: withdrawals, error: wError, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (wError) {
+      return res.status(500).json({ error: wError.message });
+    }
+
+    // Get user and wallet info for each withdrawal
+    const userIds = [...new Set(withdrawals?.map(w => w.user_id) || [])];
+    
+    const [usersResult, walletsResult] = await Promise.all([
+      supabaseAdmin
+        .from('users')
+        .select('id, unique_id, name, email, phone')
+        .in('id', userIds),
+      supabaseAdmin
+        .from('wallets')
+        .select('user_id, bank_details')
+        .in('user_id', userIds)
+    ]);
+
+    const userMap = new Map(usersResult.data?.map(u => [u.id, u]) || []);
+    const walletMap = new Map(walletsResult.data?.map(w => [w.user_id, w]) || []);
+
+    // Build detailed withdrawal records
+    const withdrawalRecords = withdrawals?.map(w => {
+      const user = userMap.get(w.user_id);
+      const wallet = walletMap.get(w.user_id);
+      const metadata = w.metadata || {};
+      
+      const amount = Number(w.amount);
+      const withdrawalType = metadata.withdrawal_type || 'normal';
+      const feeAmount = metadata.fee_amount || 0;
+      const feePercentage = withdrawalType === 'fast' ? 0.02 : 0;
+      
+      // Net amount = what admin needs to transfer to user's bank
+      // For fast transfer: user requested $X, fee is included, so net = X - fee
+      // For normal transfer: no fee, net = X
+      const netAmount = withdrawalType === 'fast' ? amount - feeAmount : amount;
+      
+      return {
+        transaction_id: w.id,
+        created_at: w.created_at,
+        status: metadata.status || 'pending',
+        
+        // User info
+        user_id: w.user_id,
+        user_unique_id: user?.unique_id || '',
+        user_name: user?.name || 'Unknown',
+        user_email: user?.email || '',
+        user_phone: user?.phone || 'Not provided',
+        
+        // Withdrawal details
+        withdrawal_type: withdrawalType,
+        amount_requested: amount,
+        fee_percentage: feePercentage * 100,
+        fee_amount: feeAmount,
+        net_amount_to_transfer: netAmount,
+        
+        // Bank details
+        bank_name: wallet?.bank_details?.bank_name || 'Unknown',
+        account_last4: wallet?.bank_details?.account_last4 || '****',
+        account_type: wallet?.bank_details?.account_type || 'Unknown',
+        is_demo_bank: wallet?.bank_details?.is_demo || false,
+        
+        // Estimated arrival
+        estimated_arrival: metadata.estimated_arrival || 'Not specified',
+        
+        // Description
+        description: w.description
+      };
+    }) || [];
+
+    res.json({
+      withdrawals: withdrawalRecords,
+      total_count: count || 0,
+      pending_count: withdrawalRecords.filter(w => w.status === 'pending').length,
+      processing_count: withdrawalRecords.filter(w => w.status === 'processing').length
+    });
+  } catch (error: any) {
+    console.error('Withdrawals fetch error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update withdrawal status (e.g., mark as processing, completed, or failed)
+router.patch('/withdrawals/:transactionId', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { transactionId } = req.params;
+    const { status, note } = req.body;
+
+    if (!['pending', 'processing', 'completed', 'failed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be pending, processing, completed, or failed' });
+    }
+
+    // Get current transaction
+    const { data: currentTx, error: fetchError } = await supabaseAdmin
+      .from('transactions')
+      .select('metadata')
+      .eq('id', transactionId)
+      .eq('type', 'withdrawal')
+      .single();
+
+    if (fetchError || !currentTx) {
+      return res.status(404).json({ error: 'Withdrawal transaction not found' });
+    }
+
+    // Update metadata with new status
+    const updatedMetadata = {
+      ...currentTx.metadata,
+      status,
+      updated_at: new Date().toISOString(),
+      updated_by: req.adminUser?.email,
+      admin_note: note || currentTx.metadata?.admin_note
+    };
+
+    const { error: updateError } = await supabaseAdmin
+      .from('transactions')
+      .update({ metadata: updatedMetadata })
+      .eq('id', transactionId);
+
+    if (updateError) {
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    res.json({ success: true, status, message: `Withdrawal marked as ${status}` });
+  } catch (error: any) {
+    console.error('Withdrawal update error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -90,6 +90,10 @@
         <button onclick="showTab('overview')" id="tab-overview" class="tab-active px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">Overview</button>
         <button onclick="showTab('buffer')" id="tab-buffer" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Buffer Analysis</button>
         <button onclick="showTab('transactions')" id="tab-transactions" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Transactions</button>
+        <button onclick="showTab('withdrawals')" id="tab-withdrawals" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
+          <span>Withdrawals</span>
+          <span id="withdrawal-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">0</span>
+        </button>
         <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Settings</button>
       </div>
 
@@ -298,6 +302,73 @@
         </div>
       </div>
 
+      <div id="content-withdrawals" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">Pending Withdrawal Requests</h3>
+              <p class="text-sm text-gray-500 mt-1">Manual bank transfers required for each withdrawal</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <select id="withdrawal-filter" onchange="loadWithdrawals()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+              <button onclick="loadWithdrawals()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+              <p class="text-xs text-yellow-700">Pending Transfers</p>
+              <p id="withdrawal-pending-count" class="text-2xl font-bold text-yellow-800">0</p>
+              <p class="text-xs text-yellow-600">Need manual processing</p>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <p class="text-xs text-blue-700">Processing</p>
+              <p id="withdrawal-processing-count" class="text-2xl font-bold text-blue-800">0</p>
+              <p class="text-xs text-blue-600">Being transferred</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+              <p class="text-xs text-green-700">Total Requests</p>
+              <p id="withdrawal-total-count" class="text-2xl font-bold text-green-800">0</p>
+              <p class="text-xs text-green-600">All time</p>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">How to Process Withdrawals</h4>
+            <ol class="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
+              <li>Click "Start Processing" to mark the withdrawal as being worked on</li>
+              <li>Use the bank details to manually transfer the <strong>Net Amount</strong> to the user's bank</li>
+              <li>For Fast Transfers: 2% fee is already deducted - transfer the Net Amount shown</li>
+              <li>After successful transfer, click "Mark Completed"</li>
+              <li>If transfer fails, click "Mark Failed" and contact the user</li>
+            </ol>
+          </div>
+
+          <div id="withdrawals-list" class="space-y-4">
+            <p class="text-center text-gray-400 py-8">Loading withdrawal requests...</p>
+          </div>
+
+          <div class="flex items-center justify-between mt-4 pt-4 border-t">
+            <p id="withdrawal-count" class="text-sm text-gray-500">Showing 0 withdrawals</p>
+            <div class="flex gap-2">
+              <button onclick="prevWithdrawalPage()" id="btn-prev-withdrawal" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Previous</button>
+              <button onclick="nextWithdrawalPage()" id="btn-next-withdrawal" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="content-settings" class="hidden">
         <div class="glass-card rounded-xl p-6 mb-6">
           <h3 class="font-semibold text-gray-800 mb-4">Admin Users</h3>
@@ -478,7 +549,8 @@
           loadBuffer(),
           loadTrends(),
           loadTransactions(),
-          loadAdmins()
+          loadAdmins(),
+          loadWithdrawals()
         ]);
         document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
       } catch (err) {
@@ -516,18 +588,18 @@
       try {
         const data = await fetchWithAuth('/buffer');
         
-        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_wallet_liabilities);
+        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_liabilities);
         document.getElementById('buffer-cash').textContent = formatCurrency(data.net_cash_position);
         document.getElementById('buffer-blinkpay').textContent = formatCurrency(data.blinkpay_fees_paid);
-        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_withdrawal_fees_earned);
+        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_fee_revenue);
         document.getElementById('buffer-required').textContent = formatCurrency(data.buffer_required);
-        document.getElementById('buffer-7d').textContent = formatCurrency(data.projected_buffer_7d);
-        document.getElementById('buffer-30d').textContent = formatCurrency(data.projected_buffer_30d);
+        document.getElementById('buffer-7d').textContent = formatCurrency(data.projection_7d);
+        document.getElementById('buffer-30d').textContent = formatCurrency(data.projection_30d);
         document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.avg_daily_withdrawal_7d);
         document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.avg_daily_withdrawal_30d);
         
         const statusBadge = document.getElementById('buffer-status-badge');
-        const status = data.buffer_status || 'healthy';
+        const status = data.status || 'healthy';
         statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
         statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
       } catch (err) {
@@ -756,8 +828,200 @@
       }
     }
 
+    // ========== WITHDRAWAL MANAGEMENT ==========
+    let withdrawalPage = 0;
+    let totalWithdrawals = 0;
+    const WITHDRAWAL_PAGE_SIZE = 50;
+
+    async function loadWithdrawals() {
+      try {
+        const status = document.getElementById('withdrawal-filter').value;
+        const offset = withdrawalPage * WITHDRAWAL_PAGE_SIZE;
+        
+        const data = await fetchWithAuth(`/withdrawals?status=${status}&limit=${WITHDRAWAL_PAGE_SIZE}&offset=${offset}`);
+        
+        totalWithdrawals = data.total_count || 0;
+        
+        // Update counts
+        document.getElementById('withdrawal-pending-count').textContent = data.pending_count || 0;
+        document.getElementById('withdrawal-processing-count').textContent = data.processing_count || 0;
+        document.getElementById('withdrawal-total-count').textContent = data.total_count || 0;
+        
+        // Update badge on tab
+        const badge = document.getElementById('withdrawal-badge');
+        if (data.pending_count > 0) {
+          badge.textContent = data.pending_count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+        
+        // Render withdrawal cards
+        const container = document.getElementById('withdrawals-list');
+        
+        if (!data.withdrawals || data.withdrawals.length === 0) {
+          container.innerHTML = '<p class="text-center text-gray-400 py-8">No withdrawal requests found</p>';
+        } else {
+          container.innerHTML = data.withdrawals.map(w => renderWithdrawalCard(w)).join('');
+        }
+        
+        // Update pagination
+        document.getElementById('withdrawal-count').textContent = 
+          `Showing ${Math.min(offset + 1, totalWithdrawals)}-${Math.min(offset + WITHDRAWAL_PAGE_SIZE, totalWithdrawals)} of ${totalWithdrawals} withdrawals`;
+        document.getElementById('btn-prev-withdrawal').disabled = withdrawalPage === 0;
+        document.getElementById('btn-next-withdrawal').disabled = (withdrawalPage + 1) * WITHDRAWAL_PAGE_SIZE >= totalWithdrawals;
+        
+      } catch (err) {
+        console.error('Withdrawals error:', err);
+        document.getElementById('withdrawals-list').innerHTML = 
+          '<p class="text-center text-red-500 py-8">Failed to load withdrawals</p>';
+      }
+    }
+
+    function renderWithdrawalCard(w) {
+      const statusColors = {
+        pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        processing: 'bg-blue-100 text-blue-800 border-blue-200',
+        completed: 'bg-green-100 text-green-800 border-green-200',
+        failed: 'bg-red-100 text-red-800 border-red-200'
+      };
+      
+      const typeLabel = w.withdrawal_type === 'fast' 
+        ? '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">FAST (2% fee)</span>'
+        : '<span class="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-xs">NORMAL (free)</span>';
+      
+      const demoBadge = w.is_demo_bank 
+        ? '<span class="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs ml-2">DEMO BANK</span>'
+        : '';
+      
+      let actionButtons = '';
+      if (w.status === 'pending') {
+        actionButtons = `
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'processing')" 
+            class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+            Start Processing
+          </button>
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'failed')" 
+            class="bg-red-100 text-red-700 px-3 py-1.5 rounded text-sm hover:bg-red-200">
+            Mark Failed
+          </button>
+        `;
+      } else if (w.status === 'processing') {
+        actionButtons = `
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'completed')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Mark Completed
+          </button>
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'failed')" 
+            class="bg-red-100 text-red-700 px-3 py-1.5 rounded text-sm hover:bg-red-200">
+            Mark Failed
+          </button>
+        `;
+      }
+      
+      return `
+        <div class="glass-card rounded-xl p-5 border-l-4 ${w.status === 'pending' ? 'border-l-yellow-500' : w.status === 'processing' ? 'border-l-blue-500' : w.status === 'completed' ? 'border-l-green-500' : 'border-l-red-500'}">
+          <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2 py-1 rounded text-xs font-medium border ${statusColors[w.status]}">${w.status.toUpperCase()}</span>
+                ${typeLabel}
+                ${demoBadge}
+              </div>
+              <p class="text-xs text-gray-500">${formatDate(w.created_at)}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-2xl font-bold text-gray-800">${formatCurrency(w.net_amount_to_transfer)}</p>
+              <p class="text-xs text-gray-500">Net amount to transfer</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">User Details</p>
+              <p class="font-semibold text-gray-800">${w.user_name}</p>
+              <p class="text-sm text-gray-600">${w.user_email}</p>
+              <p class="text-sm text-gray-600">ID: ${w.user_unique_id}</p>
+              <p class="text-sm text-gray-600">Phone: ${w.user_phone}</p>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Bank Details</p>
+              <p class="font-semibold text-gray-800">${w.bank_name}</p>
+              <p class="text-sm text-gray-600">Account: **** ${w.account_last4}</p>
+              <p class="text-sm text-gray-600">Type: ${w.account_type}</p>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Amount Breakdown</p>
+              <p class="text-sm text-gray-600">Requested: ${formatCurrency(w.amount_requested)}</p>
+              ${w.withdrawal_type === 'fast' ? `
+                <p class="text-sm text-red-600">Fee (${w.fee_percentage}%): -${formatCurrency(w.fee_amount)}</p>
+                <p class="font-semibold text-green-700">Net: ${formatCurrency(w.net_amount_to_transfer)}</p>
+              ` : `
+                <p class="text-sm text-gray-600">Fee: $0.00 (Normal)</p>
+                <p class="font-semibold text-green-700">Net: ${formatCurrency(w.net_amount_to_transfer)}</p>
+              `}
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Arrival</p>
+              <p class="font-semibold text-gray-800">${w.withdrawal_type === 'fast' ? 'Instant / Same Day' : '3-5 Business Days'}</p>
+              <p class="text-sm text-gray-600">${w.estimated_arrival}</p>
+            </div>
+          </div>
+          
+          <div class="flex gap-2 justify-end">
+            ${actionButtons}
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateWithdrawalStatus(transactionId, newStatus) {
+      const action = newStatus === 'completed' ? 'mark as completed' : 
+                     newStatus === 'processing' ? 'start processing' : 
+                     newStatus === 'failed' ? 'mark as failed' : 'update';
+      
+      if (!confirm(`Are you sure you want to ${action} this withdrawal?`)) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/withdrawals/${transactionId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ status: newStatus })
+        });
+        
+        if (res.ok) {
+          loadWithdrawals();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to update withdrawal');
+        }
+      } catch (err) {
+        alert('Failed to update withdrawal status');
+      }
+    }
+
+    function prevWithdrawalPage() {
+      if (withdrawalPage > 0) {
+        withdrawalPage--;
+        loadWithdrawals();
+      }
+    }
+
+    function nextWithdrawalPage() {
+      if ((withdrawalPage + 1) * WITHDRAWAL_PAGE_SIZE < totalWithdrawals) {
+        withdrawalPage++;
+        loadWithdrawals();
+      }
+    }
+
     function showTab(tab) {
-      ['overview', 'buffer', 'transactions', 'settings'].forEach(t => {
+      ['overview', 'buffer', 'transactions', 'withdrawals', 'settings'].forEach(t => {
         document.getElementById(`content-${t}`).classList.add('hidden');
         document.getElementById(`tab-${t}`).classList.remove('tab-active');
         document.getElementById(`tab-${t}`).classList.add('bg-white/80');
@@ -766,6 +1030,11 @@
       document.getElementById(`content-${tab}`).classList.remove('hidden');
       document.getElementById(`tab-${tab}`).classList.add('tab-active');
       document.getElementById(`tab-${tab}`).classList.remove('bg-white/80');
+      
+      // Load withdrawals when tab is clicked
+      if (tab === 'withdrawals') {
+        loadWithdrawals();
+      }
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
