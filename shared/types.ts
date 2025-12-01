@@ -77,8 +77,12 @@ export interface Transaction {
   metadata?: {
     withdrawal_type?: 'fast' | 'normal';
     fee_amount?: number;
+    net_amount?: number;
     estimated_arrival?: string;
     status?: 'pending' | 'processing' | 'completed' | 'failed';
+    bank_account_number?: string;
+    bank_name?: string;
+    account_holder_name?: string;
   };
   created_at: string;
 }

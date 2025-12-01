@@ -255,6 +255,12 @@ export default function WalletScreen({ navigation }: Props) {
     const date = new Date(item.created_at);
     const dateStr = date.toLocaleDateString();
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    const showBankDetails = item.type === 'withdrawal' && item.metadata?.bank_account_number;
+    const bankAccountNumber = item.metadata?.bank_account_number || '';
+    const bankName = item.metadata?.bank_name || '';
+    const withdrawalType = item.metadata?.withdrawal_type;
+    const status = item.metadata?.status || 'pending';
 
     return (
       <View style={[styles.transactionCard, { borderBottomColor: theme.border }]}>
@@ -265,6 +271,16 @@ export default function WalletScreen({ navigation }: Props) {
           <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
             {item.description}
           </ThemedText>
+          {showBankDetails ? (
+            <View>
+              <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                To: {bankName} {bankAccountNumber}
+              </ThemedText>
+              <ThemedText style={[Typography.caption, { color: status === 'completed' ? theme.success : theme.warning }]}>
+                {status.charAt(0).toUpperCase() + status.slice(1)} {withdrawalType === 'fast' ? '(Fast)' : ''}
+              </ThemedText>
+            </View>
+          ) : null}
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
             {dateStr} at {timeStr}
           </ThemedText>
