@@ -8,7 +8,6 @@ import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '@/services/supabase';
-import * as Linking from 'expo-linking';
 
 type Props = NativeStackScreenProps<any, 'ForgotPassword'>;
 
@@ -20,11 +19,12 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
   const [error, setError] = useState('');
 
   const getRedirectUrl = (): string => {
-    if (Platform.OS === 'web') {
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      return `${origin}/reset-password`;
-    }
-    return Linking.createURL('reset-password');
+    // Always use the production web URL for password reset
+    // This ensures the redirect URL matches what's in Supabase's allowed list
+    // The web page will then provide a deep link to open the app
+    // Note: Expo Go uses exp:// scheme which isn't in the allowed list,
+    // so we must use the web URL even on mobile
+    return 'https://splinepay.replit.app/reset-password';
   };
 
   const handleResetPassword = async () => {
