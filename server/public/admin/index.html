@@ -197,9 +197,9 @@
               <p class="text-xs text-green-500 mt-1">Deposits - Fees - Withdrawals</p>
             </div>
             <div class="bg-orange-50 rounded-lg p-4">
-              <p class="text-xs text-orange-600">Stripe Fees Paid</p>
+              <p class="text-xs text-orange-600">Total Stripe Fees</p>
               <p id="buffer-stripe" class="text-xl font-bold text-orange-800">$0.00</p>
-              <p class="text-xs text-orange-500 mt-1">~2.9% + 30c per transaction</p>
+              <p class="text-xs text-orange-500 mt-1">Base + Additional fees</p>
             </div>
             <div class="bg-purple-50 rounded-lg p-4">
               <p class="text-xs text-purple-600">Fast Fee Revenue</p>
@@ -210,11 +210,16 @@
 
           <div class="bg-gray-50 rounded-xl p-6 mb-6">
             <h4 class="font-semibold text-gray-700 mb-4">Buffer Requirement Calculator</h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div class="text-center">
                 <p class="text-sm text-gray-500">Current Buffer Required</p>
                 <p id="buffer-required" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
                 <p class="text-xs text-gray-400 mt-1">Liabilities - Cash Position</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">Recommended Buffer</p>
+                <p id="buffer-recommended" class="text-3xl font-bold text-blue-600 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Required + 10% Safety Margin</p>
               </div>
               <div class="text-center">
                 <p class="text-sm text-gray-500">7-Day Projection</p>
@@ -229,14 +234,76 @@
             </div>
           </div>
 
-          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-            <h4 class="font-semibold text-yellow-800 mb-2">Understanding the Buffer</h4>
+          <div class="glass-card rounded-xl p-5 mb-6">
+            <h4 class="font-semibold text-gray-700 mb-4">Stripe Connect Marketplace Fee Breakdown</h4>
+            <p class="text-xs text-gray-500 mb-4">Comprehensive fee model based on Stripe Connect Marketplace pricing (docs.stripe.com/connect/marketplace)</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div class="bg-orange-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-orange-600">Base Fee (2.9%)</p>
+                <p id="fee-base-pct" class="text-lg font-bold text-orange-800">$0.00</p>
+              </div>
+              <div class="bg-orange-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-orange-600">Per-Txn (30c)</p>
+                <p id="fee-fixed" class="text-lg font-bold text-orange-800">$0.00</p>
+              </div>
+              <div class="bg-yellow-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-yellow-600">Intl Cards (+0.5%)</p>
+                <p id="fee-intl" class="text-lg font-bold text-yellow-800">$0.00</p>
+              </div>
+              <div class="bg-yellow-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-yellow-600">Cross-Border (+1.5%)</p>
+                <p id="fee-cross-border" class="text-lg font-bold text-yellow-800">$0.00</p>
+              </div>
+              <div class="bg-yellow-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-yellow-600">Currency Conv (+2%)</p>
+                <p id="fee-currency" class="text-lg font-bold text-yellow-800">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-red-600">Dispute Reserve</p>
+                <p id="fee-disputes" class="text-lg font-bold text-red-800">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-red-600">Refund Fee Loss</p>
+                <p id="fee-refunds" class="text-lg font-bold text-red-800">$0.00</p>
+              </div>
+            </div>
+            <div class="mt-4 pt-4 border-t flex justify-between items-center">
+              <div>
+                <span class="text-sm text-gray-600">Base Fees: </span>
+                <span id="fee-base-total" class="font-bold text-orange-700">$0.00</span>
+                <span class="text-gray-400 mx-2">|</span>
+                <span class="text-sm text-gray-600">Additional Risk Fees: </span>
+                <span id="fee-additional-total" class="font-bold text-yellow-700">$0.00</span>
+              </div>
+              <div class="text-right">
+                <span class="text-sm text-gray-600">Total Stripe Cost: </span>
+                <span id="fee-grand-total" class="text-xl font-bold text-red-600">$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">Understanding the Buffer Model</h4>
             <ul class="text-sm text-yellow-700 space-y-1">
-              <li>When users deposit $100, Stripe charges ~2.9% + 30c (~$3.20), so you receive ~$96.80</li>
-              <li>User's wallet shows $100, creating a $3.20 buffer requirement</li>
-              <li>Fast withdrawals (3.5% fee) help offset this - user deposits $100, withdraws fast, you keep $3.50</li>
-              <li>Normal withdrawals are free - if user withdraws $100, you need full $100 to send</li>
-              <li>Stripe fees are significantly higher than bank transfers - factor this into pricing</li>
+              <li><strong>Base Stripe Fees:</strong> 2.9% + 30c per card transaction (deposits + card-funded split payments)</li>
+              <li><strong>International Cards:</strong> +0.5% additional (estimated 15% of transactions)</li>
+              <li><strong>Cross-Border:</strong> +1.5% for non-domestic cards (estimated 10% in NZ context)</li>
+              <li><strong>Currency Conversion:</strong> +2% for non-NZD payments (estimated 5% need conversion)</li>
+              <li><strong>Dispute Reserve:</strong> $15 per chargeback (estimated 0.5% dispute rate)</li>
+              <li><strong>Refund Loss:</strong> Stripe keeps the processing fee on refunds (estimated 2% refund rate)</li>
+              <li><strong>Safety Margin:</strong> 10% of total liabilities as contingency buffer</li>
+              <li><strong>Fast Withdrawals (3.5% fee)</strong> help offset costs - user deposits $100, withdraws fast, you keep $3.50</li>
+            </ul>
+          </div>
+
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h4 class="font-semibold text-blue-800 mb-2">Stripe Connect Marketplace Risk Factors</h4>
+            <ul class="text-sm text-blue-700 space-y-1">
+              <li><strong>Platform Liability:</strong> As the marketplace, you're responsible for covering negative balances of connected accounts</li>
+              <li><strong>Dispute Costs:</strong> $15 per dispute cannot be passed to connected accounts</li>
+              <li><strong>Refund Policy:</strong> Stripe fees are NOT refunded when you issue refunds to users</li>
+              <li><strong>Manual Payouts:</strong> We use manual bank transfers (not Stripe payouts) to avoid payout fees (0.25% + $0.25)</li>
+              <li><strong>Rate Estimates:</strong> International/cross-border/currency rates are estimates - actual rates vary by card issuer country</li>
             </ul>
           </div>
         </div>
@@ -611,19 +678,37 @@
       try {
         const data = await fetchWithAuth('/buffer');
         
+        // Main metrics
         document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_liabilities);
         document.getElementById('buffer-cash').textContent = formatCurrency(data.net_cash_position);
         document.getElementById('buffer-stripe').textContent = formatCurrency(data.stripe_fees_paid || 0);
         document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_fee_revenue);
         document.getElementById('buffer-required').textContent = formatCurrency(data.buffer_required);
+        document.getElementById('buffer-recommended').textContent = formatCurrency(data.recommended_buffer || data.buffer_required);
         document.getElementById('buffer-7d').textContent = formatCurrency(data.projection_7d);
         document.getElementById('buffer-30d').textContent = formatCurrency(data.projection_30d);
         document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.avg_daily_withdrawal_7d);
         document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.avg_daily_withdrawal_30d);
         
+        // Fee breakdown (new comprehensive model)
+        if (data.fee_breakdown) {
+          document.getElementById('fee-base-pct').textContent = formatCurrency(data.fee_breakdown.base_percentage || 0);
+          document.getElementById('fee-fixed').textContent = formatCurrency(data.fee_breakdown.fixed_per_transaction || 0);
+          document.getElementById('fee-intl').textContent = formatCurrency(data.fee_breakdown.international_cards || 0);
+          document.getElementById('fee-cross-border').textContent = formatCurrency(data.fee_breakdown.cross_border || 0);
+          document.getElementById('fee-currency').textContent = formatCurrency(data.fee_breakdown.currency_conversion || 0);
+          document.getElementById('fee-disputes').textContent = formatCurrency(data.fee_breakdown.dispute_reserve || 0);
+          document.getElementById('fee-refunds').textContent = formatCurrency(data.fee_breakdown.refund_loss || 0);
+        }
+        
+        // Fee totals
+        document.getElementById('fee-base-total').textContent = formatCurrency(data.stripe_base_fees || 0);
+        document.getElementById('fee-additional-total').textContent = formatCurrency(data.stripe_additional_fees || 0);
+        document.getElementById('fee-grand-total').textContent = formatCurrency(data.stripe_fees_paid || 0);
+        
         const statusBadge = document.getElementById('buffer-status-badge');
         const status = data.status || 'healthy';
-        statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        statusBadge.textContent = data.status_message || (status.charAt(0).toUpperCase() + status.slice(1));
         statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
       } catch (err) {
         console.error('Buffer error:', err);

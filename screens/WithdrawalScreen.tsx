@@ -257,9 +257,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                 Arrives in minutes to hours
               </ThemedText>
-              <ThemedText style={[Typography.small, { color: monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH ? theme.danger : theme.textSecondary }]}>
-                {monthlyLimits.fast}/{MAX_WITHDRAWALS_PER_MONTH} used this month
-              </ThemedText>
+              {monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH ? (
+                <ThemedText style={[Typography.small, { color: theme.danger }]}>
+                  Monthly limit reached ({MAX_WITHDRAWALS_PER_MONTH}/{MAX_WITHDRAWALS_PER_MONTH})
+                </ThemedText>
+              ) : null}
             </View>
           </View>
           <View style={styles.feeContainer}>
@@ -298,9 +300,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                 Arrives in 3-5 business days
               </ThemedText>
-              <ThemedText style={[Typography.small, { color: monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH ? theme.danger : theme.textSecondary }]}>
-                {monthlyLimits.normal}/{MAX_WITHDRAWALS_PER_MONTH} used this month
-              </ThemedText>
+              {monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH ? (
+                <ThemedText style={[Typography.small, { color: theme.danger }]}>
+                  Monthly limit reached ({MAX_WITHDRAWALS_PER_MONTH}/{MAX_WITHDRAWALS_PER_MONTH})
+                </ThemedText>
+              ) : null}
             </View>
           </View>
           <ThemedText style={[Typography.body, { color: theme.success, fontWeight: '600' }]}>
@@ -647,7 +651,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.md,
     borderTopRightRadius: BorderRadius.md,
     padding: Spacing.xl,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing['2xl'],
   },
   modalHeader: {
     flexDirection: 'row',

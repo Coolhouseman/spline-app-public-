@@ -348,6 +348,7 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
     let fastWithdrawalFeeRevenue = 0;
     let depositTransactionCount = 0;
     let cardPaymentTransactionCount = 0;
+    let cardPaymentVolume = 0;
 
     txData?.forEach(tx => {
       const amount = Number(tx.amount || 0);
@@ -368,14 +369,49 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
         }
       } else if (tx.type === 'split_payment' && tx.description?.includes('from card')) {
         cardPaymentTransactionCount++;
+        cardPaymentVolume += amount;
       }
     });
 
-    // Stripe fees absorbed: 2.9% + 30c per transaction (deposits + card-funded split payments)
+    // Comprehensive Stripe Connect Marketplace Fee Model
+    // Reference: https://docs.stripe.com/connect/marketplace
     const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
-    const stripePercentageFee = totalDeposits * 0.029;
+    const totalCardVolume = totalDeposits + cardPaymentVolume;
+    
+    // Base Stripe fees: 2.9% + 30c per transaction
+    const stripeBasePercentageFee = totalCardVolume * 0.029;
     const stripeFixedFee = totalCardTransactions * 0.30;
-    const stripeFeesAbsorbed = stripePercentageFee + stripeFixedFee;
+    
+    // Additional Stripe Connect fees (estimated based on typical marketplace usage):
+    // Only apply if there's actual card volume to avoid overestimation
+    // 1. International card premium: +0.5% (estimate 15% of transactions are international)
+    const internationalCardRate = 0.15;
+    const internationalCardFee = totalCardVolume * internationalCardRate * 0.005;
+    
+    // 2. Cross-border fee: +1.5% for non-domestic cards (estimate 10% are cross-border in NZ)
+    const crossBorderRate = 0.10;
+    const crossBorderFee = totalCardVolume * crossBorderRate * 0.015;
+    
+    // 3. Currency conversion: +2% for non-NZD payments (estimate 5% need conversion)
+    const currencyConversionRate = 0.05;
+    const currencyConversionFee = totalCardVolume * currencyConversionRate * 0.02;
+    
+    // 4. Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
+    // Use floor to avoid overestimation when volume is low
+    const disputeRate = 0.005;
+    const estimatedDisputes = Math.floor(totalCardTransactions * disputeRate);
+    const disputeFeeReserve = estimatedDisputes * 15;
+    
+    // 5. Refund fee retention: When refunds are issued, Stripe keeps the processing fee
+    // Estimate 2% refund rate → we lose the Stripe fee on refunded transactions
+    const refundRate = 0.02;
+    const refundFeeLoss = totalCardVolume * refundRate * 0.029;
+    
+    // Total Stripe fees absorbed (base + additional risks)
+    const stripeBaseFeesAbsorbed = stripeBasePercentageFee + stripeFixedFee;
+    const stripeAdditionalFees = internationalCardFee + crossBorderFee + currencyConversionFee + disputeFeeReserve + refundFeeLoss;
+    const stripeFeesAbsorbed = stripeBaseFeesAbsorbed + stripeAdditionalFees;
+    
     const netFeePosition = fastWithdrawalFeeRevenue - stripeFeesAbsorbed;
 
     res.json({
@@ -434,6 +470,7 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     let fastWithdrawalFeeRevenue = 0;
     let depositTransactionCount = 0;
     let cardPaymentTransactionCount = 0;
+    let cardPaymentVolume = 0;
 
     txData?.forEach(tx => {
       const amount = Number(tx.amount || 0);
@@ -452,20 +489,58 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
         }
       } else if (tx.type === 'split_payment' && (tx.description as string)?.includes('from card')) {
         cardPaymentTransactionCount++;
+        cardPaymentVolume += amount;
       }
     });
 
-    // Calculate Stripe fees (2.9% + 30c per transaction)
+    // Comprehensive Stripe Connect Marketplace Fee Model
+    // Reference: https://docs.stripe.com/connect/marketplace
     const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
-    const stripePercentageFee = totalDeposits * 0.029;
+    const totalCardVolume = totalDeposits + cardPaymentVolume;
+    
+    // Base Stripe fees: 2.9% + 30c per transaction
+    const stripeBasePercentageFee = totalCardVolume * 0.029;
     const stripeFixedFee = totalCardTransactions * 0.30;
-    const stripeFeesAbsorbed = stripePercentageFee + stripeFixedFee;
+    
+    // Additional Stripe Connect fees (estimated based on typical marketplace usage):
+    // Only apply if there's actual card volume to avoid overestimation
+    // 1. International card premium: +0.5% (estimate 15% of transactions are international)
+    const internationalCardRate = 0.15;
+    const internationalCardFee = totalCardVolume * internationalCardRate * 0.005;
+    
+    // 2. Cross-border fee: +1.5% for non-domestic cards (estimate 10% are cross-border in NZ)
+    const crossBorderRate = 0.10;
+    const crossBorderFee = totalCardVolume * crossBorderRate * 0.015;
+    
+    // 3. Currency conversion: +2% for non-NZD payments (estimate 5% need conversion)
+    const currencyConversionRate = 0.05;
+    const currencyConversionFee = totalCardVolume * currencyConversionRate * 0.02;
+    
+    // 4. Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
+    // Use floor to avoid overestimation when volume is low
+    const disputeRate = 0.005;
+    const estimatedDisputes = Math.floor(totalCardTransactions * disputeRate);
+    const disputeFeeReserve = estimatedDisputes * 15;
+    
+    // 5. Refund fee retention: When refunds are issued, Stripe keeps the processing fee
+    // Estimate 2% refund rate → we lose the Stripe fee on refunded transactions
+    const refundRate = 0.02;
+    const refundFeeLoss = totalCardVolume * refundRate * 0.029;
+    
+    // Total Stripe fees absorbed (base + additional risks)
+    const stripeBaseFeesAbsorbed = stripeBasePercentageFee + stripeFixedFee;
+    const stripeAdditionalFees = internationalCardFee + crossBorderFee + currencyConversionFee + disputeFeeReserve + refundFeeLoss;
+    const stripeFeesAbsorbed = stripeBaseFeesAbsorbed + stripeAdditionalFees;
 
     // Net cash position = deposits received - Stripe fees paid - withdrawals sent out
     const netCashPosition = totalDeposits - stripeFeesAbsorbed - totalWithdrawals;
 
     // Buffer required = liabilities - cash position (what we need to cover shortfall)
     const bufferRequired = Math.max(0, totalLiabilities - netCashPosition);
+    
+    // Add operational safety margin (10% of liabilities as contingency)
+    const safetyMargin = totalLiabilities * 0.10;
+    const recommendedBuffer = bufferRequired + safetyMargin;
 
     // Calculate average daily withdrawals for projections
     const daysIn7d = 7;
@@ -473,36 +548,52 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     const avgDaily7d = withdrawals7d / daysIn7d;
     const avgDaily30d = withdrawals30d / daysIn30d;
 
-    // Projections based on current withdrawal patterns
-    const projection7d = bufferRequired + (avgDaily7d * 7);
-    const projection30d = bufferRequired + (avgDaily30d * 30);
+    // Projections based on current withdrawal patterns + safety margin
+    const projection7d = recommendedBuffer + (avgDaily7d * 7);
+    const projection30d = recommendedBuffer + (avgDaily30d * 30);
 
-    // Determine status
+    // Determine status (more conservative thresholds)
     let status = 'healthy';
-    let statusMessage = 'Cash position covers all liabilities';
+    let statusMessage = 'Cash position covers all liabilities with safety margin';
     
     if (bufferRequired > 0) {
-      if (bufferRequired > totalLiabilities * 0.5) {
+      if (bufferRequired > totalLiabilities * 0.3) {
         status = 'critical';
-        statusMessage = 'Significant buffer shortfall';
-      } else if (bufferRequired > totalLiabilities * 0.1) {
+        statusMessage = 'Significant buffer shortfall - immediate action required';
+      } else if (bufferRequired > totalLiabilities * 0.05) {
         status = 'warning';
-        statusMessage = 'Minor buffer shortfall';
+        statusMessage = 'Buffer shortfall detected - monitor closely';
       }
+    } else if (netCashPosition < safetyMargin) {
+      status = 'warning';
+      statusMessage = 'Cash position below recommended safety margin';
     }
 
     res.json({
       total_liabilities: totalLiabilities,
       net_cash_position: netCashPosition,
       stripe_fees_paid: stripeFeesAbsorbed,
+      stripe_base_fees: stripeBaseFeesAbsorbed,
+      stripe_additional_fees: stripeAdditionalFees,
       fast_fee_revenue: fastWithdrawalFeeRevenue,
       buffer_required: bufferRequired,
+      recommended_buffer: recommendedBuffer,
+      safety_margin: safetyMargin,
       projection_7d: projection7d,
       projection_30d: projection30d,
       avg_daily_withdrawal_7d: avgDaily7d,
       avg_daily_withdrawal_30d: avgDaily30d,
       status,
-      status_message: statusMessage
+      status_message: statusMessage,
+      fee_breakdown: {
+        base_percentage: stripeBasePercentageFee,
+        fixed_per_transaction: stripeFixedFee,
+        international_cards: internationalCardFee,
+        cross_border: crossBorderFee,
+        currency_conversion: currencyConversionFee,
+        dispute_reserve: disputeFeeReserve,
+        refund_loss: refundFeeLoss
+      }
     });
   } catch (error: any) {
     console.error('Buffer analysis error:', error);
