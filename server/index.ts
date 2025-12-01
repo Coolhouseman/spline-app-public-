@@ -237,35 +237,7 @@ app.get('/reset-password', (req, res) => {
     const SUPABASE_ANON_KEY = '${supabaseAnonKey}';
     
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    // Check for access token in URL hash (Supabase puts it there after email verification)
-    async function initSession() {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const refreshToken = hashParams.get('refresh_token');
-      const type = hashParams.get('type');
-      
-      if (accessToken && type === 'recovery') {
-        // Set the session with the recovery token
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken || ''
-        });
-        
-        if (error) {
-          showError('Invalid or expired reset link. Please request a new password reset.');
-          console.error('Session error:', error);
-        }
-      } else {
-        // Check if we already have a session from the redirect
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          showError('Invalid or expired reset link. Please request a new password reset from the app.');
-        }
-      }
-    }
-    
-    initSession();
+    let sessionReady = false;
     
     function showError(message) {
       const errorEl = document.getElementById('error');
@@ -274,12 +246,62 @@ app.get('/reset-password', (req, res) => {
       document.getElementById('success').style.display = 'none';
     }
     
+    function hideError() {
+      document.getElementById('error').style.display = 'none';
+    }
+    
     function showSuccess(message) {
       const successEl = document.getElementById('success');
       successEl.textContent = message;
       successEl.style.display = 'block';
       document.getElementById('error').style.display = 'none';
     }
+    
+    // Listen for auth state changes - most reliable method
+    supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        // User clicked a valid password reset link
+        sessionReady = true;
+        hideError();
+        console.log('Password recovery session established');
+      } else if (event === 'SIGNED_IN' && session) {
+        // Session established
+        sessionReady = true;
+        hideError();
+        console.log('Session established');
+      }
+    });
+    
+    // Also try to extract from URL hash as backup
+    async function initSession() {
+      // Give Supabase a moment to process the hash
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const hash = window.location.hash;
+      console.log('URL hash:', hash ? 'present' : 'empty');
+      
+      // Check if we have a session already
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (session) {
+        sessionReady = true;
+        hideError();
+        console.log('Existing session found');
+        return;
+      }
+      
+      // If no hash and no session, show error after a delay
+      // (to give onAuthStateChange time to fire)
+      setTimeout(() => {
+        if (!sessionReady) {
+          showError('Invalid or expired reset link. Please request a new password reset from the app.');
+        }
+      }, 2000);
+    }
+    
+    initSession();
     
     async function handleSubmit(e) {
       e.preventDefault();
@@ -308,6 +330,16 @@ app.get('/reset-password', (req, res) => {
       submitBtn.textContent = 'Updating...';
       
       try {
+        // First check if we have a valid session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          showError('Your reset link has expired. Please request a new password reset.');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Update Password';
+          return;
+        }
+        
         const { error } = await supabase.auth.updateUser({ password });
         
         if (error) {
