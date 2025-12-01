@@ -364,6 +364,50 @@ export default function WalletScreen({ navigation }: Props) {
         )}
       </View>
 
+      {wallet.bank_connected ? (
+        <View style={[styles.bankAccountSection, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm }}>
+            <Feather name="briefcase" size={18} color={theme.success} />
+            <ThemedText style={[Typography.body, { color: theme.text, marginLeft: Spacing.sm, fontWeight: '600' }]}>
+              Bank Account for Withdrawals
+            </ThemedText>
+          </View>
+          <ThemedText style={[Typography.body, { color: theme.text }]}>
+            {wallet.bank_details?.bank_name}
+          </ThemedText>
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+            Account ending in {wallet.bank_details?.account_last4}
+          </ThemedText>
+          <Pressable
+            style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: Spacing.sm }]}
+            onPress={() => navigation.navigate('Withdrawal')}
+          >
+            <ThemedText style={[Typography.small, { color: theme.primary, fontWeight: '600' }]}>
+              Update Bank Details
+            </ThemedText>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [
+            styles.addBankButton,
+            { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+          ]}
+          onPress={() => navigation.navigate('Withdrawal')}
+        >
+          <Feather name="briefcase" size={18} color={theme.textSecondary} />
+          <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+            <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+              Add Bank Account
+            </ThemedText>
+            <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+              Required for withdrawals
+            </ThemedText>
+          </View>
+          <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+        </Pressable>
+      )}
+
       <ThemedText style={[Typography.h2, { color: theme.text, marginHorizontal: Spacing.xl, marginBottom: Spacing.md }]}>
         Recent Transactions
       </ThemedText>
@@ -508,6 +552,22 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.xs,
     marginTop: Spacing.lg,
+  },
+  bankAccountSection: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+  },
+  addBankButton: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
