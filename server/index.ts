@@ -7,6 +7,7 @@ import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
 import adminRouter from './routes/admin.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
+import { sendWithdrawalNotification } from './services/email.service';
 
 dotenv.config();
 
@@ -117,6 +118,50 @@ app.post('/api/request-password-reset', async (req, res) => {
   } catch (error: any) {
     console.error('Password reset request error:', error);
     res.status(500).json({ error: 'An error occurred' });
+  }
+});
+
+// API endpoint for withdrawal notification emails
+app.post('/api/notify-withdrawal', async (req, res) => {
+  try {
+    const {
+      userId,
+      userName,
+      userEmail,
+      userPhone,
+      amount,
+      feeAmount,
+      netAmount,
+      withdrawalType,
+      bankName,
+      accountLast4,
+      estimatedArrival,
+      transactionId
+    } = req.body;
+
+    if (!transactionId || !userId || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const success = await sendWithdrawalNotification({
+      userId,
+      userName: userName || 'Unknown User',
+      userEmail: userEmail || 'N/A',
+      userPhone: userPhone || 'N/A',
+      amount: parseFloat(amount) || 0,
+      feeAmount: parseFloat(feeAmount) || 0,
+      netAmount: parseFloat(netAmount) || 0,
+      withdrawalType: withdrawalType || 'normal',
+      bankName: bankName || 'Unknown Bank',
+      accountLast4: accountLast4 || '****',
+      estimatedArrival: estimatedArrival || 'Not specified',
+      transactionId
+    });
+
+    res.json({ success, message: success ? 'Notification sent' : 'Notification logged (email not configured)' });
+  } catch (error: any) {
+    console.error('Withdrawal notification error:', error);
+    res.status(500).json({ error: 'Failed to send notification' });
   }
 });
 

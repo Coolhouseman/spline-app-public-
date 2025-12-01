@@ -803,6 +803,18 @@ export class WalletService {
 
     console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal completed atomically: wallet deducted $${amount.toFixed(2)}, user receives $${netAmount.toFixed(2)}. New balance: $${result.new_balance}`);
     
+    // Send email notification to admin (fire and forget - don't block on this)
+    this.sendWithdrawalNotification(
+      userId,
+      amount,
+      feeAmount,
+      netAmount,
+      withdrawalType,
+      wallet.bank_details,
+      estimatedArrival.toISOString(),
+      result.transaction_id
+    ).catch(err => console.error('Failed to send withdrawal notification:', err));
+    
     // Fetch and return the transaction
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
@@ -826,6 +838,59 @@ export class WalletService {
     }
 
     return transaction as Transaction;
+  }
+
+  /**
+   * Send withdrawal notification to admin
+   */
+  private static async sendWithdrawalNotification(
+    userId: string,
+    amount: number,
+    feeAmount: number,
+    netAmount: number,
+    withdrawalType: 'fast' | 'normal',
+    bankDetails: BankDetails | null,
+    estimatedArrival: string,
+    transactionId: string
+  ): Promise<void> {
+    try {
+      // Get user details
+      const { data: user } = await supabase
+        .from('users')
+        .select('first_name, last_name, email, phone, unique_id')
+        .eq('id', userId)
+        .single();
+
+      const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+      const userEmail = user?.email || 'N/A';
+      const userPhone = user?.phone || 'N/A';
+
+      // Call the notification API - use production URL since this runs on mobile
+      const SERVER_URL = 'https://splinepay.replit.app';
+
+      await fetch(`${SERVER_URL}/api/notify-withdrawal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.unique_id || userId,
+          userName,
+          userEmail,
+          userPhone,
+          amount,
+          feeAmount,
+          netAmount,
+          withdrawalType,
+          bankName: bankDetails?.bank_name || 'Unknown Bank',
+          accountLast4: bankDetails?.account_last4 || '****',
+          estimatedArrival,
+          transactionId
+        })
+      });
+
+      console.log('Withdrawal notification sent successfully');
+    } catch (error) {
+      console.error('Error sending withdrawal notification:', error);
+    }
   }
 
   /**
