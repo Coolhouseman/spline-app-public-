@@ -741,10 +741,69 @@ export class WalletService {
    * Detects if user is moving money in/out rapidly to exploit the system
    * Returns warning message if abuse detected, null if OK
    */
-  static async checkWithdrawalAbuse(userId: string, withdrawalAmount: number): Promise<{ blocked: boolean; message?: string; cooldownHours?: number }> {
+  /**
+   * Get monthly withdrawal counts by type
+   * Returns how many withdrawals of each type the user has made this calendar month
+   */
+  static async getMonthlyWithdrawalCounts(userId: string): Promise<{ fast: number; normal: number }> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const { data: withdrawals } = await supabase
+      .from('transactions')
+      .select('metadata')
+      .eq('user_id', userId)
+      .eq('type', 'withdrawal')
+      .gte('created_at', startOfMonth.toISOString());
+
+    if (!withdrawals || withdrawals.length === 0) {
+      return { fast: 0, normal: 0 };
+    }
+
+    let fastCount = 0;
+    let normalCount = 0;
+    
+    for (const tx of withdrawals) {
+      const metadata = tx.metadata as Record<string, unknown> | null;
+      if (metadata?.withdrawal_type === 'fast') {
+        fastCount++;
+      } else {
+        normalCount++;
+      }
+    }
+
+    return { fast: fastCount, normal: normalCount };
+  }
+
+  static async checkWithdrawalAbuse(
+    userId: string, 
+    withdrawalAmount: number,
+    withdrawalType: 'fast' | 'normal' = 'normal'
+  ): Promise<{ blocked: boolean; message?: string; cooldownHours?: number; monthlyLimits?: { fast: number; normal: number } }> {
     const now = new Date();
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Get monthly withdrawal counts
+    const monthlyLimits = await this.getMonthlyWithdrawalCounts(userId);
+    const MAX_WITHDRAWALS_PER_MONTH = 4;
+
+    // Check monthly limit for the specific withdrawal type
+    if (withdrawalType === 'fast' && monthlyLimits.fast >= MAX_WITHDRAWALS_PER_MONTH) {
+      return {
+        blocked: true,
+        message: `You have reached the maximum of ${MAX_WITHDRAWALS_PER_MONTH} fast withdrawals this month. Please try normal transfer or wait until next month.`,
+        monthlyLimits
+      };
+    }
+
+    if (withdrawalType === 'normal' && monthlyLimits.normal >= MAX_WITHDRAWALS_PER_MONTH) {
+      return {
+        blocked: true,
+        message: `You have reached the maximum of ${MAX_WITHDRAWALS_PER_MONTH} normal withdrawals this month. Please try fast transfer or wait until next month.`,
+        monthlyLimits
+      };
+    }
 
     // Get recent transactions
     const { data: recentTxns } = await supabase
@@ -755,13 +814,12 @@ export class WalletService {
       .order('created_at', { ascending: false });
 
     if (!recentTxns || recentTxns.length === 0) {
-      return { blocked: false };
+      return { blocked: false, monthlyLimits };
     }
 
     // Calculate deposits and withdrawals in the last 24 hours
     const last24hTxns = recentTxns.filter(t => new Date(t.created_at) >= oneDayAgo);
     const deposits24h = last24hTxns.filter(t => t.type === 'deposit').reduce((sum, t) => sum + Number(t.amount), 0);
-    const withdrawals24h = last24hTxns.filter(t => t.type === 'withdrawal').reduce((sum, t) => sum + Number(t.amount), 0);
 
     // Rule 1: If user deposited in last 24 hours, they cannot withdraw more than earned (non-deposit) balance
     const lastDeposit = recentTxns.find(t => t.type === 'deposit');
@@ -779,22 +837,24 @@ export class WalletService {
           return {
             blocked: true,
             message: `To prevent fund cycling, you cannot withdraw deposited funds within 24 hours. You can withdraw up to $${earnedIn7Days.toFixed(2)} (from received payments) or wait ${cooldownRemaining} more hours.`,
-            cooldownHours: cooldownRemaining
+            cooldownHours: cooldownRemaining,
+            monthlyLimits
           };
         }
       }
     }
 
-    // Rule 2: Limit withdrawals to 3 per day
+    // Rule 2: Limit withdrawals to 3 per day (total across both types)
     const withdrawalCount24h = last24hTxns.filter(t => t.type === 'withdrawal').length;
     if (withdrawalCount24h >= 3) {
       return {
         blocked: true,
-        message: 'You have reached the maximum of 3 withdrawals per day. Please try again tomorrow.'
+        message: 'You have reached the maximum of 3 withdrawals per day. Please try again tomorrow.',
+        monthlyLimits
       };
     }
 
-    return { blocked: false };
+    return { blocked: false, monthlyLimits };
   }
 
   /**
@@ -803,8 +863,10 @@ export class WalletService {
    * Uses atomic RPC function to ensure transaction is logged and balance is updated together.
    * If either operation fails, the entire withdrawal is rolled back.
    * 
-   * Fast Transfer: 2% fee INCLUDED in amount (not added on top), arrives in minutes to hours
+   * Fast Transfer: 3.5% fee INCLUDED in amount (not added on top), arrives in minutes to hours
    * Normal Transfer: Free, arrives in 3-5 business days
+   * 
+   * Monthly Limits: 4 withdrawals per month for each type (fast and normal)
    */
   static async withdrawWithType(
     userId: string, 
@@ -828,8 +890,8 @@ export class WalletService {
     }
 
     // Calculate fee for fast transfer - fee is INCLUDED in the withdrawal amount
-    // User enters $14, fee is $0.28, they receive $13.72, wallet deducted $14
-    const feeRate = withdrawalType === 'fast' ? 0.02 : 0;
+    // User enters $14, fee is $0.49 (3.5%), they receive $13.51, wallet deducted $14
+    const feeRate = withdrawalType === 'fast' ? 0.035 : 0;
     const feeAmount = amount * feeRate;
     const netAmount = amount - feeAmount; // Amount user actually receives in bank
 
@@ -841,8 +903,8 @@ export class WalletService {
       throw new Error(`Insufficient balance. You can withdraw up to $${currentBalance.toFixed(2)}.`);
     }
 
-    // Check for abuse AFTER balance validation
-    const abuseCheck = await this.checkWithdrawalAbuse(userId, amount);
+    // Check for abuse AFTER balance validation - pass withdrawal type for monthly limit check
+    const abuseCheck = await this.checkWithdrawalAbuse(userId, amount, withdrawalType);
     if (abuseCheck.blocked) {
       throw new Error(abuseCheck.message || 'Withdrawal blocked due to suspicious activity');
     }
