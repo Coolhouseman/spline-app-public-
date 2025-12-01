@@ -42,8 +42,8 @@ app.get('/privacy', (req, res) => {
 });
 
 app.get('/reset-password', (req, res) => {
-  const token = req.query.access_token || req.query.token || '';
-  const type = req.query.type || '';
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
   
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -51,6 +51,7 @@ app.get('/reset-password', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reset Password - Spline</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -82,41 +83,251 @@ app.get('/reset-password', (req, res) => {
     h1 {
       font-size: 24px;
       color: #1f2937;
-      margin-bottom: 16px;
+      margin-bottom: 8px;
     }
-    p {
+    .subtitle {
       color: #6b7280;
-      line-height: 1.6;
+      font-size: 14px;
       margin-bottom: 24px;
     }
+    .form-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .form-group label {
+      display: block;
+      color: #374151;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      font-size: 16px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #3B82F6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
     .btn {
-      display: inline-block;
+      display: block;
+      width: 100%;
       background: #3B82F6;
       color: white;
       padding: 16px 32px;
+      border: none;
       border-radius: 12px;
-      text-decoration: none;
       font-weight: 600;
       font-size: 16px;
-      margin-bottom: 16px;
+      cursor: pointer;
       transition: background 0.2s;
+      margin-top: 8px;
     }
     .btn:hover { background: #2563eb; }
-    .secondary {
-      color: #6b7280;
+    .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+    .btn-secondary {
+      background: transparent;
+      color: #3B82F6;
+      border: 2px solid #3B82F6;
+      margin-top: 12px;
+    }
+    .btn-secondary:hover { background: rgba(59, 130, 246, 0.1); }
+    .error {
+      background: #fef2f2;
+      color: #dc2626;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .success {
+      background: #f0fdf4;
+      color: #16a34a;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 24px 0;
+      color: #9ca3af;
       font-size: 14px;
     }
-    .secondary a { color: #3B82F6; text-decoration: none; }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e5e7eb;
+    }
+    .divider span { padding: 0 16px; }
+    .app-link {
+      color: #6b7280;
+      font-size: 14px;
+      margin-top: 16px;
+    }
+    .app-link a { color: #3B82F6; text-decoration: none; font-weight: 500; }
+    .password-requirements {
+      text-align: left;
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="logo"><span class="logo-sp">Sp</span><span class="logo-line">line</span></div>
-    <h1>Reset Your Password</h1>
-    <p>To reset your password, please open this link in the Spline app on your phone.</p>
-    <a href="splitpaymentapp://reset-password${token ? '?access_token=' + token : ''}${type ? '&type=' + type : ''}" class="btn">Open in Spline App</a>
-    <p class="secondary">Don't have the app? <a href="/#download">Download Spline</a></p>
+    
+    <div id="reset-form">
+      <h1>Reset Your Password</h1>
+      <p class="subtitle">Enter your new password below</p>
+      
+      <div id="error" class="error"></div>
+      <div id="success" class="success"></div>
+      
+      <form onsubmit="handleSubmit(event)">
+        <div class="form-group">
+          <label for="password">New Password</label>
+          <input type="password" id="password" placeholder="Enter new password" required minlength="8">
+          <p class="password-requirements">Must be at least 8 characters</p>
+        </div>
+        
+        <div class="form-group">
+          <label for="confirmPassword">Confirm Password</label>
+          <input type="password" id="confirmPassword" placeholder="Confirm new password" required>
+        </div>
+        
+        <button type="submit" class="btn" id="submitBtn">Update Password</button>
+      </form>
+      
+      <div class="divider"><span>or</span></div>
+      
+      <a href="splitpaymentapp://reset-password" class="btn btn-secondary" style="display: block; text-decoration: none; text-align: center;">
+        Open in Spline App
+      </a>
+      
+      <p class="app-link">Don't have the app? <a href="/#download">Download Spline</a></p>
+    </div>
+    
+    <div id="success-view" class="hidden">
+      <div style="font-size: 64px; margin-bottom: 24px;">&#10003;</div>
+      <h1>Password Updated!</h1>
+      <p class="subtitle">Your password has been successfully reset. You can now log in with your new password.</p>
+      <a href="splitpaymentapp://login" class="btn" style="display: block; text-decoration: none; margin-top: 24px;">
+        Open Spline App
+      </a>
+      <p class="app-link" style="margin-top: 16px;">
+        <a href="/">Return to Homepage</a>
+      </p>
+    </div>
   </div>
+
+  <script>
+    const SUPABASE_URL = '${supabaseUrl}';
+    const SUPABASE_ANON_KEY = '${supabaseAnonKey}';
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Check for access token in URL hash (Supabase puts it there after email verification)
+    async function initSession() {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const type = hashParams.get('type');
+      
+      if (accessToken && type === 'recovery') {
+        // Set the session with the recovery token
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || ''
+        });
+        
+        if (error) {
+          showError('Invalid or expired reset link. Please request a new password reset.');
+          console.error('Session error:', error);
+        }
+      } else {
+        // Check if we already have a session from the redirect
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          showError('Invalid or expired reset link. Please request a new password reset from the app.');
+        }
+      }
+    }
+    
+    initSession();
+    
+    function showError(message) {
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+      document.getElementById('success').style.display = 'none';
+    }
+    
+    function showSuccess(message) {
+      const successEl = document.getElementById('success');
+      successEl.textContent = message;
+      successEl.style.display = 'block';
+      document.getElementById('error').style.display = 'none';
+    }
+    
+    async function handleSubmit(e) {
+      e.preventDefault();
+      
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const submitBtn = document.getElementById('submitBtn');
+      
+      // Hide previous messages
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('success').style.display = 'none';
+      
+      // Validate passwords match
+      if (password !== confirmPassword) {
+        showError('Passwords do not match');
+        return;
+      }
+      
+      // Validate password length
+      if (password.length < 8) {
+        showError('Password must be at least 8 characters');
+        return;
+      }
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Updating...';
+      
+      try {
+        const { error } = await supabase.auth.updateUser({ password });
+        
+        if (error) {
+          showError(error.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Update Password';
+          return;
+        }
+        
+        // Show success view
+        document.getElementById('reset-form').classList.add('hidden');
+        document.getElementById('success-view').classList.remove('hidden');
+        
+      } catch (err) {
+        showError('An unexpected error occurred. Please try again.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Update Password';
+      }
+    }
+  </script>
 </body>
 </html>`;
   
