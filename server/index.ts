@@ -6,6 +6,7 @@ import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
 import adminRouter from './routes/admin.routes';
+import stripeRouter from './routes/stripe.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 import { sendWithdrawalNotification } from './services/email.service';
 
@@ -655,6 +656,7 @@ app.use('/api/blinkpay', blinkpayRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/twilio', twilioRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/stripe', stripeRouter);
 
 app.post('/api/reminders/send-now', async (req, res) => {
   try {
