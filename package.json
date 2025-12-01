@@ -73,6 +73,7 @@
     "react-native-svg": "^15.15.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
+    "stripe": "^20.0.0",
     "ts-node": "^10.9.2",
     "twilio": "^5.10.6"
   },
