@@ -382,21 +382,13 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
     const stripeBasePercentageFee = totalCardVolume * 0.029;
     const stripeFixedFee = totalCardTransactions * 0.30;
     
-    // Additional Stripe Connect fees (estimated based on typical marketplace usage):
-    // Only apply if there's actual card volume to avoid overestimation
-    // 1. International card premium: +0.5% (estimate 15% of transactions are international)
-    const internationalCardRate = 0.15;
-    const internationalCardFee = totalCardVolume * internationalCardRate * 0.005;
+    // Additional Stripe fees for NZ domestic-only operations:
+    // International/cross-border/currency fees not applicable (NZ domestic only)
+    const internationalCardFee = 0;
+    const crossBorderFee = 0;
+    const currencyConversionFee = 0;
     
-    // 2. Cross-border fee: +1.5% for non-domestic cards (estimate 10% are cross-border in NZ)
-    const crossBorderRate = 0.10;
-    const crossBorderFee = totalCardVolume * crossBorderRate * 0.015;
-    
-    // 3. Currency conversion: +2% for non-NZD payments (estimate 5% need conversion)
-    const currencyConversionRate = 0.05;
-    const currencyConversionFee = totalCardVolume * currencyConversionRate * 0.02;
-    
-    // 4. Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
+    // Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
     // Use floor to avoid overestimation when volume is low
     const disputeRate = 0.005;
     const estimatedDisputes = Math.floor(totalCardTransactions * disputeRate);
@@ -502,21 +494,13 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     const stripeBasePercentageFee = totalCardVolume * 0.029;
     const stripeFixedFee = totalCardTransactions * 0.30;
     
-    // Additional Stripe Connect fees (estimated based on typical marketplace usage):
-    // Only apply if there's actual card volume to avoid overestimation
-    // 1. International card premium: +0.5% (estimate 15% of transactions are international)
-    const internationalCardRate = 0.15;
-    const internationalCardFee = totalCardVolume * internationalCardRate * 0.005;
+    // Additional Stripe fees for NZ domestic-only operations:
+    // International/cross-border/currency fees not applicable (NZ domestic only)
+    const internationalCardFee = 0;
+    const crossBorderFee = 0;
+    const currencyConversionFee = 0;
     
-    // 2. Cross-border fee: +1.5% for non-domestic cards (estimate 10% are cross-border in NZ)
-    const crossBorderRate = 0.10;
-    const crossBorderFee = totalCardVolume * crossBorderRate * 0.015;
-    
-    // 3. Currency conversion: +2% for non-NZD payments (estimate 5% need conversion)
-    const currencyConversionRate = 0.05;
-    const currencyConversionFee = totalCardVolume * currencyConversionRate * 0.02;
-    
-    // 4. Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
+    // Dispute/chargeback reserve: $15 per dispute (estimate 0.5% dispute rate)
     // Use floor to avoid overestimation when volume is low
     const disputeRate = 0.005;
     const estimatedDisputes = Math.floor(totalCardTransactions * disputeRate);
