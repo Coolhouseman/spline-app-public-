@@ -84,6 +84,58 @@ async function adminAuthMiddleware(
   next();
 }
 
+router.post('/setup-admin', async (req, res) => {
+  try {
+    const adminEmail = 'admin@spline.nz';
+    const adminPassword = 'SplineAdmin2024!';
+    
+    // Check if user already exists by trying to get them
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find(u => u.email === adminEmail);
+    
+    if (existingUser) {
+      // Update password for existing user
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
+        existingUser.id,
+        { password: adminPassword }
+      );
+      
+      if (error) {
+        console.error('Error updating admin password:', error);
+        return res.status(500).json({ error: 'Failed to update admin password', details: error.message });
+      }
+      
+      return res.json({ 
+        success: true, 
+        message: 'Admin password updated successfully',
+        email: adminEmail
+      });
+    }
+    
+    // Create new admin user
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: adminEmail,
+      password: adminPassword,
+      email_confirm: true
+    });
+    
+    if (error) {
+      console.error('Error creating admin user:', error);
+      return res.status(500).json({ error: 'Failed to create admin user', details: error.message });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Admin user created successfully',
+      email: adminEmail,
+      userId: data.user?.id
+    });
+  } catch (error: any) {
+    console.error('Setup admin error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
