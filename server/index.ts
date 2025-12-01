@@ -41,6 +41,85 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/privacy.html'));
 });
 
+// Import Supabase for server-side password operations
+import { createClient } from '@supabase/supabase-js';
+const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
+
+// API endpoint for password reset - uses service role key server-side
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { token_hash, type, new_password } = req.body;
+    
+    if (!token_hash || !new_password) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    
+    // First verify the OTP to get the user
+    const { data: verifyData, error: verifyError } = await supabaseServer.auth.verifyOtp({
+      token_hash,
+      type: type || 'recovery'
+    });
+    
+    if (verifyError) {
+      console.error('Token verification error:', verifyError);
+      return res.status(400).json({ error: 'Invalid or expired reset link', details: verifyError.message });
+    }
+    
+    if (!verifyData.user) {
+      return res.status(400).json({ error: 'Could not verify user' });
+    }
+    
+    // Update the user's password using admin API
+    const { error: updateError } = await supabaseServer.auth.admin.updateUserById(
+      verifyData.user.id,
+      { password: new_password }
+    );
+    
+    if (updateError) {
+      console.error('Password update error:', updateError);
+      return res.status(500).json({ error: 'Failed to update password', details: updateError.message });
+    }
+    
+    console.log('Password updated successfully for user:', verifyData.user.email);
+    res.json({ success: true, message: 'Password updated successfully' });
+    
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'An error occurred' });
+  }
+});
+
+// API endpoint for requesting password reset email
+app.post('/api/request-password-reset', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    const { error } = await supabaseServer.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://splinepay.replit.app/reset-password'
+    });
+    
+    if (error) {
+      console.error('Password reset request error:', error);
+      return res.status(500).json({ error: 'Failed to send reset email' });
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Password reset request error:', error);
+    res.status(500).json({ error: 'An error occurred' });
+  }
+});
+
 app.get('/reset-password', (req, res) => {
   // Use the known Supabase credentials (anon key is meant to be public)
   const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
@@ -388,26 +467,9 @@ app.get('/reset-password', (req, res) => {
           return;
         }
         
-        // Verify the OTP token
-        const { data, error } = await supabase.auth.verifyOtp({
-          token_hash: pendingTokenHash,
-          type: pendingTokenType
-        });
-        
-        if (error) {
-          console.error('Token verification error:', error);
-          showError('This link has expired. Please request a new password reset.', 'confirm-error');
-          verifyBtn.disabled = false;
-          verifyBtn.textContent = 'Verify & Continue';
-          
-          // Show option to request new link after a moment
-          setTimeout(() => {
-            showView('expired-view');
-          }, 2000);
-          return;
-        }
-        
-        console.log('Token verified successfully');
+        // Token will be verified server-side when password is submitted
+        // Just show the form for now
+        console.log('Token found, showing password form');
         sessionReady = true;
         showView('reset-form');
         
@@ -432,12 +494,17 @@ app.get('/reset-password', (req, res) => {
       resendBtn.textContent = 'Sending...';
       
       try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: 'https://splinepay.replit.app/reset-password'
+        // Use server-side API to send reset email
+        const response = await fetch('/api/request-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
         });
         
-        if (error) {
-          showError(error.message, 'expired-error');
+        const result = await response.json();
+        
+        if (!response.ok) {
+          showError(result.error || 'Failed to send reset email', 'expired-error');
           resendBtn.disabled = false;
           resendBtn.textContent = 'Send New Reset Link';
           return;
@@ -474,26 +541,37 @@ app.get('/reset-password', (req, res) => {
         return;
       }
       
+      if (!pendingTokenHash) {
+        showError('Reset link is invalid. Please request a new password reset.');
+        return;
+      }
+      
       submitBtn.disabled = true;
       submitBtn.textContent = 'Updating...';
       
       try {
-        // First check if we have a valid session
-        const { data: { session } } = await supabase.auth.getSession();
+        // Use server-side API to update password
+        const response = await fetch('/api/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_hash: pendingTokenHash,
+            type: pendingTokenType,
+            new_password: password
+          })
+        });
         
-        if (!session) {
-          showError('Your reset link has expired. Please request a new password reset.');
+        const result = await response.json();
+        
+        if (!response.ok) {
+          showError(result.error || 'Failed to update password');
           submitBtn.disabled = false;
           submitBtn.textContent = 'Update Password';
-          return;
-        }
-        
-        const { error } = await supabase.auth.updateUser({ password });
-        
-        if (error) {
-          showError(error.message);
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Update Password';
+          
+          // If token expired, show expired view
+          if (result.error && result.error.includes('expired')) {
+            setTimeout(() => showView('expired-view'), 2000);
+          }
           return;
         }
         
@@ -501,6 +579,7 @@ app.get('/reset-password', (req, res) => {
         showView('success-view');
         
       } catch (err) {
+        console.error('Password update error:', err);
         showError('An unexpected error occurred. Please try again.');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Update Password';
