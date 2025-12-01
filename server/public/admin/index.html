@@ -891,10 +891,6 @@
         ? '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">FAST (2% fee)</span>'
         : '<span class="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-xs">NORMAL (free)</span>';
       
-      const demoBadge = w.is_demo_bank 
-        ? '<span class="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs ml-2">DEMO BANK</span>'
-        : '';
-      
       let actionButtons = '';
       if (w.status === 'pending') {
         actionButtons = `
@@ -927,7 +923,6 @@
               <div class="flex items-center gap-2 mb-1">
                 <span class="px-2 py-1 rounded text-xs font-medium border ${statusColors[w.status]}">${w.status.toUpperCase()}</span>
                 ${typeLabel}
-                ${demoBadge}
               </div>
               <p class="text-xs text-gray-500">${formatDate(w.created_at)}</p>
             </div>

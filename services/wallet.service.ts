@@ -39,15 +39,17 @@ export interface BankDetails {
   account_holder_name: string; // Account holder name
   account_last4: string;       // Last 4 digits (for user display)
   account_type: string;
-  is_demo?: boolean;
 }
 
-export const DEMO_BANKS = [
-  { id: 'anz', name: 'ANZ Bank', color: '#007DBA' },
-  { id: 'asb', name: 'ASB Bank', color: '#FFCC00' },
-  { id: 'bnz', name: 'BNZ', color: '#0033A0' },
-  { id: 'westpac', name: 'Westpac', color: '#D5002B' },
-  { id: 'kiwibank', name: 'Kiwibank', color: '#00A651' },
+export const NZ_BANKS = [
+  { id: 'anz', name: 'ANZ Bank' },
+  { id: 'asb', name: 'ASB Bank' },
+  { id: 'bnz', name: 'BNZ' },
+  { id: 'westpac', name: 'Westpac' },
+  { id: 'kiwibank', name: 'Kiwibank' },
+  { id: 'tsb', name: 'TSB Bank' },
+  { id: 'cooperative', name: 'The Co-operative Bank' },
+  { id: 'other', name: 'Other' },
 ];
 
 export interface BlinkPayConsentResponse {
@@ -303,16 +305,6 @@ export class WalletService {
       .eq('user_id', userId)
       .single();
 
-    if (wallet?.blinkpay_consent_id && !wallet?.bank_details?.is_demo) {
-      try {
-        await supabase.functions.invoke('blinkpay-consent', {
-          body: { consentId: wallet.blinkpay_consent_id, action: 'revoke' },
-        });
-      } catch (error) {
-        console.error('Failed to revoke BlinkPay consent:', error);
-      }
-    }
-
     const { data, error } = await supabase
       .from('wallets')
       .update({
@@ -331,54 +323,11 @@ export class WalletService {
   }
 
   /**
-   * DEMO MODE: Connect a fake bank account for testing
-   * This allows testing the full payment flow without BlinkPay
-   * All data is saved to the cloud database
+   * Connect a bank account for withdrawals
+   * Users enter their full NZ bank details which are stored securely
+   * Admin will use these details to manually transfer funds
    */
-  static async connectDemoBank(userId: string, bankId: string): Promise<Wallet> {
-    const bank = DEMO_BANKS.find(b => b.id === bankId);
-    if (!bank) throw new Error('Invalid demo bank');
-
-    // Generate demo NZ bank account number (format: 00-0000-0000000-00)
-    const bankCode = Math.floor(10 + Math.random() * 90).toString().padStart(2, '0');
-    const branchCode = Math.floor(1000 + Math.random() * 9000).toString();
-    const accountBase = Math.floor(1000000 + Math.random() * 9000000).toString();
-    const suffix = Math.floor(10 + Math.random() * 90).toString().padStart(2, '0');
-    const fullAccountNumber = `${bankCode}-${branchCode}-${accountBase}-${suffix}`;
-    const accountLast4 = accountBase.slice(-4);
-    
-    const demoConsentId = `demo_consent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-    const { data, error } = await supabase
-      .from('wallets')
-      .update({
-        bank_connected: true,
-        bank_details: {
-          bank_name: bank.name,
-          account_number: fullAccountNumber,
-          account_holder_name: 'Demo Account Holder',
-          account_last4: accountLast4,
-          account_type: 'Demo Account',
-          is_demo: true
-        } as BankDetails,
-        blinkpay_consent_id: demoConsentId,
-        blinkpay_consent_status: 'active',
-        blinkpay_consent_expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-      })
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    console.log(`Demo bank connected: ${bank.name} •••• ${accountLast4}`);
-    return data as Wallet;
-  }
-
-  /**
-   * Connect a real bank account for withdrawals
-   * Users enter their full bank details which are stored securely
-   */
-  static async connectRealBank(
+  static async connectBankAccount(
     userId: string, 
     bankName: string, 
     accountNumber: string,
@@ -409,19 +358,15 @@ export class WalletService {
           account_number: normalizedNumber,
           account_holder_name: accountHolderName,
           account_last4: accountLast4,
-          account_type: 'NZ Bank Account',
-          is_demo: false
-        } as BankDetails,
-        blinkpay_consent_id: null,
-        blinkpay_consent_status: null,
-        blinkpay_consent_expires_at: null
+          account_type: 'NZ Bank Account'
+        } as BankDetails
       })
       .eq('user_id', userId)
       .select()
       .single();
 
     if (error) throw error;
-    console.log(`Bank connected: ${bankName} •••• ${accountLast4}`);
+    console.log(`Bank account connected: ${bankName} •••• ${accountLast4}`);
     return data as Wallet;
   }
 
@@ -502,13 +447,6 @@ export class WalletService {
     }
 
     return transaction as Transaction;
-  }
-
-  /**
-   * Check if wallet is in demo mode
-   */
-  static isDemoMode(wallet: Wallet): boolean {
-    return wallet.bank_details?.is_demo === true;
   }
 
   /**

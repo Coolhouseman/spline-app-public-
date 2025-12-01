@@ -53,13 +53,11 @@ export interface Wallet {
   bank_connected: boolean;
   bank_details?: {
     bank_name?: string;
+    account_number?: string;
+    account_holder_name?: string;
     account_last4?: string;
     account_type?: string;
-    is_demo?: boolean;
   };
-  blinkpay_consent_id?: string;
-  blinkpay_consent_status?: string;
-  blinkpay_consent_expires_at?: string;
   stripe_customer_id?: string;
   stripe_payment_method_id?: string;
   card_brand?: string;

@@ -847,7 +847,6 @@ router.get('/withdrawals', adminAuthMiddleware, async (req: AuthenticatedRequest
         account_holder_name: wallet?.bank_details?.account_holder_name || 'Not provided',
         account_last4: wallet?.bank_details?.account_last4 || '****',
         account_type: wallet?.bank_details?.account_type || 'Unknown',
-        is_demo_bank: wallet?.bank_details?.is_demo || false,
         
         // Estimated arrival
         estimated_arrival: metadata.estimated_arrival || 'Not specified',
