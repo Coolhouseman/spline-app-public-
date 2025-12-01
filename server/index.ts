@@ -201,6 +201,21 @@ app.get('/reset-password', (req, res) => {
       <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     </div>
     
+    <div id="confirm-view" class="hidden">
+      <h1>Verify Your Identity</h1>
+      <p class="subtitle">Click the button below to verify your reset link and set a new password.</p>
+      
+      <div id="confirm-error" class="error"></div>
+      
+      <button onclick="handleVerifyToken()" class="btn" id="verifyBtn">
+        Verify & Continue
+      </button>
+      
+      <p class="app-link" style="margin-top: 24px;">
+        <a href="/">Return to Homepage</a>
+      </p>
+    </div>
+    
     <div id="reset-form" class="hidden">
       <h1>Reset Your Password</h1>
       <p class="subtitle">Enter your new password below</p>
@@ -272,11 +287,15 @@ app.get('/reset-password', (req, res) => {
     let sessionReady = false;
     
     function showView(viewId) {
-      ['loading-view', 'reset-form', 'expired-view', 'success-view', 'email-sent-view'].forEach(id => {
+      ['loading-view', 'confirm-view', 'reset-form', 'expired-view', 'success-view', 'email-sent-view'].forEach(id => {
         document.getElementById(id).classList.add('hidden');
       });
       document.getElementById(viewId).classList.remove('hidden');
     }
+    
+    // Store token_hash for verification
+    let pendingTokenHash = null;
+    let pendingTokenType = null;
     
     function showError(message, elementId = 'error') {
       const errorEl = document.getElementById(elementId);
@@ -313,7 +332,20 @@ app.get('/reset-password', (req, res) => {
       console.log('Hash:', window.location.hash);
       console.log('Search:', window.location.search);
       
-      // Give Supabase time to process the URL hash
+      // Check for token_hash in URL (from custom email template)
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenHash = urlParams.get('token_hash');
+      const tokenType = urlParams.get('type') || 'recovery';
+      
+      if (tokenHash) {
+        console.log('Found token_hash in URL, showing confirm view');
+        pendingTokenHash = tokenHash;
+        pendingTokenType = tokenType;
+        showView('confirm-view');
+        return;
+      }
+      
+      // Give Supabase time to process the URL hash (for standard flow)
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Check if session was established via onAuthStateChange
@@ -338,6 +370,52 @@ app.get('/reset-password', (req, res) => {
           showView('expired-view');
         }
       }, 1500);
+    }
+    
+    async function handleVerifyToken() {
+      const verifyBtn = document.getElementById('verifyBtn');
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verifying...';
+      
+      hideError('confirm-error');
+      
+      try {
+        if (!pendingTokenHash) {
+          showError('No verification token found.', 'confirm-error');
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = 'Verify & Continue';
+          return;
+        }
+        
+        // Verify the OTP token
+        const { data, error } = await supabase.auth.verifyOtp({
+          token_hash: pendingTokenHash,
+          type: pendingTokenType
+        });
+        
+        if (error) {
+          console.error('Token verification error:', error);
+          showError('This link has expired. Please request a new password reset.', 'confirm-error');
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = 'Verify & Continue';
+          
+          // Show option to request new link after a moment
+          setTimeout(() => {
+            showView('expired-view');
+          }, 2000);
+          return;
+        }
+        
+        console.log('Token verified successfully');
+        sessionReady = true;
+        showView('reset-form');
+        
+      } catch (err) {
+        console.error('Verification error:', err);
+        showError('An error occurred. Please try again.', 'confirm-error');
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify & Continue';
+      }
     }
     
     initSession();
