@@ -12,6 +12,8 @@ interface WithdrawalEmailData {
   netAmount: number;
   withdrawalType: 'fast' | 'normal';
   bankName: string;
+  accountNumber: string;      // Full account number for transfer
+  accountHolderName: string;  // Account holder name
   accountLast4: string;
   estimatedArrival: string;
   transactionId: string;
@@ -60,10 +62,11 @@ Amount Requested: $${data.amount.toFixed(2)}
 Fee Deducted: $${data.feeAmount.toFixed(2)}
 Net Amount to Transfer: $${data.netAmount.toFixed(2)}
 
-BANK DETAILS
-------------
+BANK DETAILS (FOR TRANSFER)
+---------------------------
 Bank: ${data.bankName}
-Account: ****${data.accountLast4}
+Account Number: ${data.accountNumber || 'Not provided'}
+Account Holder: ${data.accountHolderName || 'Not provided'}
 Estimated Arrival: ${data.estimatedArrival}
 
 ACTION REQUIRED
@@ -120,10 +123,11 @@ This is an automated notification from Spline Pay.
         <p><span class="label">Phone:</span> <span class="value">${data.userPhone}</span></p>
       </div>
       
-      <div class="section">
-        <div class="section-title">Bank Details</div>
-        <p><span class="label">Bank:</span> <span class="value">${data.bankName}</span></p>
-        <p><span class="label">Account:</span> <span class="value">****${data.accountLast4}</span></p>
+      <div class="section" style="background: #eff6ff; border: 1px solid #3b82f6;">
+        <div class="section-title" style="color: #1d4ed8;">Bank Details (For Transfer)</div>
+        <p><span class="label">Bank:</span> <span class="value" style="font-weight: 700;">${data.bankName}</span></p>
+        <p><span class="label">Account Number:</span> <span class="value" style="font-family: monospace; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 700;">${data.accountNumber || 'Not provided'}</span></p>
+        <p><span class="label">Account Holder:</span> <span class="value" style="font-weight: 600;">${data.accountHolderName || 'Not provided'}</span></p>
         <p><span class="label">Estimated Arrival:</span> <span class="value">${data.estimatedArrival}</span></p>
       </div>
       

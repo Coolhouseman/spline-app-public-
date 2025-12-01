@@ -841,8 +841,10 @@ router.get('/withdrawals', adminAuthMiddleware, async (req: AuthenticatedRequest
         fee_amount: feeAmount,
         net_amount_to_transfer: netAmount,
         
-        // Bank details
+        // Bank details - FULL info for admin to process transfers
         bank_name: wallet?.bank_details?.bank_name || 'Unknown',
+        account_number: wallet?.bank_details?.account_number || 'Not provided',
+        account_holder_name: wallet?.bank_details?.account_holder_name || 'Not provided',
         account_last4: wallet?.bank_details?.account_last4 || '****',
         account_type: wallet?.bank_details?.account_type || 'Unknown',
         is_demo_bank: wallet?.bank_details?.is_demo || false,

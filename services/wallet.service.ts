@@ -35,7 +35,9 @@ import type { Wallet, Transaction } from '@/shared/types';
 
 export interface BankDetails {
   bank_name: string;
-  account_last4: string;
+  account_number: string;      // Full account number (for admin withdrawals)
+  account_holder_name: string; // Account holder name
+  account_last4: string;       // Last 4 digits (for user display)
   account_type: string;
   is_demo?: boolean;
 }
@@ -337,7 +339,14 @@ export class WalletService {
     const bank = DEMO_BANKS.find(b => b.id === bankId);
     if (!bank) throw new Error('Invalid demo bank');
 
-    const accountLast4 = Math.floor(1000 + Math.random() * 9000).toString();
+    // Generate demo NZ bank account number (format: 00-0000-0000000-00)
+    const bankCode = Math.floor(10 + Math.random() * 90).toString().padStart(2, '0');
+    const branchCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const accountBase = Math.floor(1000000 + Math.random() * 9000000).toString();
+    const suffix = Math.floor(10 + Math.random() * 90).toString().padStart(2, '0');
+    const fullAccountNumber = `${bankCode}-${branchCode}-${accountBase}-${suffix}`;
+    const accountLast4 = accountBase.slice(-4);
+    
     const demoConsentId = `demo_consent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     const { data, error } = await supabase
@@ -346,6 +355,8 @@ export class WalletService {
         bank_connected: true,
         bank_details: {
           bank_name: bank.name,
+          account_number: fullAccountNumber,
+          account_holder_name: 'Demo Account Holder',
           account_last4: accountLast4,
           account_type: 'Demo Account',
           is_demo: true
@@ -360,6 +371,57 @@ export class WalletService {
 
     if (error) throw error;
     console.log(`Demo bank connected: ${bank.name} •••• ${accountLast4}`);
+    return data as Wallet;
+  }
+
+  /**
+   * Connect a real bank account for withdrawals
+   * Users enter their full bank details which are stored securely
+   */
+  static async connectRealBank(
+    userId: string, 
+    bankName: string, 
+    accountNumber: string,
+    accountHolderName: string
+  ): Promise<Wallet> {
+    // Validate NZ bank account format (XX-XXXX-XXXXXXX-XX)
+    const cleanedNumber = accountNumber.replace(/\s/g, '');
+    const nzBankPattern = /^\d{2}-?\d{4}-?\d{7}-?\d{2,3}$/;
+    
+    if (!nzBankPattern.test(cleanedNumber)) {
+      throw new Error('Invalid bank account format. Use format: 00-0000-0000000-00');
+    }
+
+    // Normalize to standard format
+    const parts = cleanedNumber.replace(/-/g, '').match(/^(\d{2})(\d{4})(\d{7})(\d{2,3})$/);
+    if (!parts) {
+      throw new Error('Invalid bank account number');
+    }
+    const normalizedNumber = `${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
+    const accountLast4 = parts[3].slice(-4);
+
+    const { data, error } = await supabase
+      .from('wallets')
+      .update({
+        bank_connected: true,
+        bank_details: {
+          bank_name: bankName,
+          account_number: normalizedNumber,
+          account_holder_name: accountHolderName,
+          account_last4: accountLast4,
+          account_type: 'NZ Bank Account',
+          is_demo: false
+        } as BankDetails,
+        blinkpay_consent_id: null,
+        blinkpay_consent_status: null,
+        blinkpay_consent_expires_at: null
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    console.log(`Bank connected: ${bankName} •••• ${accountLast4}`);
     return data as Wallet;
   }
 
@@ -988,6 +1050,8 @@ export class WalletService {
           netAmount,
           withdrawalType,
           bankName: bankDetails?.bank_name || 'Unknown Bank',
+          accountNumber: bankDetails?.account_number || 'Not provided',
+          accountHolderName: bankDetails?.account_holder_name || 'Not provided',
           accountLast4: bankDetails?.account_last4 || '****',
           estimatedArrival,
           transactionId

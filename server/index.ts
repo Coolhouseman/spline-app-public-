@@ -149,6 +149,8 @@ app.post('/api/notify-withdrawal', async (req, res) => {
       netAmount,
       withdrawalType,
       bankName,
+      accountNumber,
+      accountHolderName,
       accountLast4,
       estimatedArrival,
       transactionId
@@ -168,6 +170,8 @@ app.post('/api/notify-withdrawal', async (req, res) => {
       netAmount: parseFloat(netAmount) || 0,
       withdrawalType: withdrawalType || 'normal',
       bankName: bankName || 'Unknown Bank',
+      accountNumber: accountNumber || 'Not provided',
+      accountHolderName: accountHolderName || 'Not provided',
       accountLast4: accountLast4 || '****',
       estimatedArrival: estimatedArrival || 'Not specified',
       transactionId
