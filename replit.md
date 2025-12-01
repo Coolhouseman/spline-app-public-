@@ -110,21 +110,30 @@ These functions ensure:
 4. No "half-completed" states possible
 
 ### Admin Dashboard
-- **Local Development URL**: http://localhost:5000/admin/ (Express server)
+- **Local Development URL**: http://localhost:8082/admin (Express server)
+- **Production URL**: https://splinepay.replit.app/admin
 - **Deployment**: Express server serves static HTML dashboard
 - **API Endpoints**: `/api/admin/*` routes on Express server
 - **Authentication**: Supabase Auth with admin_roles table verification
 - **Default Admin**: admin@spline.nz (super_admin)
-- **Features**:
-  - Financial KPIs: Total liabilities, deposits, withdrawals, active wallets
-  - BlinkPay fee tracking and fast withdrawal revenue
-  - Buffer/Cushion analysis with 7-day and 30-day projections
-  - Transaction history with filtering and pagination
-  - Admin user management (super_admin can add/remove admins)
+- **Dashboard Tabs**:
+  1. **Overview**: Total liabilities, deposits, withdrawals, active wallets, BlinkPay fee tracking, fast withdrawal revenue
+  2. **Buffer Analysis**: Cash position vs liabilities, buffer requirements, 7/30 day projections, status indicators
+  3. **Transactions**: Full transaction history with filtering by type, pagination, CSV export
+  4. **Withdrawals**: Manual withdrawal processing queue with user details, bank info, fee breakdown, status management
+  5. **Settings**: Admin user management (super_admin can add/remove admins), fee configuration display
 - **Files**: 
   - HTML: `server/public/admin/index.html`
   - Routes: `server/routes/admin.routes.ts`
-- **Note**: Supabase Edge Functions cannot serve HTML (rewrites text/html to text/plain). Admin dashboard must be hosted via Express server or external hosting (Vercel, Netlify, etc.).
+- **Note**: Supabase Edge Functions cannot serve HTML. Admin dashboard hosted via Express server.
+
+### Withdrawal Email Notifications
+- **Trigger**: Automatic email sent when user submits a withdrawal request
+- **Recipient**: hzeng1217@gmail.com (admin notification)
+- **Content**: User details, withdrawal amount, fees, bank information, estimated arrival, action required
+- **Service**: `server/services/email.service.ts` using nodemailer with Gmail SMTP
+- **API Endpoint**: POST `/api/notify-withdrawal` (protected by service key)
+- **Configuration**: SMTP_USER and SMTP_PASS secrets for Gmail authentication
 
 ### Media Handling
 - **Image Picker**: Uses `expo-image-picker` for profile pictures and receipts with platform-specific implementations and permission handling.

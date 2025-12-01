@@ -141,9 +141,9 @@ This is an automated notification from Spline Pay.
 `;
 
   if (!transporter) {
-    console.log('====== WITHDRAWAL EMAIL NOTIFICATION ======');
-    console.log(emailContent);
-    console.log('============================================');
+    // Log minimal info without PII when email not configured
+    console.log(`[Email] Withdrawal notification for transaction ${data.transactionId} - SMTP not configured`);
+    console.log(`[Email] Amount: $${data.netAmount.toFixed(2)} (${data.withdrawalType})`);
     return false;
   }
 
@@ -160,9 +160,8 @@ This is an automated notification from Spline Pay.
     return true;
   } catch (error) {
     console.error('Failed to send withdrawal notification email:', error);
-    console.log('====== WITHDRAWAL EMAIL NOTIFICATION (FALLBACK) ======');
-    console.log(emailContent);
-    console.log('=======================================================');
+    // Log minimal info without PII on failure
+    console.log(`[Email] FALLBACK - Transaction ${data.transactionId}, Amount: $${data.netAmount.toFixed(2)}`);
     return false;
   }
 }

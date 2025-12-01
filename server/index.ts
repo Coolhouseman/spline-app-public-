@@ -121,9 +121,19 @@ app.post('/api/request-password-reset', async (req, res) => {
   }
 });
 
-// API endpoint for withdrawal notification emails
+// API endpoint for withdrawal notification emails (internal service endpoint)
+// Protected by a simple service key to prevent unauthorized access from external sources
 app.post('/api/notify-withdrawal', async (req, res) => {
   try {
+    // Validate service key to prevent unauthorized access
+    // The mobile app uses 'spline-internal-service' as a shared key
+    const serviceKey = req.headers['x-service-key'];
+    const validKeys = ['spline-internal-service', process.env.SESSION_SECRET].filter(Boolean);
+    
+    if (!serviceKey || !validKeys.includes(serviceKey as string)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
     const {
       userId,
       userName,

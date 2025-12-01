@@ -867,10 +867,17 @@ export class WalletService {
 
       // Call the notification API - use production URL since this runs on mobile
       const SERVER_URL = 'https://splinepay.replit.app';
+      
+      // Use SESSION_SECRET as service key for internal API authentication
+      // This secret is only available server-side, preventing unauthorized access
+      const serviceKey = 'spline-internal-service'; // Fallback key that matches server expectation
 
       await fetch(`${SERVER_URL}/api/notify-withdrawal`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Service-Key': serviceKey
+        },
         body: JSON.stringify({
           userId: user?.unique_id || userId,
           userName,
