@@ -1,9 +1,19 @@
 import { supabase } from './supabase';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const SERVER_URL = Platform.OS === 'web' || __DEV__
-  ? 'http://localhost:8082' 
-  : 'https://splinepay.replit.app';
+const getServerUrl = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:8082';
+  }
+  if (__DEV__ && Constants.expoConfig?.hostUri) {
+    const host = Constants.expoConfig.hostUri.split(':')[0];
+    return `http://${host}:8082`;
+  }
+  return 'https://splinepay.replit.app';
+};
+
+const SERVER_URL = getServerUrl();
 
 interface CardDetails {
   brand: string;

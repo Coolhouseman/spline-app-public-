@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Alert, ActivityIndicator, Modal, ScrollView } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Alert, ActivityIndicator, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -49,6 +49,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
       if (walletData.bank_details) {
         setBankName(walletData.bank_details.bank_name || '');
         setAccountHolderName(walletData.bank_details.account_holder_name || '');
+        setAccountNumber(walletData.bank_details.account_number || '');
       }
     } catch (error) {
       console.error('Failed to load wallet:', error);
@@ -420,8 +421,12 @@ export default function WithdrawalScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      <Modal visible={showBankModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+      <Modal visible={showBankModal} animationType="fade" transparent>
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowBankModal(false)} />
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={[Typography.h2, { color: theme.text }]}>
@@ -432,7 +437,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
               </Pressable>
             </View>
             
-            <ScrollView style={{ maxHeight: 400 }}>
+            <ScrollView style={{ maxHeight: 350 }} keyboardShouldPersistTaps="handled">
               <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
                 Enter your NZ bank account details for receiving withdrawals. Your details are stored securely.
               </ThemedText>
@@ -537,7 +542,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenKeyboardAwareScrollView>
   );
@@ -645,11 +650,21 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContent: {
-    borderTopLeftRadius: BorderRadius.md,
-    borderTopRightRadius: BorderRadius.md,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: BorderRadius.md,
     padding: Spacing.xl,
     paddingBottom: Spacing['2xl'],
   },

@@ -933,13 +933,15 @@ export class WalletService {
 
     // Use atomic RPC function - this ensures transaction is logged AND balance updated together
     // If either fails, both are rolled back
+    // Include full bank account number in transaction for liability protection
     const { data: result, error: rpcError } = await supabase.rpc('process_withdrawal', {
       p_user_id: userId,
       p_amount: amount,
       p_withdrawal_type: withdrawalType,
       p_fee_amount: feeAmount,
       p_net_amount: netAmount,
-      p_estimated_arrival: estimatedArrival.toISOString()
+      p_estimated_arrival: estimatedArrival.toISOString(),
+      p_bank_account: wallet.bank_details?.account_number || null
     });
 
     if (rpcError) {
@@ -986,14 +988,19 @@ export class WalletService {
 
     if (txError || !transaction) {
       // Transaction was created, just can't fetch it - return a constructed object
+      // Mask bank account for user display (last 4 digits only)
+      const fullAccount = wallet.bank_details?.account_number;
+      const maskedAccount = fullAccount && fullAccount.length > 4 
+        ? '****' + fullAccount.replace(/-/g, '').slice(-4)
+        : 'Bank account';
       return {
         id: result.transaction_id,
         user_id: userId,
         type: 'withdrawal',
         amount: amount,
         description: withdrawalType === 'fast' 
-          ? `Fast withdrawal to bank (Fee: $${feeAmount.toFixed(2)}, You receive: $${netAmount.toFixed(2)})`
-          : 'Standard withdrawal to bank',
+          ? `Fast withdrawal to ${maskedAccount} (Fee: $${feeAmount.toFixed(2)}, You receive: $${netAmount.toFixed(2)})`
+          : `Standard withdrawal to ${maskedAccount} (You receive: $${netAmount.toFixed(2)})`,
         direction: 'out',
         created_at: new Date().toISOString()
       } as Transaction;
@@ -1127,11 +1134,39 @@ export class WalletService {
       throw new Error('Payment amount must be greater than zero');
     }
 
-    const { data: wallet } = await supabase
+    // Try to get wallet, create if doesn't exist (using upsert to handle race conditions)
+    let { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
       .eq('user_id', userId)
       .single();
+
+    if (walletError || !wallet) {
+      // Use upsert to handle concurrent wallet creation (race condition safe)
+      const { error: upsertError } = await supabase
+        .from('wallets')
+        .upsert(
+          { user_id: userId, balance: 0, bank_connected: false },
+          { onConflict: 'user_id', ignoreDuplicates: true }
+        );
+
+      if (upsertError && !upsertError.message.includes('duplicate')) {
+        console.error('Failed to create wallet:', upsertError);
+        throw new Error('Failed to initialize wallet. Please try again.');
+      }
+
+      // Re-fetch the wallet after creation
+      const { data: newWallet, error: fetchError } = await supabase
+        .from('wallets')
+        .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError || !newWallet) {
+        throw new Error('Wallet not found');
+      }
+      wallet = newWallet;
+    }
 
     if (!wallet) throw new Error('Wallet not found');
 
@@ -1326,6 +1361,17 @@ export class WalletService {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data as Transaction[];
+    
+    // Strip sensitive data from metadata for user-facing transactions
+    // Keep bank_account_masked but remove full bank_account
+    const sanitizedData = (data || []).map(tx => {
+      if (tx.metadata && typeof tx.metadata === 'object') {
+        const { bank_account, ...safeMetadata } = tx.metadata as Record<string, unknown>;
+        return { ...tx, metadata: safeMetadata };
+      }
+      return tx;
+    });
+    
+    return sanitizedData as Transaction[];
   }
 }
