@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzOTcwNTgsImV4cCI6MjA2Mzk3MzA1OH0.EI2qBBfKIoF5HZIFU_Ls62xi5A0EPKwylvKGl9ppwQA';
 
 if (!supabaseServiceKey) {
   console.error('FATAL: SUPABASE_SERVICE_ROLE_KEY is not configured');
@@ -89,30 +89,57 @@ router.post('/setup-admin', async (req, res) => {
     const adminEmail = 'admin@spline.nz';
     const adminPassword = 'SplineAdmin2024!';
     
-    // Check if user already exists by trying to get them
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.email === adminEmail);
+    console.log('Setting up admin user:', adminEmail);
     
-    if (existingUser) {
-      // Update password for existing user
-      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
-        existingUser.id,
-        { password: adminPassword }
-      );
+    // First, try to find and delete any existing user with this email
+    // Paginate through all users to find the one we need
+    let page = 1;
+    let foundUserId: string | null = null;
+    
+    while (true) {
+      const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+        page,
+        perPage: 100
+      });
       
-      if (error) {
-        console.error('Error updating admin password:', error);
-        return res.status(500).json({ error: 'Failed to update admin password', details: error.message });
+      if (listError) {
+        console.error('Error listing users:', listError);
+        break;
       }
       
-      return res.json({ 
-        success: true, 
-        message: 'Admin password updated successfully',
-        email: adminEmail
-      });
+      if (!usersData?.users || usersData.users.length === 0) {
+        break;
+      }
+      
+      const existingUser = usersData.users.find(u => u.email?.toLowerCase() === adminEmail.toLowerCase());
+      if (existingUser) {
+        foundUserId = existingUser.id;
+        console.log('Found existing user:', foundUserId);
+        break;
+      }
+      
+      // Check if we've reached the last page
+      if (usersData.users.length < 100) {
+        break;
+      }
+      
+      page++;
     }
     
-    // Create new admin user
+    // Delete existing user if found
+    if (foundUserId) {
+      console.log('Deleting existing user:', foundUserId);
+      const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(foundUserId);
+      if (deleteError) {
+        console.error('Error deleting existing user:', deleteError);
+        // Continue anyway - try to create new user
+      } else {
+        console.log('Existing user deleted successfully');
+      }
+    }
+    
+    // Create fresh admin user
+    console.log('Creating new admin user...');
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
@@ -123,6 +150,8 @@ router.post('/setup-admin', async (req, res) => {
       console.error('Error creating admin user:', error);
       return res.status(500).json({ error: 'Failed to create admin user', details: error.message });
     }
+    
+    console.log('Admin user created successfully:', data.user?.id);
     
     res.json({ 
       success: true, 
@@ -152,11 +181,10 @@ router.post('/login', async (req, res) => {
     }
 
     console.log('Using Supabase URL:', supabaseUrl);
-    console.log('Anon key configured:', !!supabaseAnonKey);
+    console.log('Attempting admin auth with service role key...');
 
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-    
-    const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+    // Use supabaseAdmin (service role) to verify credentials by signing in
+    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
       email,
       password
     });
@@ -175,7 +203,7 @@ router.post('/login', async (req, res) => {
 
     const adminCheck = await checkAdminRole(authData.user.email || '');
     if (!adminCheck.authorized) {
-      await supabaseClient.auth.signOut();
+      await supabaseAdmin.auth.signOut();
       return res.status(403).json({ error: 'This account does not have admin access' });
     }
 
