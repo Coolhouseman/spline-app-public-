@@ -627,7 +627,6 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
         direction: tx.direction,
         metadata: tx.metadata,
         estimated_stripe_fee: stripeFee,
-        estimated_blinkpay_fee: stripeFee,
         fast_withdrawal_fee: fastFee,
         created_at: tx.created_at
       };
