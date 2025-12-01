@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Alert, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -8,7 +8,7 @@ import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareS
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { WalletService } from '@/services/wallet.service';
+import { WalletService, NZ_BANKS } from '@/services/wallet.service';
 import { Wallet } from '@/shared/types';
 
 type Props = NativeStackScreenProps<any, 'Withdrawal'>;
@@ -21,6 +21,13 @@ export default function WithdrawalScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadingWallet, setLoadingWallet] = useState(true);
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountHolderName, setAccountHolderName] = useState('');
+  const [savingBank, setSavingBank] = useState(false);
+  const [showBankPicker, setShowBankPicker] = useState(false);
 
   useEffect(() => {
     loadWallet();
@@ -34,6 +41,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
     try {
       const walletData = await WalletService.getWallet(user.id);
       setWallet(walletData);
+      
+      if (walletData.bank_details) {
+        setBankName(walletData.bank_details.bank_name || '');
+        setAccountHolderName(walletData.bank_details.account_holder_name || '');
+      }
     } catch (error) {
       console.error('Failed to load wallet:', error);
     } finally {
@@ -67,6 +79,42 @@ export default function WithdrawalScreen({ navigation }: Props) {
     return wallet.balance;
   };
 
+  const handleSaveBankDetails = async () => {
+    if (!user) return;
+    
+    if (!bankName.trim()) {
+      Alert.alert('Missing Info', 'Please select your bank');
+      return;
+    }
+    
+    if (!accountNumber.trim()) {
+      Alert.alert('Missing Info', 'Please enter your account number');
+      return;
+    }
+    
+    if (!accountHolderName.trim()) {
+      Alert.alert('Missing Info', 'Please enter the account holder name');
+      return;
+    }
+    
+    setSavingBank(true);
+    try {
+      const updatedWallet = await WalletService.connectBankAccount(
+        user.id,
+        bankName,
+        accountNumber,
+        accountHolderName
+      );
+      setWallet(updatedWallet);
+      setShowBankModal(false);
+      Alert.alert('Success', 'Bank account saved successfully');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save bank details');
+    } finally {
+      setSavingBank(false);
+    }
+  };
+
   const handleWithdraw = async () => {
     if (!user) return;
     
@@ -83,14 +131,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
     }
 
     if (!wallet?.bank_connected) {
-      Alert.alert(
-        'Bank Not Connected',
-        'Please connect your bank account to withdraw funds. Go to Wallet to connect your bank.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Wallet', onPress: () => navigation.goBack() }
-        ]
-      );
+      setShowBankModal(true);
       return;
     }
 
@@ -132,6 +173,11 @@ export default function WithdrawalScreen({ navigation }: Props) {
         }
       ]
     );
+  };
+
+  const formatAccountNumber = (text: string) => {
+    const cleaned = text.replace(/[^0-9-]/g, '');
+    return cleaned;
   };
 
   if (loadingWallet) {
@@ -282,14 +328,41 @@ export default function WithdrawalScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        {!wallet?.bank_connected ? (
-          <View style={[styles.bankWarning, { backgroundColor: theme.warning + '20', borderColor: theme.warning }]}>
+        {wallet?.bank_connected ? (
+          <Pressable 
+            style={[styles.bankDetailsCard, { backgroundColor: theme.success + '10', borderColor: theme.success }]}
+            onPress={() => setShowBankModal(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Feather name="check-circle" size={20} color={theme.success} />
+              <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+                <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                  {wallet.bank_details?.bank_name}
+                </ThemedText>
+                <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                  Account ending in {wallet.bank_details?.account_last4}
+                </ThemedText>
+              </View>
+            </View>
+            <Feather name="edit-2" size={16} color={theme.textSecondary} />
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.bankWarning, { backgroundColor: theme.warning + '20', borderColor: theme.warning }]}
+            onPress={() => setShowBankModal(true)}
+          >
             <Feather name="alert-circle" size={20} color={theme.warning} />
-            <ThemedText style={[Typography.caption, { color: theme.text, marginLeft: Spacing.md, flex: 1 }]}>
-              Connect your bank account in Wallet to enable withdrawals
-            </ThemedText>
-          </View>
-        ) : null}
+            <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+              <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                Add Bank Account
+              </ThemedText>
+              <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                Enter your bank details to receive withdrawals
+              </ThemedText>
+            </View>
+            <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+          </Pressable>
+        )}
 
         <View style={[styles.infoBox, { backgroundColor: theme.primary + '10', marginTop: Spacing.lg }]}>
           <Feather name="shield" size={16} color={theme.primary} style={{ marginRight: Spacing.sm }} />
@@ -304,22 +377,142 @@ export default function WithdrawalScreen({ navigation }: Props) {
           style={({ pressed }) => [
             styles.button,
             { 
-              backgroundColor: wallet?.bank_connected ? theme.primary : theme.textSecondary,
+              backgroundColor: wallet?.bank_connected ? theme.primary : theme.primary,
               opacity: pressed ? 0.7 : (loading || !selectedMethod || !parseFloat(amount) ? 0.5 : 1)
             }
           ]}
           onPress={handleWithdraw}
-          disabled={loading || !wallet?.bank_connected || !selectedMethod || !parseFloat(amount)}
+          disabled={loading || !selectedMethod || !parseFloat(amount)}
         >
           {loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
-              {wallet?.bank_connected ? 'Withdraw' : 'Connect Bank First'}
+              {wallet?.bank_connected ? 'Withdraw' : 'Add Bank & Withdraw'}
             </ThemedText>
           )}
         </Pressable>
       </View>
+
+      <Modal visible={showBankModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={[Typography.h2, { color: theme.text }]}>
+                Bank Account Details
+              </ThemedText>
+              <Pressable onPress={() => setShowBankModal(false)}>
+                <Feather name="x" size={24} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+            
+            <ScrollView style={{ maxHeight: 400 }}>
+              <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
+                Enter your NZ bank account details for receiving withdrawals. Your details are stored securely.
+              </ThemedText>
+
+              <ThemedText style={[Typography.body, { color: theme.text, marginBottom: Spacing.xs, fontWeight: '600' }]}>
+                Bank
+              </ThemedText>
+              <Pressable
+                style={[styles.pickerButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                onPress={() => setShowBankPicker(!showBankPicker)}
+              >
+                <ThemedText style={[Typography.body, { color: bankName ? theme.text : theme.textSecondary }]}>
+                  {bankName || 'Select your bank'}
+                </ThemedText>
+                <Feather name="chevron-down" size={20} color={theme.textSecondary} />
+              </Pressable>
+              
+              {showBankPicker ? (
+                <View style={[styles.pickerDropdown, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  {NZ_BANKS.map((bank) => (
+                    <Pressable
+                      key={bank.id}
+                      style={({ pressed }) => [
+                        styles.pickerItem,
+                        { 
+                          backgroundColor: bankName === bank.name ? theme.primary + '20' : 'transparent',
+                          opacity: pressed ? 0.7 : 1
+                        }
+                      ]}
+                      onPress={() => {
+                        setBankName(bank.name);
+                        setShowBankPicker(false);
+                      }}
+                    >
+                      <ThemedText style={[Typography.body, { color: theme.text }]}>
+                        {bank.name}
+                      </ThemedText>
+                      {bankName === bank.name ? (
+                        <Feather name="check" size={18} color={theme.primary} />
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              <ThemedText style={[Typography.body, { color: theme.text, marginTop: Spacing.lg, marginBottom: Spacing.xs, fontWeight: '600' }]}>
+                Account Number
+              </ThemedText>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                value={accountNumber}
+                onChangeText={(text) => setAccountNumber(formatAccountNumber(text))}
+                placeholder="00-0000-0000000-00"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="numbers-and-punctuation"
+              />
+              <ThemedText style={[Typography.small, { color: theme.textSecondary, marginTop: Spacing.xs }]}>
+                NZ bank format: 00-0000-0000000-00
+              </ThemedText>
+
+              <ThemedText style={[Typography.body, { color: theme.text, marginTop: Spacing.lg, marginBottom: Spacing.xs, fontWeight: '600' }]}>
+                Account Holder Name
+              </ThemedText>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                value={accountHolderName}
+                onChangeText={setAccountHolderName}
+                placeholder="Name as shown on account"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="words"
+              />
+            </ScrollView>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => setShowBankModal(false)}
+                disabled={savingBank}
+              >
+                <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.7 : (savingBank ? 0.5 : 1) }
+                ]}
+                onPress={handleSaveBankDetails}
+                disabled={savingBank}
+              >
+                {savingBank ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                    Save Bank Details
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenKeyboardAwareScrollView>
   );
 }
@@ -391,6 +584,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.1)',
   },
+  bankDetailsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    marginTop: Spacing.xl,
+  },
   bankWarning: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,6 +613,65 @@ const styles = StyleSheet.create({
   button: {
     height: Spacing.buttonHeight,
     borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.md,
+    borderTopRightRadius: BorderRadius.md,
+    padding: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  textInput: {
+    height: Spacing.inputHeight,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    fontSize: 16,
+  },
+  pickerButton: {
+    height: Spacing.inputHeight,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerDropdown: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    marginTop: Spacing.xs,
+    overflow: 'hidden',
+  },
+  pickerItem: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.xl,
+  },
+  modalButton: {
+    flex: 1,
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
