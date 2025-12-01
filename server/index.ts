@@ -45,6 +45,10 @@ app.get('/reset-password', (req, res) => {
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
   
+  // Get token from query params (some email clients pass it there)
+  const tokenFromQuery = req.query.token || req.query.access_token || '';
+  const typeFromQuery = req.query.type || '';
+  
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -188,7 +192,16 @@ app.get('/reset-password', (req, res) => {
   <div class="container">
     <div class="logo"><span class="logo-sp">Sp</span><span class="logo-line">line</span></div>
     
-    <div id="reset-form">
+    <div id="loading-view">
+      <h1>Verifying Link...</h1>
+      <p class="subtitle">Please wait while we verify your reset link</p>
+      <div style="margin: 24px 0;">
+        <div style="width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #3B82F6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    </div>
+    
+    <div id="reset-form" class="hidden">
       <h1>Reset Your Password</h1>
       <p class="subtitle">Enter your new password below</p>
       
@@ -209,26 +222,45 @@ app.get('/reset-password', (req, res) => {
         
         <button type="submit" class="btn" id="submitBtn">Update Password</button>
       </form>
+    </div>
+    
+    <div id="expired-view" class="hidden">
+      <h1>Link Expired</h1>
+      <p class="subtitle">This reset link has expired or is invalid. Request a new one below.</p>
       
-      <div class="divider"><span>or</span></div>
+      <div id="expired-error" class="error"></div>
+      <div id="expired-success" class="success"></div>
       
-      <a href="splitpaymentapp://reset-password" class="btn btn-secondary" style="display: block; text-decoration: none; text-align: center;">
-        Open in Spline App
-      </a>
+      <form onsubmit="handleResendRequest(event)">
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <input type="email" id="email" placeholder="Enter your email" required>
+        </div>
+        
+        <button type="submit" class="btn" id="resendBtn">Send New Reset Link</button>
+      </form>
       
-      <p class="app-link">Don't have the app? <a href="/#download">Download Spline</a></p>
+      <p class="app-link" style="margin-top: 24px;">
+        <a href="/">Return to Homepage</a>
+      </p>
     </div>
     
     <div id="success-view" class="hidden">
-      <div style="font-size: 64px; margin-bottom: 24px;">&#10003;</div>
+      <div style="font-size: 64px; margin-bottom: 24px; color: #16a34a;">&#10003;</div>
       <h1>Password Updated!</h1>
       <p class="subtitle">Your password has been successfully reset. You can now log in with your new password.</p>
-      <a href="splitpaymentapp://login" class="btn" style="display: block; text-decoration: none; margin-top: 24px;">
-        Open Spline App
+      <a href="/" class="btn" style="display: block; text-decoration: none; margin-top: 24px;">
+        Return to Homepage
       </a>
-      <p class="app-link" style="margin-top: 16px;">
-        <a href="/">Return to Homepage</a>
-      </p>
+    </div>
+    
+    <div id="email-sent-view" class="hidden">
+      <div style="font-size: 64px; margin-bottom: 24px;">&#9993;</div>
+      <h1>Check Your Email</h1>
+      <p class="subtitle">We've sent a new password reset link to your email address. Please check your inbox and click the link.</p>
+      <a href="/" class="btn" style="display: block; text-decoration: none; margin-top: 24px;">
+        Return to Homepage
+      </a>
     </div>
   </div>
 
@@ -239,69 +271,106 @@ app.get('/reset-password', (req, res) => {
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     let sessionReady = false;
     
-    function showError(message) {
-      const errorEl = document.getElementById('error');
-      errorEl.textContent = message;
-      errorEl.style.display = 'block';
-      document.getElementById('success').style.display = 'none';
+    function showView(viewId) {
+      ['loading-view', 'reset-form', 'expired-view', 'success-view', 'email-sent-view'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(viewId).classList.remove('hidden');
     }
     
-    function hideError() {
-      document.getElementById('error').style.display = 'none';
+    function showError(message, elementId = 'error') {
+      const errorEl = document.getElementById(elementId);
+      if (errorEl) {
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+      }
     }
     
-    function showSuccess(message) {
-      const successEl = document.getElementById('success');
-      successEl.textContent = message;
-      successEl.style.display = 'block';
-      document.getElementById('error').style.display = 'none';
+    function hideError(elementId = 'error') {
+      const errorEl = document.getElementById(elementId);
+      if (errorEl) {
+        errorEl.style.display = 'none';
+      }
     }
     
     // Listen for auth state changes - most reliable method
     supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event);
+      console.log('Auth event:', event, session ? 'with session' : 'no session');
       
       if (event === 'PASSWORD_RECOVERY') {
-        // User clicked a valid password reset link
         sessionReady = true;
-        hideError();
+        showView('reset-form');
         console.log('Password recovery session established');
       } else if (event === 'SIGNED_IN' && session) {
-        // Session established
         sessionReady = true;
-        hideError();
-        console.log('Session established');
+        showView('reset-form');
+        console.log('Session established via SIGNED_IN');
       }
     });
     
-    // Also try to extract from URL hash as backup
     async function initSession() {
-      // Give Supabase a moment to process the hash
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('Full URL:', window.location.href);
+      console.log('Hash:', window.location.hash);
+      console.log('Search:', window.location.search);
       
-      const hash = window.location.hash;
-      console.log('URL hash:', hash ? 'present' : 'empty');
+      // Give Supabase time to process the URL hash
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Check if we have a session already
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (session) {
-        sessionReady = true;
-        hideError();
-        console.log('Existing session found');
+      // Check if session was established via onAuthStateChange
+      if (sessionReady) {
         return;
       }
       
-      // If no hash and no session, show error after a delay
-      // (to give onAuthStateChange time to fire)
+      // Check for existing session
+      const { data: { session }, error } = await supabase.auth.getSession();
+      console.log('Session check:', session ? 'found' : 'not found', error || '');
+      
+      if (session) {
+        sessionReady = true;
+        showView('reset-form');
+        return;
+      }
+      
+      // Wait a bit more then show expired view
       setTimeout(() => {
         if (!sessionReady) {
-          showError('Invalid or expired reset link. Please request a new password reset from the app.');
+          console.log('No session established, showing expired view');
+          showView('expired-view');
         }
-      }, 2000);
+      }, 1500);
     }
     
     initSession();
+    
+    async function handleResendRequest(e) {
+      e.preventDefault();
+      
+      const email = document.getElementById('email').value;
+      const resendBtn = document.getElementById('resendBtn');
+      
+      hideError('expired-error');
+      resendBtn.disabled = true;
+      resendBtn.textContent = 'Sending...';
+      
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: 'https://splinepay.replit.app/reset-password'
+        });
+        
+        if (error) {
+          showError(error.message, 'expired-error');
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Send New Reset Link';
+          return;
+        }
+        
+        showView('email-sent-view');
+      } catch (err) {
+        showError('An error occurred. Please try again.', 'expired-error');
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Send New Reset Link';
+      }
+    }
     
     async function handleSubmit(e) {
       e.preventDefault();
@@ -350,8 +419,7 @@ app.get('/reset-password', (req, res) => {
         }
         
         // Show success view
-        document.getElementById('reset-form').classList.add('hidden');
-        document.getElementById('success-view').classList.remove('hidden');
+        showView('success-view');
         
       } catch (err) {
         showError('An unexpected error occurred. Please try again.');
