@@ -130,7 +130,7 @@
           <div class="glass-card rounded-xl p-5">
             <p class="text-sm text-gray-500">Fast Withdrawal Revenue</p>
             <p id="metric-fast-fees" class="text-2xl font-bold text-green-600 mt-1">$0.00</p>
-            <p class="text-xs text-gray-400 mt-1">2% fee on fast transfers</p>
+            <p class="text-xs text-gray-400 mt-1">3.5% fee on fast transfers</p>
           </div>
           <div class="glass-card rounded-xl p-5">
             <p class="text-sm text-gray-500">Net Fee Position</p>
@@ -204,7 +204,7 @@
             <div class="bg-purple-50 rounded-lg p-4">
               <p class="text-xs text-purple-600">Fast Fee Revenue</p>
               <p id="buffer-fast-fees" class="text-xl font-bold text-purple-800">$0.00</p>
-              <p class="text-xs text-purple-500 mt-1">2% of fast withdrawals</p>
+              <p class="text-xs text-purple-500 mt-1">3.5% of fast withdrawals</p>
             </div>
           </div>
 
@@ -234,7 +234,7 @@
             <ul class="text-sm text-yellow-700 space-y-1">
               <li>When users deposit $100, Stripe charges ~2.9% + 30c (~$3.20), so you receive ~$96.80</li>
               <li>User's wallet shows $100, creating a $3.20 buffer requirement</li>
-              <li>Fast withdrawals (2% fee) help offset this - user deposits $100, withdraws fast, you keep $2</li>
+              <li>Fast withdrawals (3.5% fee) help offset this - user deposits $100, withdraws fast, you keep $3.50</li>
               <li>Normal withdrawals are free - if user withdraws $100, you need full $100 to send</li>
               <li>Stripe fees are significantly higher than bank transfers - factor this into pricing</li>
             </ul>
@@ -350,7 +350,7 @@
             <ol class="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
               <li>Click "Start Processing" to mark the withdrawal as being worked on</li>
               <li>Use the bank details to manually transfer the <strong>Net Amount</strong> to the user's bank</li>
-              <li>For Fast Transfers: 2% fee is already deducted - transfer the Net Amount shown</li>
+              <li>For Fast Transfers: 3.5% fee is already deducted - transfer the Net Amount shown</li>
               <li>After successful transfer, click "Mark Completed"</li>
               <li>If transfer fails, click "Mark Failed" and contact the user</li>
             </ol>
@@ -401,10 +401,32 @@
             </div>
             <div class="bg-gray-50 rounded-lg p-4">
               <p class="text-sm text-gray-600">Fast Withdrawal Fee</p>
-              <p class="text-xl font-bold text-gray-800">2%</p>
+              <p class="text-xl font-bold text-gray-800">3.5%</p>
               <p class="text-xs text-gray-400">Included in withdrawal amount (not additional)</p>
             </div>
           </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6 mt-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Withdrawal Limits</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Daily Limit</p>
+              <p class="text-xl font-bold text-gray-800">3 per day</p>
+              <p class="text-xs text-gray-400">Total across all types</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Fast Transfers / Month</p>
+              <p class="text-xl font-bold text-purple-800">4 per month</p>
+              <p class="text-xs text-gray-400">Tracked separately from normal</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Normal Transfers / Month</p>
+              <p class="text-xl font-bold text-green-800">4 per month</p>
+              <p class="text-xs text-gray-400">Tracked separately from fast</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-4">Monthly limits reset on the 1st of each month. Users can make up to 4 fast AND 4 normal withdrawals each month.</p>
         </div>
       </div>
     </div>
@@ -888,7 +910,7 @@
       };
       
       const typeLabel = w.withdrawal_type === 'fast' 
-        ? '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">FAST (2% fee)</span>'
+        ? '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">FAST (3.5% fee)</span>'
         : '<span class="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-xs">NORMAL (free)</span>';
       
       let actionButtons = '';
