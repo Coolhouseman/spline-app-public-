@@ -202,7 +202,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
       
       Alert.alert(
         'Confirm Payment',
-        `Pay $${participantAmount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
+        `Pay $${participantAmount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your saved card.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -222,16 +222,15 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 loadEvent();
               } catch (error: any) {
                 console.error('Payment failed:', error);
-                if (error.message.includes('Insufficient wallet balance')) {
+                if (error.message.includes('Insufficient wallet balance') || error.message.includes('Add a payment card')) {
                   Alert.alert(
-                    'Connect Bank Required',
-                    'You don\'t have enough balance in your wallet. Would you like to connect your bank to complete this payment?',
+                    'Add Card Required',
+                    'You don\'t have enough balance in your wallet. Would you like to add a payment card to complete this payment?',
                     [
                       { text: 'Cancel', style: 'cancel' },
                       {
-                        text: 'Connect Bank',
+                        text: 'Add Card',
                         onPress: () => {
-                          // Navigate to parent tab navigator to switch to WalletTab
                           navigation.getParent()?.navigate('WalletTab');
                         }
                       }
@@ -270,7 +269,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     
     Alert.alert(
       'Confirm Payment',
-      `Pay $${amount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your connected bank account.`,
+      `Pay $${amount.toFixed(2)} for ${event.name}?\n\nPayment will be deducted from your wallet balance if available, otherwise from your saved card.`,
       [
         { 
           text: 'Cancel', 
@@ -281,10 +280,8 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           text: 'Confirm',
           onPress: async () => {
             try {
-              // First update the participant's amount
               await SplitsService.updateParticipantAmount(user.id, eventId, amount);
               
-              // Then process the payment
               await WalletService.paySplitEvent(
                 user.id,
                 eventId,
@@ -299,16 +296,15 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               loadEvent();
             } catch (error: any) {
               console.error('Payment failed:', error);
-              if (error.message.includes('Insufficient wallet balance')) {
+              if (error.message.includes('Insufficient wallet balance') || error.message.includes('Add a payment card')) {
                 Alert.alert(
-                  'Connect Bank Required',
-                  'You don\'t have enough balance in your wallet. Would you like to connect your bank to complete this payment?',
+                  'Add Card Required',
+                  'You don\'t have enough balance in your wallet. Would you like to add a payment card to complete this payment?',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     {
-                      text: 'Connect Bank',
+                      text: 'Add Card',
                       onPress: () => {
-                        // Navigate to parent tab navigator to switch to WalletTab
                         navigation.getParent()?.navigate('WalletTab');
                       }
                     }

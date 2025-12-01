@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
+import { Platform } from 'react-native';
 
-const SERVER_URL = __DEV__ 
+const SERVER_URL = Platform.OS === 'web' || __DEV__
   ? 'http://localhost:8082' 
   : 'https://splinepay.replit.app';
 
@@ -211,5 +212,61 @@ export class StripeService {
       brand: wallet.card_brand,
       last4: wallet.card_last4,
     };
+  }
+
+  static async initiateCardSetup(
+    userId: string,
+    email: string,
+    name: string,
+    existingCustomerId?: string
+  ): Promise<{ customerId: string; setupIntentId: string; cardSetupUrl: string }> {
+    const response = await fetch(`${SERVER_URL}/api/stripe/initiate-card-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        userId, 
+        email, 
+        name,
+        customerId: existingCustomerId 
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to initiate card setup');
+    }
+
+    return response.json();
+  }
+
+  static async completeCardSetup(
+    userId: string,
+    setupIntentId: string,
+    paymentMethodId: string,
+    customerId: string
+  ): Promise<void> {
+    const response = await fetch(`${SERVER_URL}/api/stripe/confirm-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setupIntentId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to confirm card setup');
+    }
+
+    const { card } = await response.json();
+
+    await supabase
+      .from('wallets')
+      .update({
+        stripe_customer_id: customerId,
+        stripe_payment_method_id: paymentMethodId,
+        card_brand: card.brand,
+        card_last4: card.last4,
+        bank_connected: true,
+      })
+      .eq('user_id', userId);
   }
 }

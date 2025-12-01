@@ -43,6 +43,10 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/privacy.html'));
 });
 
+app.get('/card-setup.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/card-setup.html'));
+});
+
 // Import Supabase for server-side password operations
 import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';

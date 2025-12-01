@@ -15,13 +15,13 @@ Preferred communication style: Simple, everyday language.
 - **React 19.1.0**: Utilizes the latest React version.
 
 ### Backend Architecture
-- **Supabase Edge Functions**: BlinkPay payment processing runs on Supabase's serverless infrastructure.
 - **Express Server**: 
   - Development: Runs on port 8082 (via dev script)
   - Production: Runs on port 8081 (Autoscale deployment)
 - **Expo Dev Server**: Runs on port 8081 for mobile app development.
-- **BlinkPay Integration**: All BlinkPay operations are processed via Supabase Edge Functions for security and cross-platform compatibility.
-- **Edge Functions Location**: `supabase/functions/blinkpay-consent` and `supabase/functions/blinkpay-payment`
+- **Stripe Integration**: Credit/debit card payments for deposits and split payments
+- **Stripe Routes**: `server/routes/stripe.routes.ts` - customer creation, SetupIntent, PaymentIntent, card management
+- **Card Setup Page**: `server/public/card-setup.html` - Hosted Stripe Elements form for secure card binding
 
 ### Public Website (splinepay.replit.app)
 - **Landing Page**: Professional marketing page at `/` with features, security info, and download CTAs
@@ -83,18 +83,23 @@ Preferred communication style: Simple, everyday language.
 
 ### Wallet System & Payment Processing
 - **Balance Management**: Tracks available funds, persisted in Supabase.
-- **BlinkPay Integration**: OAuth-based bank connection for enduring consent and direct debit payments. All BlinkPay operations are handled by Supabase Edge Functions.
-- **Payment Flow**: Users connect their bank via BlinkPay, authorize enduring consent, and then can make seamless split payments.
+- **Stripe Integration**: Users add a credit/debit card once for one-tap payments. Card details securely stored via Stripe.
+- **Payment Flow**: 
+  1. Users add a payment card via Stripe Elements (hosted card-setup.html page)
+  2. Card is saved as a PaymentMethod for off-session charges
+  3. Split payments first deduct from wallet balance, then charge card for shortfall
+- **Database Fields**: `stripe_customer_id`, `stripe_payment_method_id`, `card_brand`, `card_last4` in wallets table
 - **Creator Wallet Credits**: When a participant pays their share, the creator's wallet is credited via the `credit_recipient_wallet` RPC function. The creator's own share (auto-marked as 'paid' at creation) is NOT credited to their wallet.
 - **Withdrawal Types**:
   - **Fast Transfer**: 2% fee INCLUDED in withdrawal amount (not added on top). User enters $14, fee of $0.28 is deducted, user receives $13.72 in bank. Fee stays with business as revenue.
   - **Normal Transfer**: Free, arrives in 3-5 business days. Standard bank transfer.
+- **Withdrawals**: Manual bank transfers - user provides bank account details for each withdrawal request. Admin processes withdrawals manually.
 - **Anti-Abuse Mechanism**:
   - 24-hour hold on deposited funds before withdrawal (earned funds from split payments can be withdrawn immediately)
   - Maximum 3 withdrawals per day
   - Prevents fund cycling/money laundering attempts
 - **Transaction Metadata**: Withdrawal transactions store type, fee amount, net amount (what user receives), estimated arrival, and status in a JSONB metadata field.
-- **BlinkPay Fee Absorption**: When users pay splits from their bank, BlinkPay charges 0.1% fee. This fee is absorbed by the company - the split creator receives the full amount shown in UI.
+- **Stripe Fees**: Stripe charges ~2.9% + 30c per transaction. This is absorbed by the company - the split creator receives the full amount shown in UI.
 
 ### Wallet Race Condition Protection (Atomic RPC Functions)
 All wallet balance changes use PostgreSQL RPC functions with `FOR UPDATE` row locks:
@@ -196,7 +201,7 @@ These functions ensure:
 - **express**: Backend server framework.
 - **cors**: Cross-origin resource sharing.
 - **dotenv**: Environment variable management.
-- **blink-debit-api-client-node**: BlinkPay SDK (server-side).
+- **stripe**: Stripe Node.js SDK (server-side payment processing).
 
 ### Development Tools
 - **babel-plugin-module-resolver**: Path alias support.

@@ -60,6 +60,10 @@ export interface Wallet {
   blinkpay_consent_id?: string;
   blinkpay_consent_status?: string;
   blinkpay_consent_expires_at?: string;
+  stripe_customer_id?: string;
+  stripe_payment_method_id?: string;
+  card_brand?: string;
+  card_last4?: string;
   created_at: string;
   updated_at: string;
 }

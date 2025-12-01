@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -9,7 +9,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Wallet, Transaction } from '@/shared/types';
-import { WalletService, BankDetails, DEMO_BANKS } from '@/services/wallet.service';
+import { WalletService, BankDetails } from '@/services/wallet.service';
+import { StripeService } from '@/services/stripe.service';
 import { supabase } from '@/services/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
@@ -27,13 +28,17 @@ export default function WalletScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
-  const [showBlinkPayErrorModal, setShowBlinkPayErrorModal] = useState(false);
-  const [showDemoBankModal, setShowDemoBankModal] = useState(false);
+  const [pendingSetupData, setPendingSetupData] = useState<{
+    customerId: string;
+    setupIntentId: string;
+  } | null>(null);
   
   const [amount, setAmount] = useState('');
   const [processing, setProcessing] = useState(false);
   
-  const isDemo = wallet?.bank_details?.is_demo === true;
+  const hasCard = !!wallet?.stripe_payment_method_id;
+  const cardBrand = wallet?.card_brand || '';
+  const cardLast4 = wallet?.card_last4 || '';
 
   useEffect(() => {
     loadWalletData();
@@ -106,16 +111,16 @@ export default function WalletScreen({ navigation }: Props) {
     
     if (!wallet?.bank_connected) {
       Alert.alert(
-        'Connect Bank First',
-        'You need to connect your bank account to add funds. Would you like to connect now?',
+        'Add Card First',
+        'You need to add a payment card to add funds. Would you like to add one now?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Connect Bank',
+            text: 'Add Card',
             onPress: () => {
               setShowAddFundsModal(false);
               setAmount('');
-              setShowDemoBankModal(true);
+              handleAddCard();
             }
           }
         ]
@@ -125,19 +130,11 @@ export default function WalletScreen({ navigation }: Props) {
     
     setProcessing(true);
     try {
-      if (wallet.bank_details?.is_demo) {
-        await WalletService.addFundsDemo(user.id, numAmount);
-        await loadWalletData();
-        setAmount('');
-        setShowAddFundsModal(false);
-        Alert.alert('Success', `$${numAmount.toFixed(2)} added to your wallet`);
-      } else {
-        await WalletService.addFundsViaBlinkPay(user.id, numAmount);
-        await loadWalletData();
-        setAmount('');
-        setShowAddFundsModal(false);
-        Alert.alert('Success', `$${numAmount.toFixed(2)} added to your wallet via BlinkPay`);
-      }
+      await WalletService.addFundsViaStripe(user.id, numAmount);
+      await loadWalletData();
+      setAmount('');
+      setShowAddFundsModal(false);
+      Alert.alert('Success', `$${numAmount.toFixed(2)} added to your wallet`);
     } catch (error: any) {
       console.error('Add funds error:', error);
       Alert.alert('Error', error.message || 'Failed to add funds');
@@ -146,85 +143,75 @@ export default function WalletScreen({ navigation }: Props) {
     }
   };
 
-
-  const handleConnectDemoBank = async (bankId: string) => {
+  const handleAddCard = async () => {
     if (!user) return;
     
     setProcessing(true);
     try {
-      await WalletService.connectDemoBank(user.id, bankId);
-      await loadWalletData();
-      setShowDemoBankModal(false);
-      Alert.alert('Success', 'Demo bank account connected! You can now add funds and make payments.');
-    } catch (error: any) {
-      console.error('Connect demo bank error:', error);
-      Alert.alert('Error', error.message || 'Failed to connect demo bank');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleConnectBank = async () => {
-    if (!user) return;
-    
-    setProcessing(true);
-    try {
-      const redirectUri = 'splitpaymentapp://blinkpay-callback';
-      const result = await WalletService.initiateBlinkPayConsent(user.id, redirectUri);
-      
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        result.redirectUri,
-        redirectUri
+      const userName = user.name || 'User';
+      const { customerId, setupIntentId, cardSetupUrl } = await StripeService.initiateCardSetup(
+        user.id,
+        user.email,
+        userName,
+        wallet?.stripe_customer_id
       );
       
-      if (browserResult.type === 'success') {
-        await WalletService.completeBlinkPayConsent(user.id);
-        await loadWalletData();
-        Alert.alert('Success', 'Bank account connected successfully');
+      setPendingSetupData({ customerId, setupIntentId });
+      
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        cardSetupUrl,
+        'splitpaymentapp://stripe-callback'
+      );
+      
+      if (browserResult.type === 'success' && browserResult.url) {
+        const url = new URL(browserResult.url);
+        const success = url.searchParams.get('success') === 'true';
+        const paymentMethodId = url.searchParams.get('payment_method_id');
+        
+        if (success && paymentMethodId) {
+          await StripeService.completeCardSetup(
+            user.id,
+            setupIntentId,
+            paymentMethodId,
+            customerId
+          );
+          await loadWalletData();
+          Alert.alert('Success', 'Card added successfully! You can now make payments.');
+        } else if (url.searchParams.get('cancelled') === 'true') {
+          Alert.alert('Cancelled', 'Card setup was cancelled');
+        }
       } else if (browserResult.type === 'cancel') {
-        Alert.alert('Cancelled', 'Bank connection was cancelled');
+        Alert.alert('Cancelled', 'Card setup was cancelled');
       }
     } catch (error: any) {
-      console.error('Connect bank error:', error);
-      
-      if (error.message?.includes('Unexpected token') || error.message?.includes('<!DOCTYPE')) {
-        if (Platform.OS === 'web') {
-          setShowBlinkPayErrorModal(true);
-        } else {
-          Alert.alert(
-            'BlinkPay Not Available',
-            'Bank connection requires running the app locally or on a device via Expo Go. The web preview cannot reach the payment server.\n\nTo test BlinkPay:\n1. Run the project on your local computer\n2. Or scan the QR code with Expo Go on your phone',
-            [{ text: 'OK' }]
-          );
-        }
-      } else {
-        Alert.alert('Error', error.message || 'Failed to connect bank account');
-      }
+      console.error('Add card error:', error);
+      Alert.alert('Error', error.message || 'Failed to add card');
     } finally {
       setProcessing(false);
+      setPendingSetupData(null);
     }
   };
 
-  const handleDisconnectBank = async () => {
+  const handleRemoveCard = async () => {
     if (!user) return;
     
     Alert.alert(
-      'Disconnect Bank',
-      'Are you sure you want to disconnect your bank account? You will need to reconnect to make payments or withdrawals.',
+      'Remove Card',
+      'Are you sure you want to remove your payment card? You will need to add a new card to make payments.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Disconnect',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             setProcessing(true);
             try {
-              await WalletService.disconnectBank(user.id);
+              await StripeService.removePaymentMethod(user.id);
               await loadWalletData();
-              Alert.alert('Success', 'Bank account disconnected');
+              Alert.alert('Success', 'Card removed successfully');
             } catch (error) {
-              console.error('Disconnect bank error:', error);
-              Alert.alert('Error', 'Failed to disconnect bank account');
+              console.error('Remove card error:', error);
+              Alert.alert('Error', 'Failed to remove card');
             } finally {
               setProcessing(false);
             }
@@ -325,7 +312,7 @@ export default function WalletScreen({ navigation }: Props) {
             </ThemedText>
           </Pressable>
           
-          {wallet.bank_connected ? (
+          {wallet.balance > 0 ? (
             <Pressable
               style={({ pressed }) => [
                 styles.actionButton,
@@ -341,32 +328,23 @@ export default function WalletScreen({ navigation }: Props) {
           ) : null}
         </View>
 
-        {wallet.bank_connected && wallet.bank_details ? (
+        {hasCard ? (
           <View style={styles.bankInfo}>
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-                <ThemedText style={[Typography.caption, { color: 'rgba(255,255,255,0.6)' }]}>
-                  Bank Connected
-                </ThemedText>
-                {isDemo ? (
-                  <View style={{ backgroundColor: '#F59E0B', paddingHorizontal: Spacing.xs, paddingVertical: 1, borderRadius: 4 }}>
-                    <ThemedText style={[Typography.caption, { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }]}>
-                      DEMO
-                    </ThemedText>
-                  </View>
-                ) : null}
-              </View>
+              <ThemedText style={[Typography.caption, { color: 'rgba(255,255,255,0.6)' }]}>
+                Payment Card
+              </ThemedText>
               <ThemedText style={[Typography.small, { color: '#FFFFFF' }]}>
-                {wallet.bank_details.bank_name} •••• {wallet.bank_details.account_last4}
+                {cardBrand.charAt(0).toUpperCase() + cardBrand.slice(1)} •••• {cardLast4}
               </ThemedText>
             </View>
             <Pressable
               style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-              onPress={handleDisconnectBank}
+              onPress={handleRemoveCard}
               disabled={processing}
             >
               <ThemedText style={[Typography.small, { color: '#FFFFFF', fontWeight: '600' }]}>
-                Disconnect
+                Remove
               </ThemedText>
             </Pressable>
           </View>
@@ -376,11 +354,11 @@ export default function WalletScreen({ navigation }: Props) {
               styles.connectBankButton,
               { backgroundColor: 'rgba(255,255,255,0.9)', opacity: pressed ? 0.7 : 1 }
             ]}
-            onPress={() => setShowDemoBankModal(true)}
+            onPress={handleAddCard}
           >
-            <Feather name="link" size={18} color={theme.primary} />
+            <Feather name="credit-card" size={18} color={theme.primary} />
             <ThemedText style={[Typography.body, { color: theme.primary, marginLeft: Spacing.sm, fontWeight: '600' }]}>
-              Connect Bank Account
+              Add Payment Card
             </ThemedText>
           </Pressable>
         )}
@@ -456,109 +434,6 @@ export default function WalletScreen({ navigation }: Props) {
                 )}
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showBlinkPayErrorModal} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <View style={{ alignItems: 'center', marginBottom: Spacing.lg }}>
-              <Feather name="alert-circle" size={48} color={theme.warning || '#F59E0B'} />
-            </View>
-            <ThemedText style={[Typography.h2, { color: theme.text, textAlign: 'center', marginBottom: Spacing.md }]}>
-              BlinkPay Not Available
-            </ThemedText>
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center', marginBottom: Spacing.lg }]}>
-              Bank connection requires running the app locally or on a device via Expo Go. The web preview cannot reach the payment server.
-            </ThemedText>
-            <ThemedText style={[Typography.small, { color: theme.textSecondary, textAlign: 'center', marginBottom: Spacing.xl }]}>
-              To test BlinkPay:{'\n'}
-              1. Run the project on your local computer{'\n'}
-              2. Or scan the QR code with Expo Go on your phone
-            </ThemedText>
-            <Pressable
-              style={({ pressed }) => [
-                styles.modalButton,
-                { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, flex: 0, width: '100%' }
-              ]}
-              onPress={() => setShowBlinkPayErrorModal(false)}
-            >
-              <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-                Got It
-              </ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showDemoBankModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.lg }}>
-              <View style={{ flex: 1 }}>
-                <ThemedText style={[Typography.h2, { color: theme.text }]}>
-                  Connect Your Bank
-                </ThemedText>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: Spacing.xs }}>
-                  <View style={{ backgroundColor: '#F59E0B', paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.xs }}>
-                    <ThemedText style={[Typography.caption, { color: '#FFFFFF', fontWeight: '600' }]}>
-                      DEMO MODE
-                    </ThemedText>
-                  </View>
-                </View>
-              </View>
-              <Pressable onPress={() => setShowDemoBankModal(false)} disabled={processing}>
-                <Feather name="x" size={24} color={theme.textSecondary} />
-              </Pressable>
-            </View>
-            
-            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
-              Select your bank to connect. This is a demo mode for testing the payment flow.
-            </ThemedText>
-
-            <View style={{ gap: Spacing.sm }}>
-              {DEMO_BANKS.map((bank) => (
-                <Pressable
-                  key={bank.id}
-                  style={({ pressed }) => [
-                    styles.bankOption,
-                    { 
-                      backgroundColor: theme.surface, 
-                      borderColor: theme.border,
-                      opacity: pressed ? 0.7 : 1 
-                    }
-                  ]}
-                  onPress={() => handleConnectDemoBank(bank.id)}
-                  disabled={processing}
-                >
-                  <View style={[styles.bankLogo, { backgroundColor: bank.color }]}>
-                    <Feather name="credit-card" size={20} color="#FFFFFF" />
-                  </View>
-                  <ThemedText style={[Typography.body, { color: theme.text, flex: 1, fontWeight: '500' }]}>
-                    {bank.name}
-                  </ThemedText>
-                  {processing ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  ) : (
-                    <Feather name="chevron-right" size={20} color={theme.textSecondary} />
-                  )}
-                </Pressable>
-              ))}
-            </View>
-            
-            <Pressable
-              style={({ pressed }) => [
-                styles.modalButton,
-                { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1, flex: 0, width: '100%', marginTop: Spacing.xl }
-              ]}
-              onPress={() => setShowDemoBankModal(false)}
-              disabled={processing}
-            >
-              <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-                Cancel
-              </ThemedText>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -671,20 +546,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.xs,
     borderWidth: 1,
-  },
-  bankOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.xs,
-    borderWidth: 1,
-    gap: Spacing.md,
-  },
-  bankLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

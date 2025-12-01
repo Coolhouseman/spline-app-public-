@@ -169,4 +169,58 @@ router.delete('/payment-method/:id', async (req, res) => {
   }
 });
 
+router.get('/publishable-key', (req, res) => {
+  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
+});
+
+router.post('/initiate-card-setup', async (req, res) => {
+  try {
+    const { userId, email, name } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    let customerId = req.body.customerId;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email,
+        name,
+        metadata: {
+          spline_user_id: userId,
+        },
+      });
+      customerId = customer.id;
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+    });
+
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://splinepay.replit.app'
+      : `http://localhost:${process.env.PORT || 8082}`;
+
+    const cardSetupUrl = `${baseUrl}/card-setup.html?` + 
+      `client_secret=${setupIntent.client_secret}` +
+      `&setup_intent_id=${setupIntent.id}` +
+      `&user_id=${userId}` +
+      `&pk=${publishableKey}` +
+      `&return_url=splitpaymentapp://stripe-callback`;
+
+    res.json({
+      customerId,
+      setupIntentId: setupIntent.id,
+      cardSetupUrl,
+    });
+  } catch (error: any) {
+    console.error('Error initiating card setup:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
