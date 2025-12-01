@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, Platform, TextInput, ActivityIndicator, Modal, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
+import * as MailComposer from 'expo-mail-composer';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
-import { Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { Spacing, BorderRadius, Typography, Colors } from '@/constants/theme';
 import { AuthService } from '@/services/auth.service';
 import { supabase } from '@/services/supabase';
 import { User } from '@/shared/types';
@@ -24,6 +25,9 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
   const [bioText, setBioText] = useState(user?.bio || '');
   const [savingBio, setSavingBio] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportMessage, setSupportMessage] = useState('');
+  const [sendingSupport, setSendingSupport] = useState(false);
 
   const copyToClipboard = async () => {
     if (user?.unique_id) {
@@ -150,6 +154,65 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
         },
       ]
     );
+  };
+
+  const handleSendSupport = async () => {
+    if (!user || !supportMessage.trim()) {
+      Alert.alert('Error', 'Please enter your message');
+      return;
+    }
+
+    setSendingSupport(true);
+    
+    const emailSubject = `Spline Support Request - User #${user.unique_id}`;
+    const emailBody = `
+SUPPORT REQUEST FROM SPLINE APP
+
+User Information:
+- Name: ${user.name}
+- Email: ${user.email}
+- Unique ID: ${user.unique_id}
+- Phone: ${user.phone || 'Not provided'}
+- User ID: ${user.id}
+- Date of Birth: ${user.date_of_birth ? new Date(user.date_of_birth).toLocaleDateString() : 'Not provided'}
+- Bio: ${user.bio || 'Not set'}
+
+---
+
+Message:
+${supportMessage}
+
+---
+Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
+    `.trim();
+
+    try {
+      if (Platform.OS === 'web') {
+        const mailtoUrl = `mailto:hzeng1217@gmail.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+        await Linking.openURL(mailtoUrl);
+        Alert.alert('Email Opened', 'Your email app should now be open with the support request. Please send it to complete your request.');
+      } else {
+        const isAvailable = await MailComposer.isAvailableAsync();
+        if (!isAvailable) {
+          const mailtoUrl = `mailto:hzeng1217@gmail.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+          await Linking.openURL(mailtoUrl);
+          Alert.alert('Email Opened', 'Your email app should now be open. Please send it to complete your request.');
+        } else {
+          await MailComposer.composeAsync({
+            recipients: ['hzeng1217@gmail.com'],
+            subject: emailSubject,
+            body: emailBody,
+          });
+        }
+      }
+      setSupportMessage('');
+      setShowSupportModal(false);
+    } catch (error) {
+      console.error('Support email error:', error);
+      Alert.alert('Error', 'Could not open email app. Please email hzeng1217@gmail.com directly.');
+    } finally {
+      setSendingSupport(false);
+    }
   };
 
   if (!user) return null;
@@ -328,6 +391,22 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
 
         <Pressable
           style={({ pressed }) => [
+            styles.supportButton,
+            { 
+              backgroundColor: theme.primary, 
+              opacity: pressed ? 0.7 : 1 
+            }
+          ]}
+          onPress={() => setShowSupportModal(true)}
+        >
+          <Feather name="help-circle" size={20} color="#FFFFFF" />
+          <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.md, fontWeight: '600' }]}>
+            Contact Support
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
             styles.logoutButton,
             { 
               backgroundColor: theme.surface, 
@@ -350,6 +429,94 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
           )}
         </Pressable>
       </ThemedView>
+
+      <Modal
+        visible={showSupportModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowSupportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={[Typography.h2, { color: theme.text }]}>
+                Contact Support
+              </ThemedText>
+              <Pressable
+                onPress={() => {
+                  setShowSupportModal(false);
+                  setSupportMessage('');
+                }}
+                hitSlop={8}
+              >
+                <Feather name="x" size={24} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.md }]}>
+              Describe your issue or question below. Your account information will be included automatically.
+            </ThemedText>
+
+            <TextInput
+              style={[
+                styles.supportInput,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                  color: theme.text,
+                }
+              ]}
+              value={supportMessage}
+              onChangeText={setSupportMessage}
+              placeholder="How can we help you?"
+              placeholderTextColor={theme.textSecondary}
+              multiline
+              textAlignVertical="top"
+              maxLength={1000}
+              editable={!sendingSupport}
+            />
+
+            <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.xs, textAlign: 'right' }]}>
+              {supportMessage.length}/1000
+            </ThemedText>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => {
+                  setShowSupportModal(false);
+                  setSupportMessage('');
+                }}
+                disabled={sendingSupport}
+              >
+                <ThemedText style={[Typography.body, { color: theme.textSecondary, fontWeight: '600' }]}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: theme.primary, opacity: pressed || sendingSupport ? 0.7 : 1 }
+                ]}
+                onPress={handleSendSupport}
+                disabled={sendingSupport || !supportMessage.trim()}
+              >
+                {sendingSupport ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                    Send
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenScrollView>
   );
 }
@@ -458,5 +625,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: Spacing.sm,
+  },
+  supportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.xs,
+    marginTop: Spacing['2xl'],
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    paddingBottom: Spacing.xl * 2,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  supportInput: {
+    minHeight: 150,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+    marginTop: Spacing.lg,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
