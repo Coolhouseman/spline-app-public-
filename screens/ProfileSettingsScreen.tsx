@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert, Platform, TextInput, ActivityIndicator, Modal, Linking } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, Platform, TextInput, ActivityIndicator, Modal, Linking, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
@@ -432,11 +432,21 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
 
       <Modal
         visible={showSupportModal}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setShowSupportModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <Pressable 
+            style={styles.modalBackdrop} 
+            onPress={() => {
+              setShowSupportModal(false);
+              setSupportMessage('');
+            }}
+          />
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={[Typography.h2, { color: theme.text }]}>
@@ -515,7 +525,7 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenScrollView>
   );
@@ -636,14 +646,19 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
   },
   modalContent: {
-    borderTopLeftRadius: BorderRadius.lg,
-    borderTopRightRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.xl,
-    paddingBottom: Spacing.xl * 2,
+    marginHorizontal: Spacing.lg,
+    width: '90%',
+    maxWidth: 400,
   },
   modalHeader: {
     flexDirection: 'row',

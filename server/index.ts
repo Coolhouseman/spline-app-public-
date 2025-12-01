@@ -41,6 +41,88 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/privacy.html'));
 });
 
+app.get('/reset-password', (req, res) => {
+  const token = req.query.access_token || req.query.token || '';
+  const type = req.query.type || '';
+  
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Password - Spline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 24px;
+      padding: 48px 32px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+    .logo {
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 24px;
+    }
+    .logo-sp { color: #3B82F6; }
+    .logo-line { color: #1f2937; text-decoration: underline; text-decoration-color: #3B82F6; text-underline-offset: 4px; }
+    .logo::after { content: '.'; color: #3B82F6; }
+    h1 {
+      font-size: 24px;
+      color: #1f2937;
+      margin-bottom: 16px;
+    }
+    p {
+      color: #6b7280;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-block;
+      background: #3B82F6;
+      color: white;
+      padding: 16px 32px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 16px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #2563eb; }
+    .secondary {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    .secondary a { color: #3B82F6; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo"><span class="logo-sp">Sp</span><span class="logo-line">line</span></div>
+    <h1>Reset Your Password</h1>
+    <p>To reset your password, please open this link in the Spline app on your phone.</p>
+    <a href="spline://reset-password${token ? '?access_token=' + token : ''}${type ? '&type=' + type : ''}" class="btn">Open in Spline App</a>
+    <p class="secondary">Don't have the app? <a href="/#download">Download Spline</a></p>
+  </div>
+</body>
+</html>`;
+  
+  res.type('html').send(html);
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend server is running' });
 });

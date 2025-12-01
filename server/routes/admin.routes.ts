@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseServiceKey) {
   console.error('FATAL: SUPABASE_SERVICE_ROLE_KEY is not configured');
@@ -88,6 +88,8 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
+    console.log('Admin login attempt for:', email);
+    
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
@@ -97,6 +99,9 @@ router.post('/login', async (req, res) => {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
+    console.log('Using Supabase URL:', supabaseUrl);
+    console.log('Anon key configured:', !!supabaseAnonKey);
+
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
     
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
@@ -104,9 +109,17 @@ router.post('/login', async (req, res) => {
       password
     });
 
-    if (authError || !authData.user) {
+    if (authError) {
+      console.error('Supabase auth error:', authError.message, authError.status, authError.code);
+      return res.status(401).json({ error: 'Invalid email or password', details: authError.message });
+    }
+    
+    if (!authData.user) {
+      console.error('No user returned from Supabase');
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+    
+    console.log('Supabase auth successful for:', authData.user.email);
 
     const adminCheck = await checkAdminRole(authData.user.email || '');
     if (!adminCheck.authorized) {
