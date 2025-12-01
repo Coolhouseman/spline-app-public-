@@ -86,8 +86,9 @@ async function adminAuthMiddleware(
 
 router.post('/setup-admin', async (req, res) => {
   try {
-    const adminEmail = 'admin@spline.nz';
-    const adminPassword = 'SplineAdmin2024!';
+    // Accept custom credentials from request body, or use defaults
+    const adminEmail = req.body.email || 'admin@spline.nz';
+    const adminPassword = req.body.password || 'SplineAdmin2024!';
     
     console.log('Setting up admin user:', adminEmail);
     
@@ -152,6 +153,22 @@ router.post('/setup-admin', async (req, res) => {
     }
     
     console.log('Admin user created successfully:', data.user?.id);
+    
+    // Also add to admin_roles table in Supabase
+    const { error: roleError } = await supabaseAdmin
+      .from('admin_roles')
+      .upsert({
+        email: adminEmail.toLowerCase(),
+        role: 'super_admin',
+        name: 'Admin User'
+      }, { onConflict: 'email' });
+    
+    if (roleError) {
+      console.error('Error adding admin role:', roleError);
+      // User is created but role wasn't added - still return success
+    } else {
+      console.log('Admin role added successfully');
+    }
     
     res.json({ 
       success: true, 
