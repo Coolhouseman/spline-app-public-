@@ -147,6 +147,6 @@ value = "0"
 
 [userenv.shared]
 EXPO_NO_CAPABILITY_SYNC = "1"
-EXPO_PUBLIC_BACKEND_URL = "https://2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev:3000"
+EXPO_PUBLIC_BACKEND_URL = "https://2cacf204-3854-4ef2-a387-5784f0753fd3-00-aneawyo2yg5h.spock.replit.dev"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTQ2NjksImV4cCI6MjA3OTUzMDY2OX0.KJuLMgwy2Dfu5amY0VN4KfPemfsJcRB3EI0AxZQpOb8"
 SUPABASE_URL = "https://vhicohutiocnfjwsofhy.supabase.co"

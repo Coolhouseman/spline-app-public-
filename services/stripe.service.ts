@@ -3,13 +3,33 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const getServerUrl = () => {
+  // For web, use localhost
   if (Platform.OS === 'web') {
     return 'http://localhost:8082';
   }
-  if (__DEV__ && Constants.expoConfig?.hostUri) {
-    const host = Constants.expoConfig.hostUri.split(':')[0];
-    return `http://${host}:8082`;
+  
+  // For mobile in development, try multiple sources for the backend URL
+  if (__DEV__) {
+    // First, try the EXPO_PUBLIC_BACKEND_URL environment variable
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+    if (backendUrl) {
+      // Extract just the domain (remove port if present)
+      const url = new URL(backendUrl);
+      return `https://${url.hostname}`;
+    }
+    
+    // Second, try hostUri from Metro bundler (for local development)
+    if (Constants.expoConfig?.hostUri) {
+      const host = Constants.expoConfig.hostUri.split(':')[0];
+      // Use HTTPS for Replit domains
+      if (host.includes('replit')) {
+        return `https://${host}`;
+      }
+      return `http://${host}:8082`;
+    }
   }
+  
+  // Production fallback
   return 'https://splinepay.replit.app';
 };
 
