@@ -1098,6 +1098,7 @@ export class WalletService {
     splitEventId: string
   ): Promise<void> {
     try {
+      // STEP 1: Refund the wallet deduction
       const { data: result, error } = await supabase.rpc('process_deposit', {
         p_user_id: userId,
         p_amount: amount,
@@ -1107,6 +1108,22 @@ export class WalletService {
       if (error) {
         console.error('Failed to refund wallet deduction:', error);
         throw new Error(`Critical: Failed to refund wallet after card failure: ${error.message}`);
+      }
+
+      // STEP 2: Revert the split participant status back to 'pending'
+      // The atomic RPC updated status to 'paid', but since card failed we need to undo it
+      const { error: statusError } = await supabase
+        .from('split_participants')
+        .update({ status: 'pending', updated_at: new Date().toISOString() })
+        .eq('split_event_id', splitEventId)
+        .eq('user_id', userId)
+        .eq('is_creator', false);
+
+      if (statusError) {
+        console.error('Failed to revert split status:', statusError);
+        // Don't throw - wallet was refunded successfully, just log the issue
+      } else {
+        console.log(`Split participant status reverted to pending for event ${splitEventId}`);
       }
 
       console.log(`Wallet deduction refunded: $${amount.toFixed(2)} returned to user ${userId}`);
@@ -1201,15 +1218,19 @@ export class WalletService {
       );
     }
 
-    // STEP 1: Deduct from payer's wallet FIRST using atomic RPC (prevents race conditions)
-    // This uses FOR UPDATE lock to ensure balance can't change during transaction
+    // STEP 1: Deduct from payer's wallet AND update split status ATOMICALLY
+    // Uses process_split_payment_atomic which handles both operations in one transaction
+    // This prevents race conditions and ensures data consistency
     let walletTransactionId: string | null = null;
+    let splitStatusUpdated = false;
+    
     if (walletPayment > 0) {
-      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment', {
+      // Use atomic function that does wallet deduction + split status update together
+      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment_atomic', {
         p_user_id: userId,
         p_amount: walletPayment,
-        p_description: `Paid ${eventName} (from wallet)`,
         p_split_event_id: splitEventId,
+        p_description: `Paid ${eventName} (from wallet)`,
         p_metadata: { split_event_id: splitEventId, payer_id: userId }
       });
 
@@ -1224,7 +1245,8 @@ export class WalletService {
       }
 
       walletTransactionId = splitResult.transaction_id;
-      console.log(`Atomic wallet deduction: $${walletPayment.toFixed(2)}. New balance: $${splitResult.new_balance?.toFixed(2)}`);
+      splitStatusUpdated = true; // Atomic function already updated split status
+      console.log(`Atomic payment complete: $${walletPayment.toFixed(2)} deducted, split status updated. New balance: $${splitResult.new_balance?.toFixed(2)}`);
     }
 
     // STEP 2: Charge card for any shortfall (only after wallet deduction succeeds)
@@ -1365,6 +1387,23 @@ export class WalletService {
     } else {
       // Edge case: no payment made (shouldn't happen with valid amount)
       throw new Error('No payment was processed');
+    }
+
+    // STEP 5: Ensure split participant status is updated (for card-only payments)
+    // The atomic RPC handles this for wallet payments, but card-only needs explicit update
+    if (!splitStatusUpdated && cardPayment > 0) {
+      try {
+        await supabase
+          .from('split_participants')
+          .update({ status: 'paid', updated_at: new Date().toISOString() })
+          .eq('split_event_id', splitEventId)
+          .eq('user_id', userId)
+          .eq('is_creator', false);
+        console.log(`Split participant status updated to paid for event ${splitEventId}`);
+      } catch (statusError) {
+        console.error('Failed to update split participant status:', statusError);
+        // Don't throw - payment was successful, just log the issue
+      }
     }
 
     console.log(`Split payment completed: $${amount.toFixed(2)} from ${userId} to ${recipientId}`);

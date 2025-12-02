@@ -209,6 +209,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             text: 'Confirm',
             onPress: async () => {
               try {
+                // paySplitEvent now atomically handles wallet deduction AND split status update
                 await WalletService.paySplitEvent(
                   user.id,
                   eventId,
@@ -217,7 +218,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                   event.name
                 );
                 
-                await SplitsService.paySplit(user.id, eventId);
+                // No need to call SplitsService.paySplit() - atomic RPC already updated status
                 Alert.alert('Payment Successful', 'Your payment has been processed');
                 loadEvent();
               } catch (error: any) {
@@ -282,6 +283,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             try {
               await SplitsService.updateParticipantAmount(user.id, eventId, amount);
               
+              // paySplitEvent now atomically handles wallet deduction AND split status update
               await WalletService.paySplitEvent(
                 user.id,
                 eventId,
@@ -290,7 +292,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 event.name
               );
               
-              await SplitsService.paySplit(user.id, eventId);
+              // No need to call SplitsService.paySplit() - atomic RPC already updated status
               setPaymentAmount('');
               Alert.alert('Payment Successful', 'Your payment has been processed');
               loadEvent();
