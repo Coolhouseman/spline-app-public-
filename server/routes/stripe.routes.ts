@@ -201,9 +201,23 @@ router.post('/initiate-card-setup', async (req, res) => {
     });
 
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://splinepay.replit.app'
-      : `http://localhost:${process.env.PORT || 8082}`;
+    // Use x-forwarded headers (set by Replit's proxy) or fallback to production URL
+    const forwardedHost = req.get('x-forwarded-host');
+    const forwardedProto = req.get('x-forwarded-proto') || 'https';
+    const directHost = req.get('host') || 'localhost:8082';
+    
+    // Prefer forwarded host (from proxy), then check for production
+    let baseUrl: string;
+    if (forwardedHost) {
+      baseUrl = `${forwardedProto}://${forwardedHost}`;
+    } else if (directHost.includes('localhost')) {
+      baseUrl = `http://${directHost}`;
+    } else {
+      // Production fallback - use hardcoded production URL
+      baseUrl = 'https://splinepay.replit.app';
+    }
+    
+    console.log(`Card setup URL base: ${baseUrl} (forwardedHost: ${forwardedHost}, directHost: ${directHost})`);
 
     const cardSetupUrl = `${baseUrl}/card-setup.html?` + 
       `client_secret=${setupIntent.client_secret}` +

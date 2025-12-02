@@ -1142,33 +1142,50 @@ export class WalletService {
       throw new Error('Payment amount must be greater than zero');
     }
 
-    // STEP 0: Ensure wallet exists (uses RPC to bypass RLS if needed)
-    const { data: ensureResult, error: ensureError } = await supabase.rpc('ensure_wallet_exists', {
-      p_user_id: userId
-    });
-    
-    if (ensureError) {
-      console.error('Failed to ensure wallet exists:', ensureError);
-      throw new Error('Failed to initialize wallet. Please try again.');
-    }
-    
-    if (!ensureResult?.success) {
-      console.error('Wallet initialization failed:', ensureResult?.error);
-      throw new Error('Failed to initialize wallet. Please try again.');
-    }
-    
-    console.log(`Wallet ensured for user ${userId}, balance: $${ensureResult.balance}`);
-
-    // Now fetch the wallet with all needed fields
-    const { data: wallet, error: walletError } = await supabase
+    // STEP 0: Ensure wallet exists (direct upsert approach)
+    // First try to get existing wallet
+    let { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
       .eq('user_id', userId)
       .single();
 
-    if (walletError || !wallet) {
-      console.error('Failed to fetch wallet after ensure:', walletError);
+    // If wallet doesn't exist, create it
+    if (walletError?.code === 'PGRST116' || !wallet) {
+      console.log(`Creating wallet for user ${userId}`);
+      
+      // Try to insert a new wallet
+      const { error: insertError } = await supabase
+        .from('wallets')
+        .insert({ user_id: userId, balance: 0, bank_connected: false })
+        .select()
+        .single();
+      
+      // If insert failed due to duplicate, just fetch again
+      if (insertError && insertError.code !== '23505') {
+        console.error('Failed to create wallet:', insertError);
+        throw new Error('Failed to initialize wallet. Please try again.');
+      }
+      
+      // Fetch the wallet again
+      const { data: newWallet, error: fetchError } = await supabase
+        .from('wallets')
+        .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (fetchError || !newWallet) {
+        console.error('Failed to fetch wallet after creation:', fetchError);
+        throw new Error('Wallet not found. Please try again.');
+      }
+      
+      wallet = newWallet;
+      console.log(`Wallet created for user ${userId}, balance: $0`);
+    } else if (walletError) {
+      console.error('Failed to fetch wallet:', walletError);
       throw new Error('Wallet not found. Please try again.');
+    } else {
+      console.log(`Wallet found for user ${userId}, balance: $${wallet.balance}`);
     }
 
     const currentBalance = await this.getCurrentBalance(userId);

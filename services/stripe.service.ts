@@ -3,8 +3,16 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const getServerUrl = () => {
-  // For web, use localhost
+  // For web, use localhost (same origin as the page is served from)
   if (Platform.OS === 'web') {
+    // Check if we're in a Replit environment by looking at the current origin
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const origin = window.location.origin;
+      // If on Replit dev domain, the server is on the same host
+      if (origin.includes('replit')) {
+        return origin;
+      }
+    }
     return 'http://localhost:8082';
   }
   
@@ -13,17 +21,15 @@ const getServerUrl = () => {
     // First, try the EXPO_PUBLIC_BACKEND_URL environment variable
     const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
     if (backendUrl) {
-      // Extract just the domain (remove port if present)
-      const url = new URL(backendUrl);
-      return `https://${url.hostname}`;
+      return backendUrl;
     }
     
     // Second, try hostUri from Metro bundler (for local development)
     if (Constants.expoConfig?.hostUri) {
       const host = Constants.expoConfig.hostUri.split(':')[0];
-      // Use HTTPS for Replit domains
+      // Use production URL for Replit - mobile apps need to hit the published backend
       if (host.includes('replit')) {
-        return `https://${host}`;
+        return 'https://splinepay.replit.app';
       }
       return `http://${host}:8082`;
     }
