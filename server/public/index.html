@@ -279,10 +279,13 @@
   <style>
     html { scroll-behavior: smooth; }
     .hero-bg {
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.6) 0%, rgba(37, 99, 235, 0.65) 100%),
+      background: linear-gradient(135deg, rgba(30, 64, 175, 0.82) 0%, rgba(29, 78, 216, 0.88) 100%),
                   url('/images/hero-banner.jpg');
       background-size: cover;
       background-position: center;
+    }
+    .hero-text {
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     }
     .hero-cta-bg {
       background: linear-gradient(135deg, rgba(59, 130, 246, 0.85) 0%, rgba(37, 99, 235, 0.9) 100%);
@@ -385,12 +388,12 @@
     <section class="hero-bg pt-32 pb-20 md:pt-40 md:pb-32" aria-labelledby="hero-heading">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col items-center text-center">
-          <div class="text-white max-w-2xl">
+          <div class="text-white max-w-2xl hero-text">
             <h1 id="hero-heading" class="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
               Split Bills.<br/>
               <span class="text-blue-200">Stay Friends.</span>
             </h1>
-            <p class="text-lg md:text-xl text-blue-100 mb-8">
+            <p class="text-lg md:text-xl text-blue-100/90 mb-8">
               The easiest way to split expenses with friends in New Zealand. Track who owes what, send reminders, and settle up instantly with your connected bank account.
             </p>
             <div class="flex flex-wrap gap-4 justify-center">
