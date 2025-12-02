@@ -35,6 +35,7 @@ export default function WalletScreen({ navigation }: Props) {
   
   const [amount, setAmount] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [loadingAccountId, setLoadingAccountId] = useState<string | null>(null);
   
   const hasCard = !!wallet?.stripe_payment_method_id;
   const cardBrand = wallet?.card_brand || '';
@@ -221,6 +222,29 @@ export default function WalletScreen({ navigation }: Props) {
     );
   };
 
+  const handleViewFullAccount = async (transactionId: string) => {
+    if (!user) return;
+    
+    setLoadingAccountId(transactionId);
+    try {
+      const fullAccount = await WalletService.getWithdrawalBankAccount(user.id, transactionId);
+      if (fullAccount) {
+        Alert.alert(
+          'Bank Account',
+          `Your withdrawal was sent to:\n\n${fullAccount}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Not Available', 'Full account number is not available for this transaction.');
+      }
+    } catch (error) {
+      console.error('Failed to fetch bank account:', error);
+      Alert.alert('Error', 'Failed to retrieve bank account details');
+    } finally {
+      setLoadingAccountId(null);
+    }
+  };
+
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case 'deposit':
@@ -256,11 +280,13 @@ export default function WalletScreen({ navigation }: Props) {
     const dateStr = date.toLocaleDateString();
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    const showBankDetails = item.type === 'withdrawal' && item.metadata?.bank_account_number;
+    const isWithdrawal = item.type === 'withdrawal';
+    const showBankDetails = isWithdrawal && item.metadata?.bank_account_number;
     const bankAccountNumber = item.metadata?.bank_account_number || '';
     const bankName = item.metadata?.bank_name || '';
     const withdrawalType = item.metadata?.withdrawal_type;
     const status = item.metadata?.status || 'pending';
+    const isLoadingAccount = loadingAccountId === item.id;
 
     return (
       <View style={[styles.transactionCard, { borderBottomColor: theme.border }]}>
@@ -273,9 +299,27 @@ export default function WalletScreen({ navigation }: Props) {
           </ThemedText>
           {showBankDetails ? (
             <View>
-              <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
-                To: {bankName} {bankAccountNumber}
-              </ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                  To: {bankName} {bankAccountNumber}
+                </ThemedText>
+                <Pressable
+                  onPress={() => handleViewFullAccount(item.id)}
+                  disabled={isLoadingAccount}
+                  style={({ pressed }) => [
+                    styles.viewAccountButton,
+                    { backgroundColor: `${theme.primary}20`, opacity: pressed ? 0.7 : 1 }
+                  ]}
+                >
+                  {isLoadingAccount ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+                      View Full
+                    </ThemedText>
+                  )}
+                </Pressable>
+              </View>
               <ThemedText style={[Typography.caption, { color: status === 'completed' ? theme.success : theme.warning }]}>
                 {status.charAt(0).toUpperCase() + status.slice(1)} {withdrawalType === 'fast' ? '(Fast)' : ''}
               </ThemedText>
@@ -622,5 +666,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.xs,
     borderWidth: 1,
+  },
+  viewAccountButton: {
+    marginLeft: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -1374,4 +1374,21 @@ export class WalletService {
     
     return sanitizedData as Transaction[];
   }
+
+  static async getWithdrawalBankAccount(userId: string, transactionId: string): Promise<string | null> {
+    // Fetch full bank account for a specific withdrawal transaction
+    // Only the owner of the transaction can view this
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('metadata')
+      .eq('id', transactionId)
+      .eq('user_id', userId)
+      .eq('type', 'withdrawal')
+      .single();
+
+    if (error || !data) return null;
+    
+    const metadata = data.metadata as Record<string, unknown> | null;
+    return (metadata?.bank_account as string) || null;
+  }
 }
