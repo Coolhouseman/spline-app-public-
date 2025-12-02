@@ -30,8 +30,10 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & User Management
 - **Auth Pattern**: Context-based authentication using React Context API.
+- **Supabase Auth**: Handles password storage securely in `auth.users` (not in public schema).
+- **Auto-Recovery**: Login flow auto-creates missing user profiles and wallets if user exists in Supabase Auth but not in public.users.
 - **Storage**: AsyncStorage for local data persistence.
-- **User Model**: Comprehensive user profiles.
+- **User Model**: Comprehensive user profiles (password column is nullable - auth handled by Supabase).
 - **Onboarding**: 8-step wizard for user information collection and terms acceptance.
 
 ### Data Management
