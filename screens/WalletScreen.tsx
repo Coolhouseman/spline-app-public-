@@ -427,7 +427,7 @@ export default function WalletScreen({ navigation }: Props) {
         )}
       </View>
 
-      {wallet.bank_connected ? (
+      {wallet.bank_connected && wallet.bank_details?.bank_name && wallet.bank_details?.account_last4 ? (
         <View style={[styles.bankAccountSection, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm }}>
             <Feather name="briefcase" size={18} color={theme.success} />
@@ -436,10 +436,10 @@ export default function WalletScreen({ navigation }: Props) {
             </ThemedText>
           </View>
           <ThemedText style={[Typography.body, { color: theme.text }]}>
-            {wallet.bank_details?.bank_name}
+            {wallet.bank_details.bank_name}
           </ThemedText>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            Account ending in {wallet.bank_details?.account_last4}
+            Account ending in {wallet.bank_details.account_last4}
           </ThemedText>
           <Pressable
             style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: Spacing.sm }]}
@@ -461,7 +461,7 @@ export default function WalletScreen({ navigation }: Props) {
           <Feather name="briefcase" size={18} color={theme.textSecondary} />
           <View style={{ marginLeft: Spacing.md, flex: 1 }}>
             <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-              Add Bank Account
+              Setup Bank Account
             </ThemedText>
             <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
               Required for withdrawals

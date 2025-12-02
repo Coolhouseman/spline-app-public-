@@ -355,7 +355,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        {wallet?.bank_connected ? (
+        {wallet?.bank_connected && wallet?.bank_details?.bank_name && wallet?.bank_details?.account_last4 ? (
           <Pressable 
             style={[styles.bankDetailsCard, { backgroundColor: theme.success + '10', borderColor: theme.success }]}
             onPress={() => setShowBankModal(true)}
@@ -364,10 +364,10 @@ export default function WithdrawalScreen({ navigation }: Props) {
               <Feather name="check-circle" size={20} color={theme.success} />
               <View style={{ marginLeft: Spacing.md, flex: 1 }}>
                 <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                  {wallet.bank_details?.bank_name}
+                  {wallet.bank_details.bank_name}
                 </ThemedText>
                 <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-                  Account ending in {wallet.bank_details?.account_last4}
+                  Account ending in {wallet.bank_details.account_last4}
                 </ThemedText>
               </View>
             </View>
@@ -381,7 +381,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
             <Feather name="alert-circle" size={20} color={theme.warning} />
             <View style={{ marginLeft: Spacing.md, flex: 1 }}>
               <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                Add Bank Account
+                Setup Bank Account
               </ThemedText>
               <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                 Enter your bank details to receive withdrawals
@@ -404,7 +404,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
           style={({ pressed }) => [
             styles.button,
             { 
-              backgroundColor: wallet?.bank_connected ? theme.primary : theme.primary,
+              backgroundColor: theme.primary,
               opacity: pressed ? 0.7 : (loading || !selectedMethod || !parseFloat(amount) ? 0.5 : 1)
             }
           ]}
@@ -415,7 +415,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
-              {wallet?.bank_connected ? 'Withdraw' : 'Add Bank & Withdraw'}
+              {wallet?.bank_connected && wallet?.bank_details?.bank_name ? 'Withdraw' : 'Setup Bank & Withdraw'}
             </ThemedText>
           )}
         </Pressable>
