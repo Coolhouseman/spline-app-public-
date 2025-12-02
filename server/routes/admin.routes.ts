@@ -990,4 +990,240 @@ router.patch('/withdrawals/:transactionId', adminAuthMiddleware, async (req: Aut
   }
 });
 
+// ======== REAL-TIME UPDATES VIA SERVER-SENT EVENTS ========
+// Store active SSE connections for broadcasting updates
+const sseClients: Set<express.Response> = new Set();
+
+// Helper function to fetch all metrics data (reused from /metrics and /buffer)
+async function fetchAllMetrics() {
+  // Get wallet data
+  const { data: walletData } = await supabaseAdmin
+    .from('wallets')
+    .select('balance')
+    .range(0, 99999);
+  
+  const totalLiabilities = walletData?.reduce((sum, w) => sum + Number(w.balance || 0), 0) || 0;
+  const activeWalletCount = walletData?.filter(w => Number(w.balance || 0) > 0).length || 0;
+
+  // Get transaction data
+  const { data: txData } = await supabaseAdmin
+    .from('transactions')
+    .select('type, amount, metadata, created_at, description')
+    .range(0, 99999);
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  let totalDeposits = 0;
+  let totalWithdrawals = 0;
+  let deposits7d = 0;
+  let withdrawals7d = 0;
+  let deposits30d = 0;
+  let withdrawals30d = 0;
+  let fastWithdrawalFeeRevenue = 0;
+  let depositTransactionCount = 0;
+  let cardPaymentTransactionCount = 0;
+  let cardPaymentVolume = 0;
+
+  txData?.forEach(tx => {
+    const amount = Number(tx.amount || 0);
+    const createdAt = new Date(tx.created_at);
+
+    if (tx.type === 'deposit') {
+      totalDeposits += amount;
+      depositTransactionCount++;
+      if (createdAt >= thirtyDaysAgo) deposits30d += amount;
+      if (createdAt >= sevenDaysAgo) deposits7d += amount;
+    } else if (tx.type === 'withdrawal') {
+      totalWithdrawals += amount;
+      if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
+      if (createdAt >= sevenDaysAgo) withdrawals7d += amount;
+      
+      if (tx.metadata?.withdrawal_type === 'fast' && tx.metadata?.fee_amount) {
+        fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
+      }
+    } else if (tx.type === 'split_payment' && tx.description?.includes('from card')) {
+      cardPaymentTransactionCount++;
+      cardPaymentVolume += amount;
+    }
+  });
+
+  // Stripe fee calculations
+  const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
+  const totalCardVolume = totalDeposits + cardPaymentVolume;
+  const stripeBasePercentageFee = totalCardVolume * 0.029;
+  const stripeFixedFee = totalCardTransactions * 0.30;
+  const disputeRate = 0.005;
+  const estimatedDisputes = Math.floor(totalCardTransactions * disputeRate);
+  const disputeFeeReserve = estimatedDisputes * 15;
+  const refundRate = 0.02;
+  const refundFeeLoss = totalCardVolume * refundRate * 0.029;
+  const stripeBaseFeesAbsorbed = stripeBasePercentageFee + stripeFixedFee;
+  const stripeAdditionalFees = disputeFeeReserve + refundFeeLoss;
+  const stripeFeesAbsorbed = stripeBaseFeesAbsorbed + stripeAdditionalFees;
+  const netFeePosition = fastWithdrawalFeeRevenue - stripeFeesAbsorbed;
+
+  // Buffer calculations
+  const netCashPosition = totalDeposits - stripeFeesAbsorbed - totalWithdrawals;
+  const bufferRequired = Math.max(0, totalLiabilities - netCashPosition);
+  const safetyMargin = totalLiabilities * 0.10;
+  const recommendedBuffer = bufferRequired + safetyMargin;
+  const avgDaily7d = withdrawals7d / 7;
+  const avgDaily30d = withdrawals30d / 30;
+  const projection7d = recommendedBuffer + (avgDaily7d * 7);
+  const projection30d = recommendedBuffer + (avgDaily30d * 30);
+
+  let status = 'healthy';
+  let statusMessage = 'Cash position covers all liabilities with safety margin';
+  if (bufferRequired > 0) {
+    if (bufferRequired > totalLiabilities * 0.3) {
+      status = 'critical';
+      statusMessage = 'Significant buffer shortfall - immediate action required';
+    } else if (bufferRequired > totalLiabilities * 0.05) {
+      status = 'warning';
+      statusMessage = 'Buffer shortfall detected - monitor closely';
+    }
+  } else if (netCashPosition < safetyMargin) {
+    status = 'warning';
+    statusMessage = 'Cash position below recommended safety margin';
+  }
+
+  // Get pending withdrawal count
+  const { count: pendingWithdrawals } = await supabaseAdmin
+    .from('transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('type', 'withdrawal')
+    .eq('metadata->>status', 'pending');
+
+  return {
+    metrics: {
+      total_wallet_liabilities: totalLiabilities,
+      total_deposits: totalDeposits,
+      total_withdrawals: totalWithdrawals,
+      active_wallet_count: activeWalletCount,
+      stripe_fees_absorbed: stripeFeesAbsorbed,
+      fast_withdrawal_fee_revenue: fastWithdrawalFeeRevenue,
+      net_fee_position: netFeePosition,
+      deposits_7days: deposits7d,
+      withdrawals_7days: withdrawals7d,
+      deposits_30days: deposits30d,
+      withdrawals_30days: withdrawals30d
+    },
+    buffer: {
+      total_liabilities: totalLiabilities,
+      net_cash_position: netCashPosition,
+      stripe_fees_paid: stripeFeesAbsorbed,
+      stripe_base_fees: stripeBaseFeesAbsorbed,
+      stripe_additional_fees: stripeAdditionalFees,
+      fast_fee_revenue: fastWithdrawalFeeRevenue,
+      buffer_required: bufferRequired,
+      recommended_buffer: recommendedBuffer,
+      safety_margin: safetyMargin,
+      projection_7d: projection7d,
+      projection_30d: projection30d,
+      avg_daily_withdrawal_7d: avgDaily7d,
+      avg_daily_withdrawal_30d: avgDaily30d,
+      status,
+      status_message: statusMessage,
+      fee_breakdown: {
+        base_percentage: stripeBasePercentageFee,
+        fixed_per_transaction: stripeFixedFee,
+        international_cards: 0,
+        cross_border: 0,
+        currency_conversion: 0,
+        dispute_reserve: disputeFeeReserve,
+        refund_loss: refundFeeLoss
+      }
+    },
+    pending_withdrawals: pendingWithdrawals || 0,
+    timestamp: new Date().toISOString()
+  };
+}
+
+// SSE endpoint for real-time updates
+// Note: EventSource doesn't support custom headers, so we accept token via query param
+router.get('/stream', async (req: express.Request, res: express.Response) => {
+  // Manual auth since EventSource can't send headers
+  const token = req.query.token as string;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const user = await verifyAuthToken(token);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+  
+  const adminCheck = await checkAdminRole(user.email);
+  if (!adminCheck.authorized) {
+    return res.status(403).json({ error: 'Admin access denied' });
+  }
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  
+  // Add client to active connections
+  sseClients.add(res);
+  console.log(`SSE client connected. Total clients: ${sseClients.size}`);
+  
+  // Send initial data immediately
+  try {
+    const data = await fetchAllMetrics();
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  } catch (err) {
+    console.error('Error sending initial SSE data:', err);
+  }
+
+  // Send heartbeat every 30 seconds to keep connection alive
+  const heartbeatInterval = setInterval(() => {
+    try {
+      res.write(`:heartbeat\n\n`);
+    } catch (err) {
+      clearInterval(heartbeatInterval);
+    }
+  }, 30000);
+
+  // Send updates every 5 seconds
+  const updateInterval = setInterval(async () => {
+    try {
+      const data = await fetchAllMetrics();
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (err) {
+      console.error('Error sending SSE update:', err);
+    }
+  }, 5000);
+
+  // Clean up on client disconnect
+  req.on('close', () => {
+    clearInterval(heartbeatInterval);
+    clearInterval(updateInterval);
+    sseClients.delete(res);
+    console.log(`SSE client disconnected. Total clients: ${sseClients.size}`);
+  });
+});
+
+// Export function to broadcast updates to all connected clients
+export async function broadcastMetricsUpdate() {
+  if (sseClients.size === 0) return;
+  
+  try {
+    const data = await fetchAllMetrics();
+    const message = `data: ${JSON.stringify(data)}\n\n`;
+    
+    sseClients.forEach(client => {
+      try {
+        client.write(message);
+      } catch (err) {
+        sseClients.delete(client);
+      }
+    });
+  } catch (err) {
+    console.error('Error broadcasting metrics update:', err);
+  }
+}
+
 export default router;

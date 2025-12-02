@@ -73,6 +73,9 @@
           <span id="admin-name" class="text-sm text-gray-500"></span>
         </div>
         <div class="flex items-center gap-4">
+          <span id="live-status" class="text-xs text-gray-500 font-medium">
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full"></span> Connecting...</span>
+          </span>
           <span id="last-updated" class="text-xs text-gray-400"></span>
           <button onclick="refreshData()" class="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,6 +495,8 @@
     let totalTransactions = 0;
     const PAGE_SIZE = 50;
     let trendsChart = null;
+    let eventSource = null;
+    let isLiveConnected = false;
     
     function isTokenExpired() {
       if (!tokenExpiresAt) return true;
@@ -553,6 +558,7 @@
           document.getElementById('dashboard').classList.remove('hidden');
           document.getElementById('admin-password').value = '';
           refreshData();
+          connectSSE(); // Start live updates
         } else {
           errorEl.textContent = data.error || 'Login failed';
           errorEl.classList.remove('hidden');
@@ -567,6 +573,8 @@
     }
 
     async function logout() {
+      disconnectSSE(); // Stop live updates
+      
       try {
         if (accessToken) {
           await fetch(`${API_BASE}/logout`, {
@@ -630,6 +638,138 @@
       } catch (err) {
         console.error('Refresh error:', err);
         document.getElementById('last-updated').textContent = 'Update failed';
+      }
+    }
+
+    // Connect to Server-Sent Events for real-time updates
+    function connectSSE() {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      if (!accessToken) return;
+
+      // Create EventSource with auth token via query parameter (SSE doesn't support headers)
+      eventSource = new EventSource(`${API_BASE}/stream?token=${encodeURIComponent(accessToken)}`);
+      
+      eventSource.onopen = () => {
+        console.log('SSE connected');
+        isLiveConnected = true;
+        updateConnectionStatus(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          updateDashboardFromSSE(data);
+        } catch (err) {
+          console.error('SSE parse error:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('SSE error:', err);
+        isLiveConnected = false;
+        updateConnectionStatus(false);
+        
+        // Reconnect after 5 seconds
+        setTimeout(() => {
+          if (accessToken && !isTokenExpired()) {
+            connectSSE();
+          }
+        }, 5000);
+      };
+    }
+
+    function disconnectSSE() {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      isLiveConnected = false;
+      updateConnectionStatus(false);
+    }
+
+    function updateConnectionStatus(connected) {
+      const statusEl = document.getElementById('live-status');
+      if (statusEl) {
+        if (connected) {
+          statusEl.innerHTML = '<span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Live</span>';
+          statusEl.className = 'text-xs text-green-600 font-medium';
+        } else {
+          statusEl.innerHTML = '<span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full"></span> Offline</span>';
+          statusEl.className = 'text-xs text-gray-500 font-medium';
+        }
+      }
+    }
+
+    function updateDashboardFromSSE(data) {
+      // Update metrics
+      if (data.metrics) {
+        document.getElementById('metric-liabilities').textContent = formatCurrency(data.metrics.total_wallet_liabilities);
+        document.getElementById('metric-deposits').textContent = formatCurrency(data.metrics.total_deposits);
+        document.getElementById('metric-withdrawals').textContent = formatCurrency(data.metrics.total_withdrawals);
+        document.getElementById('metric-wallets').textContent = data.metrics.active_wallet_count || 0;
+        document.getElementById('metric-stripe-fees').textContent = formatCurrency(data.metrics.stripe_fees_absorbed || 0);
+        document.getElementById('metric-fast-fees').textContent = formatCurrency(data.metrics.fast_withdrawal_fee_revenue);
+        
+        const netFees = data.metrics.net_fee_position || 0;
+        const netFeesEl = document.getElementById('metric-net-fees');
+        netFeesEl.textContent = formatCurrency(netFees);
+        netFeesEl.className = `text-2xl font-bold mt-1 ${netFees >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        
+        document.getElementById('metric-deposits-7d').textContent = formatCurrency(data.metrics.deposits_7days);
+        document.getElementById('metric-withdrawals-7d').textContent = formatCurrency(data.metrics.withdrawals_7days);
+        document.getElementById('metric-deposits-30d').textContent = formatCurrency(data.metrics.deposits_30days);
+        document.getElementById('metric-withdrawals-30d').textContent = formatCurrency(data.metrics.withdrawals_30days);
+      }
+
+      // Update buffer analysis
+      if (data.buffer) {
+        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.buffer.total_liabilities);
+        document.getElementById('buffer-cash').textContent = formatCurrency(data.buffer.net_cash_position);
+        document.getElementById('buffer-stripe').textContent = formatCurrency(data.buffer.stripe_fees_paid || 0);
+        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.buffer.fast_fee_revenue);
+        document.getElementById('buffer-required').textContent = formatCurrency(data.buffer.buffer_required);
+        document.getElementById('buffer-recommended').textContent = formatCurrency(data.buffer.recommended_buffer);
+        document.getElementById('buffer-7d').textContent = formatCurrency(data.buffer.projection_7d);
+        document.getElementById('buffer-30d').textContent = formatCurrency(data.buffer.projection_30d);
+        document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.buffer.avg_daily_withdrawal_7d);
+        document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.buffer.avg_daily_withdrawal_30d);
+
+        // Fee breakdown
+        if (data.buffer.fee_breakdown) {
+          document.getElementById('fee-base-pct').textContent = formatCurrency(data.buffer.fee_breakdown.base_percentage || 0);
+          document.getElementById('fee-fixed').textContent = formatCurrency(data.buffer.fee_breakdown.fixed_per_transaction || 0);
+          document.getElementById('fee-disputes').textContent = formatCurrency(data.buffer.fee_breakdown.dispute_reserve || 0);
+          document.getElementById('fee-refunds').textContent = formatCurrency(data.buffer.fee_breakdown.refund_loss || 0);
+        }
+        
+        document.getElementById('fee-base-total').textContent = formatCurrency(data.buffer.stripe_base_fees || 0);
+        document.getElementById('fee-additional-total').textContent = formatCurrency(data.buffer.stripe_additional_fees || 0);
+        document.getElementById('fee-grand-total').textContent = formatCurrency(data.buffer.stripe_fees_paid || 0);
+        
+        const statusBadge = document.getElementById('buffer-status-badge');
+        const status = data.buffer.status || 'healthy';
+        statusBadge.textContent = data.buffer.status_message || (status.charAt(0).toUpperCase() + status.slice(1));
+        statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
+      }
+
+      // Update pending withdrawal badge
+      if (typeof data.pending_withdrawals !== 'undefined') {
+        const badge = document.getElementById('withdrawal-badge');
+        if (data.pending_withdrawals > 0) {
+          badge.textContent = data.pending_withdrawals;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      // Update timestamp
+      if (data.timestamp) {
+        const time = new Date(data.timestamp).toLocaleTimeString();
+        document.getElementById('last-updated').textContent = `Live: ${time}`;
       }
     }
 
@@ -1154,6 +1294,7 @@
           document.getElementById('login-screen').classList.add('hidden');
           document.getElementById('dashboard').classList.remove('hidden');
           refreshData();
+          connectSSE(); // Resume live updates
         } catch (e) {
           sessionStorage.clear();
           accessToken = '';
