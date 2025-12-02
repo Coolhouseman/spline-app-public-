@@ -141,6 +141,7 @@ app.post('/api/notify-withdrawal', async (req, res) => {
 
     const {
       userId,
+      userDatabaseId,
       userName,
       userEmail,
       userPhone,
@@ -153,7 +154,8 @@ app.post('/api/notify-withdrawal', async (req, res) => {
       accountHolderName,
       accountLast4,
       estimatedArrival,
-      transactionId
+      transactionId,
+      remainingBalance
     } = req.body;
 
     if (!transactionId || !userId || !amount) {
@@ -162,6 +164,7 @@ app.post('/api/notify-withdrawal', async (req, res) => {
 
     const success = await sendWithdrawalNotification({
       userId,
+      userDatabaseId: userDatabaseId || 'N/A',
       userName: userName || 'Unknown User',
       userEmail: userEmail || 'N/A',
       userPhone: userPhone || 'N/A',
@@ -174,7 +177,8 @@ app.post('/api/notify-withdrawal', async (req, res) => {
       accountHolderName: accountHolderName || 'Not provided',
       accountLast4: accountLast4 || '****',
       estimatedArrival: estimatedArrival || 'Not specified',
-      transactionId
+      transactionId,
+      remainingBalance: parseFloat(remainingBalance) || 0
     });
 
     res.json({ success, message: success ? 'Notification sent' : 'Notification logged (email not configured)' });

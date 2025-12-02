@@ -4,6 +4,7 @@ const ADMIN_EMAIL = 'hzeng1217@gmail.com';
 
 interface WithdrawalEmailData {
   userId: string;
+  userDatabaseId: string;
   userName: string;
   userEmail: string;
   userPhone: string;
@@ -17,6 +18,7 @@ interface WithdrawalEmailData {
   accountLast4: string;
   estimatedArrival: string;
   transactionId: string;
+  remainingBalance: number;   // User's remaining wallet balance after withdrawal
 }
 
 const createTransporter = () => {
@@ -53,14 +55,16 @@ USER DETAILS
 Name: ${data.userName}
 Email: ${data.userEmail}
 Phone: ${data.userPhone}
-User ID: ${data.userId}
+User ID (Spline ID): ${data.userId}
+Database ID: ${data.userDatabaseId}
 
 WITHDRAWAL DETAILS
 ------------------
-Transfer Type: ${data.withdrawalType.toUpperCase()} ${data.withdrawalType === 'fast' ? '(2% fee)' : '(Free)'}
+Transfer Type: ${data.withdrawalType.toUpperCase()} ${data.withdrawalType === 'fast' ? '(3.5% fee)' : '(Free)'}
 Amount Requested: $${data.amount.toFixed(2)}
 Fee Deducted: $${data.feeAmount.toFixed(2)}
 Net Amount to Transfer: $${data.netAmount.toFixed(2)}
+Remaining Balance: $${data.remainingBalance.toFixed(2)}
 
 BANK DETAILS (FOR TRANSFER)
 ---------------------------
@@ -121,6 +125,9 @@ This is an automated notification from Spline Pay.
         <p><span class="label">Name:</span> <span class="value">${data.userName}</span></p>
         <p><span class="label">Email:</span> <span class="value">${data.userEmail}</span></p>
         <p><span class="label">Phone:</span> <span class="value">${data.userPhone}</span></p>
+        <p><span class="label">Spline ID:</span> <span class="value" style="font-family: monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${data.userId}</span></p>
+        <p><span class="label">Database ID:</span> <span class="value" style="font-family: monospace; font-size: 11px; color: #6b7280;">${data.userDatabaseId}</span></p>
+        <p><span class="label">Remaining Balance:</span> <span class="value" style="font-weight: 700; color: #059669;">$${data.remainingBalance.toFixed(2)}</span></p>
       </div>
       
       <div class="section" style="background: #eff6ff; border: 1px solid #3b82f6;">

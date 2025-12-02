@@ -69,7 +69,61 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- 4. Create RPC function: log_transaction_rpc
+DO $$
+BEGIN
+  -- Drop all versions of ensure_wallet_exists
+  DROP FUNCTION IF EXISTS public.ensure_wallet_exists CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- 4. Create RPC function: ensure_wallet_exists (creates wallet if not exists)
+CREATE FUNCTION public.ensure_wallet_exists(
+  p_user_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_wallet_id UUID;
+  v_balance NUMERIC;
+BEGIN
+  -- Check if wallet exists
+  SELECT id, balance INTO v_wallet_id, v_balance
+  FROM wallets
+  WHERE user_id = p_user_id;
+  
+  -- If not exists, create it
+  IF v_wallet_id IS NULL THEN
+    INSERT INTO wallets (user_id, balance, bank_connected)
+    VALUES (p_user_id, 0, false)
+    ON CONFLICT (user_id) DO NOTHING
+    RETURNING id, balance INTO v_wallet_id, v_balance;
+    
+    -- If insert was skipped due to conflict, fetch the existing record
+    IF v_wallet_id IS NULL THEN
+      SELECT id, balance INTO v_wallet_id, v_balance
+      FROM wallets
+      WHERE user_id = p_user_id;
+    END IF;
+  END IF;
+  
+  RETURN jsonb_build_object(
+    'success', true,
+    'wallet_id', v_wallet_id,
+    'balance', COALESCE(v_balance, 0)
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', SQLERRM
+    );
+END;
+$$;
+
+-- 5. Create RPC function: log_transaction_rpc
 CREATE FUNCTION public.log_transaction_rpc(
   p_user_id UUID,
   p_type TEXT,
@@ -388,6 +442,7 @@ END;
 $$;
 
 -- 9. Grant execute permissions on functions
+GRANT EXECUTE ON FUNCTION public.ensure_wallet_exists TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.log_transaction_rpc TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.process_deposit TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.process_withdrawal TO authenticated, anon;

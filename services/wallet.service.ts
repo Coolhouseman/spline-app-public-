@@ -347,7 +347,9 @@ export class WalletService {
       throw new Error('Invalid bank account number');
     }
     const normalizedNumber = `${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
-    const accountLast4 = parts[3].slice(-4);
+    // Get the true last 4 digits of the full bank account number
+    const fullDigits = parts[1] + parts[2] + parts[3] + parts[4];
+    const accountLast4 = fullDigits.slice(-4);
 
     const { data, error } = await supabase
       .from('wallets')
@@ -976,7 +978,8 @@ export class WalletService {
       withdrawalType,
       wallet.bank_details,
       estimatedArrival.toISOString(),
-      result.transaction_id
+      result.transaction_id,
+      result.new_balance
     ).catch(err => console.error('Failed to send withdrawal notification:', err));
     
     // Fetch and return the transaction
@@ -1020,19 +1023,22 @@ export class WalletService {
     withdrawalType: 'fast' | 'normal',
     bankDetails: BankDetails | null,
     estimatedArrival: string,
-    transactionId: string
+    transactionId: string,
+    remainingBalance: number
   ): Promise<void> {
     try {
-      // Get user details
+      // Get user details - users table has 'name' column, not first_name/last_name
       const { data: user } = await supabase
         .from('users')
-        .select('first_name, last_name, email, phone, unique_id')
+        .select('id, name, email, phone, unique_id')
         .eq('id', userId)
         .single();
 
-      const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unknown';
+      const userName = user?.name || 'Unknown';
       const userEmail = user?.email || 'N/A';
       const userPhone = user?.phone || 'N/A';
+      const userUniqueId = user?.unique_id || 'N/A';
+      const userDatabaseId = user?.id || userId;
 
       // Call the notification API - use production URL since this runs on mobile
       const SERVER_URL = 'https://splinepay.replit.app';
@@ -1048,7 +1054,8 @@ export class WalletService {
           'X-Service-Key': serviceKey
         },
         body: JSON.stringify({
-          userId: user?.unique_id || userId,
+          userId: userUniqueId,
+          userDatabaseId: userDatabaseId,
           userName,
           userEmail,
           userPhone,
@@ -1061,7 +1068,8 @@ export class WalletService {
           accountHolderName: bankDetails?.account_holder_name || 'Not provided',
           accountLast4: bankDetails?.account_last4 || '****',
           estimatedArrival,
-          transactionId
+          transactionId,
+          remainingBalance
         })
       });
 
@@ -1134,41 +1142,34 @@ export class WalletService {
       throw new Error('Payment amount must be greater than zero');
     }
 
-    // Try to get wallet, create if doesn't exist (using upsert to handle race conditions)
-    let { data: wallet, error: walletError } = await supabase
+    // STEP 0: Ensure wallet exists (uses RPC to bypass RLS if needed)
+    const { data: ensureResult, error: ensureError } = await supabase.rpc('ensure_wallet_exists', {
+      p_user_id: userId
+    });
+    
+    if (ensureError) {
+      console.error('Failed to ensure wallet exists:', ensureError);
+      throw new Error('Failed to initialize wallet. Please try again.');
+    }
+    
+    if (!ensureResult?.success) {
+      console.error('Wallet initialization failed:', ensureResult?.error);
+      throw new Error('Failed to initialize wallet. Please try again.');
+    }
+    
+    console.log(`Wallet ensured for user ${userId}, balance: $${ensureResult.balance}`);
+
+    // Now fetch the wallet with all needed fields
+    const { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
       .eq('user_id', userId)
       .single();
 
     if (walletError || !wallet) {
-      // Use upsert to handle concurrent wallet creation (race condition safe)
-      const { error: upsertError } = await supabase
-        .from('wallets')
-        .upsert(
-          { user_id: userId, balance: 0, bank_connected: false },
-          { onConflict: 'user_id', ignoreDuplicates: true }
-        );
-
-      if (upsertError && !upsertError.message.includes('duplicate')) {
-        console.error('Failed to create wallet:', upsertError);
-        throw new Error('Failed to initialize wallet. Please try again.');
-      }
-
-      // Re-fetch the wallet after creation
-      const { data: newWallet, error: fetchError } = await supabase
-        .from('wallets')
-        .select('balance, bank_connected, stripe_customer_id, stripe_payment_method_id')
-        .eq('user_id', userId)
-        .single();
-
-      if (fetchError || !newWallet) {
-        throw new Error('Wallet not found');
-      }
-      wallet = newWallet;
+      console.error('Failed to fetch wallet after ensure:', walletError);
+      throw new Error('Wallet not found. Please try again.');
     }
-
-    if (!wallet) throw new Error('Wallet not found');
 
     const currentBalance = await this.getCurrentBalance(userId);
     

@@ -250,6 +250,8 @@ export class StripeService {
     name: string,
     existingCustomerId?: string
   ): Promise<{ customerId: string; setupIntentId: string; cardSetupUrl: string }> {
+    console.log('Initiating card setup with SERVER_URL:', SERVER_URL);
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/initiate-card-setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -260,6 +262,13 @@ export class StripeService {
         customerId: existingCustomerId 
       }),
     });
+
+    // Check content type to ensure we got JSON, not HTML
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Server returned non-JSON response:', contentType);
+      throw new Error('Server connection error. Please try again.');
+    }
 
     if (!response.ok) {
       const error = await response.json();

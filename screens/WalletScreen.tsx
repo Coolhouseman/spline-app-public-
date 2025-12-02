@@ -281,14 +281,14 @@ export default function WalletScreen({ navigation }: Props) {
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
     const isWithdrawal = item.type === 'withdrawal';
-    const showBankDetails = isWithdrawal && item.metadata?.bank_account_number;
-    const bankAccountNumber = item.metadata?.bank_account_number || '';
+    const showBankDetails = isWithdrawal;
+    const bankAccountMasked = (item.metadata as any)?.bank_account_masked || '';
     const bankName = item.metadata?.bank_name || '';
     const withdrawalType = item.metadata?.withdrawal_type;
     const status = item.metadata?.status || 'pending';
     const isLoadingAccount = loadingAccountId === item.id;
 
-    return (
+    const transactionContent = (
       <View style={[styles.transactionCard, { borderBottomColor: theme.border }]}>
         <View style={[styles.transactionIcon, { backgroundColor: `${color}20` }]}>
           <Feather name={getTransactionIcon(item.type)} size={20} color={color} />
@@ -297,28 +297,17 @@ export default function WalletScreen({ navigation }: Props) {
           <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
             {item.description}
           </ThemedText>
-          {showBankDetails ? (
+          {isWithdrawal ? (
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
                 <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
-                  To: {bankName} {bankAccountNumber}
+                  Bank: {bankAccountMasked || 'View details'}
                 </ThemedText>
-                <Pressable
-                  onPress={() => handleViewFullAccount(item.id)}
-                  disabled={isLoadingAccount}
-                  style={({ pressed }) => [
-                    styles.viewAccountButton,
-                    { backgroundColor: `${theme.primary}20`, opacity: pressed ? 0.7 : 1 }
-                  ]}
-                >
-                  {isLoadingAccount ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  ) : (
-                    <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
-                      View Full
-                    </ThemedText>
-                  )}
-                </Pressable>
+                {isLoadingAccount ? (
+                  <ActivityIndicator size="small" color={theme.primary} style={{ marginLeft: 8 }} />
+                ) : (
+                  <Feather name="chevron-right" size={16} color={theme.primary} style={{ marginLeft: 4 }} />
+                )}
               </View>
               <ThemedText style={[Typography.caption, { color: status === 'completed' ? theme.success : theme.warning }]}>
                 {status.charAt(0).toUpperCase() + status.slice(1)} {withdrawalType === 'fast' ? '(Fast)' : ''}
@@ -334,6 +323,20 @@ export default function WalletScreen({ navigation }: Props) {
         </ThemedText>
       </View>
     );
+
+    if (isWithdrawal) {
+      return (
+        <Pressable
+          onPress={() => handleViewFullAccount(item.id)}
+          disabled={isLoadingAccount}
+          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+        >
+          {transactionContent}
+        </Pressable>
+      );
+    }
+
+    return transactionContent;
   };
 
   if (loading || !wallet) {
