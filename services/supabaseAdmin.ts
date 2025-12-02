@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+// Direct Supabase URL for admin client
+const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 let adminClient: SupabaseClient;
