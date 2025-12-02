@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { CardField, useStripe, CardFieldInput } from '@stripe/stripe-react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface CardInputModalProps {
   visible: boolean;
@@ -28,6 +29,7 @@ export function CardInputModal({
   const [cardComplete, setCardComplete] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [cardDetails, setCardDetails] = useState<CardFieldInput.Details | null>(null);
+  const insets = useSafeAreaInsets();
 
   const handleCardChange = (details: CardFieldInput.Details) => {
     setCardComplete(details.complete);
@@ -81,92 +83,119 @@ export function CardInputModal({
       transparent={true}
       onRequestClose={handleClose}
     >
-      <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-        <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-          <View style={styles.header}>
-            <ThemedText style={[Typography.h2, { color: theme.text }]}>
-              Add Payment Card
-            </ThemedText>
-            <Pressable onPress={handleClose} disabled={processing}>
-              <Feather name="x" size={24} color={theme.textSecondary} />
-            </Pressable>
-          </View>
-
-          <View style={styles.cardFieldContainer}>
-            <ThemedText style={[Typography.small, { color: theme.textSecondary, marginBottom: Spacing.xs }]}>
-              Card Details
-            </ThemedText>
-            <CardField
-              postalCodeEnabled={false}
-              placeholders={{
-                number: '4242 4242 4242 4242',
-              }}
-              cardStyle={{
-                backgroundColor: theme.backgroundSecondary,
-                textColor: theme.text,
-                borderColor: theme.border,
-                borderWidth: 1,
-                borderRadius: BorderRadius.md,
-                fontSize: 16,
-                placeholderColor: theme.textSecondary,
-              }}
-              style={styles.cardField}
-              onCardChange={handleCardChange}
-            />
-          </View>
-
-          <View style={[styles.securityNotice, { backgroundColor: theme.backgroundSecondary }]}>
-            <Feather name="lock" size={16} color={theme.success} />
-            <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginLeft: Spacing.xs, flex: 1 }]}>
-              Your card details are securely processed by Stripe. We never store your full card number.
-            </ThemedText>
-          </View>
-
-          <View style={styles.buttonContainer}>
-            <Pressable
-              style={[styles.button, styles.cancelButton, { backgroundColor: theme.backgroundSecondary }]}
-              onPress={handleClose}
-              disabled={processing}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={0}
+      >
+        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable style={styles.dismissArea} onPress={handleClose} />
+          <View 
+            style={[
+              styles.modalContent, 
+              { 
+                backgroundColor: theme.background,
+                paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md,
+              }
+            ]}
+          >
+            <ScrollView 
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <ThemedText style={[Typography.body, { color: theme.text }]}>
-                Cancel
-              </ThemedText>
-            </Pressable>
-            
-            <Pressable
-              style={[
-                styles.button,
-                styles.confirmButton,
-                { backgroundColor: cardComplete && !processing ? theme.primary : theme.border }
-              ]}
-              onPress={handleConfirm}
-              disabled={!cardComplete || processing}
-            >
-              {processing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-                  Add Card
+              <View style={styles.header}>
+                <ThemedText style={[Typography.h2, { color: theme.text }]}>
+                  Add Payment Card
                 </ThemedText>
-              )}
-            </Pressable>
+                <Pressable onPress={handleClose} disabled={processing}>
+                  <Feather name="x" size={24} color={theme.textSecondary} />
+                </Pressable>
+              </View>
+
+              <View style={styles.cardFieldContainer}>
+                <ThemedText style={[Typography.small, { color: theme.textSecondary, marginBottom: Spacing.xs }]}>
+                  Card Details
+                </ThemedText>
+                <CardField
+                  postalCodeEnabled={false}
+                  placeholders={{
+                    number: '4242 4242 4242 4242',
+                  }}
+                  cardStyle={{
+                    backgroundColor: theme.backgroundSecondary,
+                    textColor: theme.text,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                    borderRadius: BorderRadius.md,
+                    fontSize: 16,
+                    placeholderColor: theme.textSecondary,
+                  }}
+                  style={styles.cardField}
+                  onCardChange={handleCardChange}
+                />
+              </View>
+
+              <View style={[styles.securityNotice, { backgroundColor: theme.backgroundSecondary }]}>
+                <Feather name="lock" size={16} color={theme.success} />
+                <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginLeft: Spacing.xs, flex: 1 }]}>
+                  Your card details are securely processed. We never store your full card number.
+                </ThemedText>
+              </View>
+
+              <View style={styles.buttonContainer}>
+                <Pressable
+                  style={[styles.button, styles.cancelButton, { backgroundColor: theme.backgroundSecondary }]}
+                  onPress={handleClose}
+                  disabled={processing}
+                >
+                  <ThemedText style={[Typography.body, { color: theme.text }]}>
+                    Cancel
+                  </ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[
+                    styles.button,
+                    styles.confirmButton,
+                    { backgroundColor: cardComplete && !processing ? theme.primary : theme.border }
+                  ]}
+                  onPress={handleConfirm}
+                  disabled={!cardComplete || processing}
+                >
+                  {processing ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                      Add Card
+                    </ThemedText>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  dismissArea: {
+    flex: 1,
   },
   modalContent: {
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    paddingBottom: Spacing.xl + 20,
+    maxHeight: '80%',
   },
   header: {
     flexDirection: 'row',
