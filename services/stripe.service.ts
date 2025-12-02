@@ -266,6 +266,99 @@ export class StripeService {
     return response.json();
   }
 
+  static async createNativeSetupIntent(
+    userId: string,
+    email: string,
+    name: string,
+    existingCustomerId?: string
+  ): Promise<{ customerId: string; setupIntentId: string; clientSecret: string }> {
+    console.log('Creating native setup intent with SERVER_URL:', SERVER_URL);
+    
+    const response = await fetch(`${SERVER_URL}/api/stripe/create-native-setup-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        userId, 
+        email, 
+        name,
+        customerId: existingCustomerId 
+      }),
+    });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Server returned non-JSON response:', contentType);
+      throw new Error('Server connection error. Please try again.');
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create setup intent');
+    }
+
+    return response.json();
+  }
+
+  static async verifyAndSaveNativeCardSetup(
+    userId: string,
+    paymentMethodId: string,
+    customerId: string,
+    setupIntentId: string
+  ): Promise<{ brand: string; last4: string }> {
+    let response: Response;
+    try {
+      response = await fetch(`${SERVER_URL}/api/stripe/verify-native-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethodId, customerId, setupIntentId, userId }),
+      });
+    } catch (networkError) {
+      console.error('Network error during verification:', networkError);
+      throw new Error('Network error. Please check your connection and try again.');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Server returned non-JSON response:', contentType);
+      throw new Error('Server connection error. Please try again.');
+    }
+
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (parseError) {
+      console.error('Failed to parse server response:', parseError);
+      throw new Error('Invalid server response. Please try again.');
+    }
+
+    if (!response.ok) {
+      throw new Error(responseData.error || 'Failed to verify card setup');
+    }
+
+    const { card } = responseData;
+    if (!card || !card.brand || !card.last4) {
+      throw new Error('Invalid card details received from server');
+    }
+
+    const { error: updateError } = await supabase
+      .from('wallets')
+      .update({
+        stripe_customer_id: customerId,
+        stripe_payment_method_id: paymentMethodId,
+        card_brand: card.brand,
+        card_last4: card.last4,
+        bank_connected: true,
+      })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('Failed to update wallet:', updateError);
+      throw new Error('Failed to save card details. Please try again.');
+    }
+
+    return { brand: card.brand, last4: card.last4 };
+  }
+
   static async completeCardSetup(
     userId: string,
     setupIntentId: string,

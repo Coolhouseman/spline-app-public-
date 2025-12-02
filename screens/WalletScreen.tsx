@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, Modal, TextInput, Alert, ActivityIndicator, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -14,6 +14,7 @@ import { StripeService } from '@/services/stripe.service';
 import { supabase } from '@/services/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
+import { CardInputModal } from '@/components/CardInputModal';
 
 type Props = NativeStackScreenProps<any, 'Wallet'>;
 
@@ -28,9 +29,11 @@ export default function WalletScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
-  const [pendingSetupData, setPendingSetupData] = useState<{
+  const [showCardInputModal, setShowCardInputModal] = useState(false);
+  const [cardSetupData, setCardSetupData] = useState<{
     customerId: string;
     setupIntentId: string;
+    clientSecret: string;
   } | null>(null);
   
   const [amount, setAmount] = useState('');
@@ -150,47 +153,85 @@ export default function WalletScreen({ navigation }: Props) {
     setProcessing(true);
     try {
       const userName = user.name || 'User';
-      const { customerId, setupIntentId, cardSetupUrl } = await StripeService.initiateCardSetup(
-        user.id,
-        user.email,
-        userName,
-        wallet?.stripe_customer_id
-      );
       
-      setPendingSetupData({ customerId, setupIntentId });
-      
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        cardSetupUrl,
-        'splitpaymentapp://stripe-callback'
-      );
-      
-      if (browserResult.type === 'success' && browserResult.url) {
-        const url = new URL(browserResult.url);
-        const success = url.searchParams.get('success') === 'true';
-        const paymentMethodId = url.searchParams.get('payment_method_id');
+      if (Platform.OS === 'web') {
+        const { customerId, setupIntentId, cardSetupUrl } = await StripeService.initiateCardSetup(
+          user.id,
+          user.email,
+          userName,
+          wallet?.stripe_customer_id
+        );
         
-        if (success && paymentMethodId) {
-          await StripeService.completeCardSetup(
-            user.id,
-            setupIntentId,
-            paymentMethodId,
-            customerId
-          );
-          await loadWalletData();
-          Alert.alert('Success', 'Card added successfully! You can now make payments.');
-        } else if (url.searchParams.get('cancelled') === 'true') {
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          cardSetupUrl,
+          'splitpaymentapp://stripe-callback'
+        );
+        
+        if (browserResult.type === 'success' && browserResult.url) {
+          const url = new URL(browserResult.url);
+          const success = url.searchParams.get('success') === 'true';
+          const paymentMethodId = url.searchParams.get('payment_method_id');
+          
+          if (success && paymentMethodId) {
+            await StripeService.completeCardSetup(
+              user.id,
+              setupIntentId,
+              paymentMethodId,
+              customerId
+            );
+            await loadWalletData();
+            Alert.alert('Success', 'Card added successfully! You can now make payments.');
+          } else if (url.searchParams.get('cancelled') === 'true') {
+            Alert.alert('Cancelled', 'Card setup was cancelled');
+          }
+        } else if (browserResult.type === 'cancel') {
           Alert.alert('Cancelled', 'Card setup was cancelled');
         }
-      } else if (browserResult.type === 'cancel') {
-        Alert.alert('Cancelled', 'Card setup was cancelled');
+      } else {
+        const { customerId, setupIntentId, clientSecret } = await StripeService.createNativeSetupIntent(
+          user.id,
+          user.email,
+          userName,
+          wallet?.stripe_customer_id
+        );
+        
+        setCardSetupData({ customerId, setupIntentId, clientSecret });
+        setShowCardInputModal(true);
       }
     } catch (error: any) {
       console.error('Add card error:', error);
       Alert.alert('Error', error.message || 'Failed to add card');
     } finally {
       setProcessing(false);
-      setPendingSetupData(null);
     }
+  };
+
+  const handleCardSuccess = async (paymentMethodId: string, cardDetails: { brand: string; last4: string }) => {
+    if (!user || !cardSetupData) return;
+    
+    setProcessing(true);
+    try {
+      await StripeService.verifyAndSaveNativeCardSetup(
+        user.id,
+        paymentMethodId,
+        cardSetupData.customerId,
+        cardSetupData.setupIntentId
+      );
+      await loadWalletData();
+      setShowCardInputModal(false);
+      setCardSetupData(null);
+      Alert.alert('Success', 'Card added successfully! You can now make payments.');
+    } catch (error: any) {
+      console.error('Save card error:', error);
+      Alert.alert('Error', error.message || 'Failed to save card');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCardModalClose = () => {
+    setShowCardInputModal(false);
+    setCardSetupData(null);
   };
 
   const handleRemoveCard = async () => {
@@ -544,6 +585,17 @@ export default function WalletScreen({ navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      {cardSetupData && (
+        <CardInputModal
+          visible={showCardInputModal}
+          onClose={handleCardModalClose}
+          onSuccess={handleCardSuccess}
+          clientSecret={cardSetupData.clientSecret}
+          customerId={cardSetupData.customerId}
+          setupIntentId={cardSetupData.setupIntentId}
+        />
+      )}
 
     </ThemedView>
   );

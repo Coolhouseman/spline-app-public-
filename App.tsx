@@ -7,6 +7,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
+import { StripeProvider } from "@stripe/stripe-react-native";
+import Constants from "expo-constants";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import AuthStackNavigator from "@/navigation/AuthStackNavigator";
@@ -15,6 +17,10 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
 import { supabase } from "@/services/supabase";
+
+const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 
+  Constants.expoConfig?.extra?.stripePublishableKey || 
+  'pk_test_51RTOqR2RDv5hPCMGNjhH8X9aQzQ8MRHwT2Xq4dXZ1YCxhP1nGxX8mJpYqR3sT5dB6fK7vL8wN9jM0kO1pQ2rS3tU4';
 
 const Stack = createNativeStackNavigator();
 
@@ -181,11 +187,16 @@ export default function App() {
   return (
     <ErrorBoundary>
       <View style={[styles.root, { backgroundColor: splashBg }]}>
-        <SafeAreaProvider>
-          <AuthProvider>
-            <AppContent />
-          </AuthProvider>
-        </SafeAreaProvider>
+        <StripeProvider
+          publishableKey={STRIPE_PUBLISHABLE_KEY}
+          merchantIdentifier="merchant.com.splinepay.app"
+        >
+          <SafeAreaProvider>
+            <AuthProvider>
+              <AppContent />
+            </AuthProvider>
+          </SafeAreaProvider>
+        </StripeProvider>
       </View>
     </ErrorBoundary>
   );

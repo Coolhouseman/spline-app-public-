@@ -237,4 +237,109 @@ router.post('/initiate-card-setup', async (req, res) => {
   }
 });
 
+router.post('/create-native-setup-intent', async (req, res) => {
+  try {
+    const { userId, email, name } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    let customerId = req.body.customerId;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email,
+        name,
+        metadata: {
+          spline_user_id: userId,
+        },
+      });
+      customerId = customer.id;
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+    });
+
+    console.log(`Created native setup intent for user ${userId}: ${setupIntent.id}`);
+
+    res.json({
+      customerId,
+      setupIntentId: setupIntent.id,
+      clientSecret: setupIntent.client_secret,
+    });
+  } catch (error: any) {
+    console.error('Error creating native setup intent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/verify-native-setup', async (req, res) => {
+  try {
+    const { paymentMethodId, customerId, setupIntentId, userId } = req.body;
+
+    if (!paymentMethodId || !customerId || !setupIntentId || !userId) {
+      return res.status(400).json({ error: 'Payment method ID, customer ID, setup intent ID, and user ID are required' });
+    }
+
+    const customer = await stripe.customers.retrieve(customerId);
+    if (!customer || customer.deleted) {
+      return res.status(400).json({ error: 'Invalid customer' });
+    }
+
+    if ((customer as Stripe.Customer).metadata?.spline_user_id !== userId) {
+      console.error(`User ID mismatch: expected ${userId}, got ${(customer as Stripe.Customer).metadata?.spline_user_id}`);
+      return res.status(403).json({ error: 'Unauthorized: User mismatch' });
+    }
+
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+
+    if (setupIntent.status !== 'succeeded') {
+      return res.status(400).json({ 
+        error: 'Setup intent not confirmed',
+        status: setupIntent.status 
+      });
+    }
+
+    if (setupIntent.customer !== customerId) {
+      return res.status(400).json({ error: 'Customer mismatch' });
+    }
+
+    if (setupIntent.payment_method !== paymentMethodId) {
+      return res.status(400).json({ error: 'Payment method mismatch' });
+    }
+
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    if (!paymentMethod || !paymentMethod.card) {
+      return res.status(400).json({ error: 'Invalid payment method' });
+    }
+
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: paymentMethodId,
+      },
+    });
+
+    console.log(`Verified native setup for user ${userId}, customer ${customerId}: ${paymentMethodId}`);
+
+    res.json({
+      success: true,
+      paymentMethodId,
+      card: {
+        brand: paymentMethod.card.brand || 'card',
+        last4: paymentMethod.card.last4 || '****',
+        exp_month: paymentMethod.card.exp_month,
+        exp_year: paymentMethod.card.exp_year,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error verifying native setup:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
