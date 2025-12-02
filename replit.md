@@ -68,6 +68,7 @@ Preferred communication style: Simple, everyday language.
 - **Access**: `http://localhost:8082/admin` (dev) / `https://splinepay.replit.app/admin` (prod).
 - **Authentication**: Supabase Auth with admin_roles verification.
 - **Features**: Overview, Buffer Analysis, Transactions, Withdrawals processing, Settings (admin user management).
+- **Live Updates**: Server-Sent Events (SSE) stream at `/api/admin/stream` broadcasts metrics every 5 seconds. Dashboard auto-updates without manual refresh, with visual "Live" indicator showing connection status.
 
 ### Withdrawal Email Notifications
 - Automatic email to admin (`hzeng1217@gmail.com`) upon user withdrawal request using nodemailer.
