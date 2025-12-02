@@ -33,7 +33,15 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Create RPC function: log_transaction_rpc
+-- 3. DROP existing functions to avoid return type conflicts
+DROP FUNCTION IF EXISTS public.log_transaction_rpc(UUID, TEXT, NUMERIC, TEXT, TEXT, UUID, JSONB);
+DROP FUNCTION IF EXISTS public.process_deposit(UUID, NUMERIC, TEXT);
+DROP FUNCTION IF EXISTS public.process_withdrawal(UUID, NUMERIC, TEXT, NUMERIC, NUMERIC, TIMESTAMP WITH TIME ZONE, TEXT);
+DROP FUNCTION IF EXISTS public.process_withdrawal(UUID, NUMERIC, TEXT, NUMERIC, NUMERIC, TIMESTAMP WITH TIME ZONE);
+DROP FUNCTION IF EXISTS public.process_split_payment(UUID, NUMERIC, TEXT, UUID, JSONB);
+DROP FUNCTION IF EXISTS public.credit_recipient_wallet(UUID, NUMERIC, TEXT, UUID);
+
+-- 4. Create RPC function: log_transaction_rpc
 CREATE OR REPLACE FUNCTION public.log_transaction_rpc(
   p_user_id UUID,
   p_type TEXT,
@@ -69,7 +77,7 @@ EXCEPTION
 END;
 $$;
 
--- 4. Create RPC function: process_deposit
+-- 5. Create RPC function: process_deposit
 CREATE OR REPLACE FUNCTION public.process_deposit(
   p_user_id UUID,
   p_amount NUMERIC,
@@ -123,7 +131,7 @@ EXCEPTION
 END;
 $$;
 
--- 5. Create RPC function: process_withdrawal
+-- 6. Create RPC function: process_withdrawal
 CREATE OR REPLACE FUNCTION public.process_withdrawal(
   p_user_id UUID,
   p_amount NUMERIC,
@@ -211,7 +219,7 @@ EXCEPTION
 END;
 $$;
 
--- 6. Create RPC function: process_split_payment
+-- 7. Create RPC function: process_split_payment
 CREATE OR REPLACE FUNCTION public.process_split_payment(
   p_user_id UUID,
   p_amount NUMERIC,
@@ -283,7 +291,7 @@ EXCEPTION
 END;
 $$;
 
--- 7. Create RPC function: credit_recipient_wallet
+-- 8. Create RPC function: credit_recipient_wallet
 CREATE OR REPLACE FUNCTION public.credit_recipient_wallet(
   p_recipient_id UUID,
   p_amount NUMERIC,
@@ -351,18 +359,18 @@ EXCEPTION
 END;
 $$;
 
--- 8. Grant execute permissions on functions
+-- 9. Grant execute permissions on functions
 GRANT EXECUTE ON FUNCTION public.log_transaction_rpc TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.process_deposit TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.process_withdrawal TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.process_split_payment TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.credit_recipient_wallet TO authenticated, anon;
 
--- 9. Enable Row Level Security
+-- 10. Enable Row Level Security
 ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
--- 10. Create RLS policies for wallets
+-- 11. Create RLS policies for wallets
 DROP POLICY IF EXISTS "Users can view own wallet" ON wallets;
 CREATE POLICY "Users can view own wallet" ON wallets
   FOR SELECT USING (auth.uid() = user_id);
@@ -375,7 +383,7 @@ DROP POLICY IF EXISTS "Users can insert own wallet" ON wallets;
 CREATE POLICY "Users can insert own wallet" ON wallets
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- 11. Create RLS policies for transactions
+-- 12. Create RLS policies for transactions
 DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
 CREATE POLICY "Users can view own transactions" ON transactions
   FOR SELECT USING (auth.uid() = user_id);
@@ -384,7 +392,7 @@ DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
 CREATE POLICY "Users can insert own transactions" ON transactions
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- 12. Reload schema cache
+-- 13. Reload schema cache
 NOTIFY pgrst, 'reload schema';
 
 -- ============================================================
