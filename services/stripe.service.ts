@@ -305,12 +305,22 @@ export class StripeService {
     customerId: string,
     setupIntentId: string
   ): Promise<{ brand: string; last4: string }> {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    
+    if (!accessToken) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    
     let response: Response;
     try {
       response = await fetch(`${SERVER_URL}/api/stripe/verify-native-setup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethodId, customerId, setupIntentId, userId }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ paymentMethodId, customerId, setupIntentId }),
       });
     } catch (networkError) {
       console.error('Network error during verification:', networkError);

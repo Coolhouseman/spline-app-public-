@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, Platform } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, Modal, Pressable } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
@@ -14,26 +14,23 @@ interface CardInputModalProps {
   setupIntentId: string;
 }
 
-let NativeCardInputModal: React.ComponentType<CardInputModalProps> | null = null;
-
-if (Platform.OS !== 'web') {
-  NativeCardInputModal = require('./CardInputModal.native').CardInputModal;
-}
-
-export function CardInputModal(props: CardInputModalProps) {
+export function CardInputModal({
+  visible,
+  onClose,
+  onSuccess,
+  clientSecret,
+  customerId,
+  setupIntentId,
+}: CardInputModalProps) {
   const { theme } = useTheme();
 
-  if (Platform.OS !== 'web' && NativeCardInputModal) {
-    return <NativeCardInputModal {...props} />;
-  }
-
   const handleClose = () => {
-    props.onClose();
+    onClose();
   };
 
   return (
     <Modal
-      visible={props.visible}
+      visible={visible}
       animationType="slide"
       transparent={true}
       onRequestClose={handleClose}
@@ -95,6 +92,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   button: {
+    flex: 1,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.md,
     alignItems: 'center',
