@@ -89,13 +89,72 @@ export class AuthService {
     if (authError) throw authError;
     if (!authData.user) throw new Error('Login failed');
 
-    const { data: profile, error: profileError } = await supabase
+    // Try to get existing profile
+    let { data: profile, error: profileError } = await supabase
       .from('users')
       .select('*')
       .eq('id', authData.user.id)
       .single();
 
-    if (profileError) throw profileError;
+    // If profile doesn't exist, create it from auth metadata
+    if (profileError && profileError.code === 'PGRST116') {
+      console.log('Profile not found, creating from auth metadata...');
+      const authMetadata = authData.user.user_metadata || {};
+      const uniqueId = authMetadata.unique_id || String(Math.floor(10000000 + Math.random() * 90000000));
+      
+      const { data: newProfile, error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          unique_id: uniqueId,
+          name: authMetadata.name || email.split('@')[0],
+          email: email,
+          phone: authMetadata.phone || null,
+          date_of_birth: authMetadata.date_of_birth || null,
+          bio: authMetadata.bio || null,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Failed to create profile:', insertError);
+        throw new Error('Failed to create user profile');
+      }
+
+      profile = newProfile;
+
+      // Also create wallet if it doesn't exist
+      await supabase
+        .from('wallets')
+        .insert({
+          user_id: authData.user.id,
+          balance: 0,
+          bank_connected: false,
+        })
+        .select()
+        .single();
+      
+      console.log('Profile and wallet created for user:', authData.user.id);
+    } else if (profileError) {
+      throw profileError;
+    }
+
+    // Ensure wallet exists
+    const { data: wallet } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('user_id', authData.user.id)
+      .single();
+
+    if (!wallet) {
+      await supabase
+        .from('wallets')
+        .insert({
+          user_id: authData.user.id,
+          balance: 0,
+          bank_connected: false,
+        });
+    }
 
     return { user: profile as User, session: authData.session };
   }
