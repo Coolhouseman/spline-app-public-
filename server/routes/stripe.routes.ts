@@ -57,6 +57,17 @@ function userAuthMiddleware(
   });
 }
 
+// Public endpoint to get Stripe publishable key (safe to expose)
+router.get('/publishable-key', (req, res) => {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+  
+  if (!publishableKey) {
+    return res.status(500).json({ error: 'Stripe publishable key not configured' });
+  }
+  
+  res.json({ publishableKey });
+});
+
 router.post('/create-customer', async (req, res) => {
   try {
     const { email, name, userId } = req.body;

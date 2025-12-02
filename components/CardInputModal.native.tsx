@@ -79,36 +79,40 @@ export function CardInputModal({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={0}
       >
-        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable style={styles.dismissArea} onPress={handleClose} />
-          <View 
-            style={[
-              styles.modalContent, 
-              { 
-                backgroundColor: theme.background,
-                paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md,
-              }
-            ]}
+        <Pressable 
+          style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} 
+          onPress={handleClose}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <ScrollView 
-              bounces={false}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+            <Pressable 
+              style={[
+                styles.modalContent, 
+                { 
+                  backgroundColor: theme.background,
+                  marginTop: Math.max(insets.top, Spacing.xl),
+                  marginBottom: Math.max(insets.bottom, Spacing.xl),
+                }
+              ]}
+              onPress={(e) => e.stopPropagation()}
             >
               <View style={styles.header}>
                 <ThemedText style={[Typography.h2, { color: theme.text }]}>
                   Add Payment Card
                 </ThemedText>
-                <Pressable onPress={handleClose} disabled={processing}>
+                <Pressable onPress={handleClose} disabled={processing} hitSlop={8}>
                   <Feather name="x" size={24} color={theme.textSecondary} />
                 </Pressable>
               </View>
@@ -172,9 +176,9 @@ export function CardInputModal({
                   )}
                 </Pressable>
               </View>
-            </ScrollView>
-          </View>
-        </View>
+            </Pressable>
+          </ScrollView>
+        </Pressable>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -186,16 +190,23 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end',
   },
-  dismissArea: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
   },
   modalContent: {
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
   },
   header: {
     flexDirection: 'row',
