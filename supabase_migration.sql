@@ -33,16 +33,44 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. DROP existing functions to avoid return type conflicts
-DROP FUNCTION IF EXISTS public.log_transaction_rpc(UUID, TEXT, NUMERIC, TEXT, TEXT, UUID, JSONB);
-DROP FUNCTION IF EXISTS public.process_deposit(UUID, NUMERIC, TEXT);
-DROP FUNCTION IF EXISTS public.process_withdrawal(UUID, NUMERIC, TEXT, NUMERIC, NUMERIC, TIMESTAMP WITH TIME ZONE, TEXT);
-DROP FUNCTION IF EXISTS public.process_withdrawal(UUID, NUMERIC, TEXT, NUMERIC, NUMERIC, TIMESTAMP WITH TIME ZONE);
-DROP FUNCTION IF EXISTS public.process_split_payment(UUID, NUMERIC, TEXT, UUID, JSONB);
-DROP FUNCTION IF EXISTS public.credit_recipient_wallet(UUID, NUMERIC, TEXT, UUID);
+-- 3. DROP ALL existing function versions using CASCADE
+DO $$
+BEGIN
+  -- Drop all versions of log_transaction_rpc
+  DROP FUNCTION IF EXISTS public.log_transaction_rpc CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  -- Drop all versions of process_deposit
+  DROP FUNCTION IF EXISTS public.process_deposit CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  -- Drop all versions of process_withdrawal
+  DROP FUNCTION IF EXISTS public.process_withdrawal CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  -- Drop all versions of process_split_payment
+  DROP FUNCTION IF EXISTS public.process_split_payment CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  -- Drop all versions of credit_recipient_wallet
+  DROP FUNCTION IF EXISTS public.credit_recipient_wallet CASCADE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 4. Create RPC function: log_transaction_rpc
-CREATE OR REPLACE FUNCTION public.log_transaction_rpc(
+CREATE FUNCTION public.log_transaction_rpc(
   p_user_id UUID,
   p_type TEXT,
   p_amount NUMERIC,
@@ -78,7 +106,7 @@ END;
 $$;
 
 -- 5. Create RPC function: process_deposit
-CREATE OR REPLACE FUNCTION public.process_deposit(
+CREATE FUNCTION public.process_deposit(
   p_user_id UUID,
   p_amount NUMERIC,
   p_description TEXT
@@ -132,7 +160,7 @@ END;
 $$;
 
 -- 6. Create RPC function: process_withdrawal
-CREATE OR REPLACE FUNCTION public.process_withdrawal(
+CREATE FUNCTION public.process_withdrawal(
   p_user_id UUID,
   p_amount NUMERIC,
   p_withdrawal_type TEXT,
@@ -220,7 +248,7 @@ END;
 $$;
 
 -- 7. Create RPC function: process_split_payment
-CREATE OR REPLACE FUNCTION public.process_split_payment(
+CREATE FUNCTION public.process_split_payment(
   p_user_id UUID,
   p_amount NUMERIC,
   p_description TEXT,
@@ -292,7 +320,7 @@ END;
 $$;
 
 -- 8. Create RPC function: credit_recipient_wallet
-CREATE OR REPLACE FUNCTION public.credit_recipient_wallet(
+CREATE FUNCTION public.credit_recipient_wallet(
   p_recipient_id UUID,
   p_amount NUMERIC,
   p_event_name TEXT,
