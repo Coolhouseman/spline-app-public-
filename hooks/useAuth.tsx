@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { User } from '@/shared/types';
 import { AuthService, SignupData } from '@/services/auth.service';
 import { generateUniqueId } from '@/utils/storage';
@@ -19,12 +19,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isSigningUp = useRef(false);
 
   useEffect(() => {
     loadUser();
     
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
+      console.log('Auth state changed:', event, 'isSigningUp:', isSigningUp.current);
+      
+      // Skip auth state changes during active signup - signup() will set user directly
+      if (isSigningUp.current) {
+        console.log('Skipping auth state change during signup');
+        return;
+      }
       
       if (event === 'SIGNED_IN' && session?.user) {
         const { data: profile } = await supabase
@@ -82,10 +89,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (userData: SignupData): Promise<string> => {
     try {
+      // Set flag to prevent auth state listener from interfering
+      isSigningUp.current = true;
+      console.log('Starting signup, setting isSigningUp flag');
+      
       const { user: newUser } = await AuthService.signup(userData);
+      console.log('Signup complete, setting user:', newUser.id);
       setUser(newUser);
+      
+      // Clear the flag after user is set
+      isSigningUp.current = false;
+      console.log('Cleared isSigningUp flag');
+      
       return newUser.unique_id;
     } catch (error) {
+      // Always clear the flag on error
+      isSigningUp.current = false;
       console.error('Signup failed:', error);
       throw error;
     }
