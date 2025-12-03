@@ -44,6 +44,11 @@ function RootNavigator() {
   const { user, isLoading } = useAuth();
   const colorScheme = useColorScheme();
 
+  // Debug logging - track user state in RootNavigator
+  React.useEffect(() => {
+    console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading);
+  }, [user, isLoading]);
+
   if (isLoading) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
@@ -52,6 +57,8 @@ function RootNavigator() {
       </View>
     );
   }
+
+  console.log('RootNavigator rendering: user is', user ? 'authenticated' : 'null');
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

@@ -20,9 +20,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 let globalIsSigningUp = false;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserInternal] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const userSetBySignup = useRef(false);
+
+  // Wrapper to log all user state changes
+  const setUser = (newUser: User | null) => {
+    console.log('setUser called with:', newUser ? newUser.id : 'null');
+    setUserInternal(newUser);
+  };
 
   useEffect(() => {
     loadUser();
