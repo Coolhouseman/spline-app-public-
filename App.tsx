@@ -61,7 +61,10 @@ function RootNavigator() {
   console.log('RootNavigator rendering: user is', user ? 'authenticated' : 'null');
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator 
+      key={user ? 'authenticated' : 'unauthenticated'}
+      screenOptions={{ headerShown: false }}
+    >
       {user ? (
         <Stack.Screen name="Main" component={MainTabNavigator} />
       ) : (
