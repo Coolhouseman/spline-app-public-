@@ -13,6 +13,7 @@ type Props = NativeStackScreenProps<any, 'SignupPassword'>;
 export default function SignupPasswordScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const params = route.params as { firstName: string; lastName: string; email: string };
 
@@ -43,20 +44,33 @@ export default function SignupPasswordScreen({ navigation, route }: Props) {
           Create a password
         </ThemedText>
 
-        <TextInput
-          style={[styles.input, { 
-            backgroundColor: theme.surface, 
-            color: theme.text, 
-            borderColor: theme.border 
-          }]}
-          placeholder="Password (min. 6 characters)"
-          placeholderTextColor={theme.textSecondary}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoFocus
-          autoCapitalize="none"
-        />
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={[styles.input, { 
+              backgroundColor: theme.surface, 
+              color: theme.text, 
+              borderColor: theme.border 
+            }]}
+            placeholder="Password (min. 6 characters)"
+            placeholderTextColor={theme.textSecondary}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoFocus
+            autoCapitalize="none"
+          />
+          <Pressable
+            style={styles.eyeButton}
+            onPress={() => setShowPassword(!showPassword)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather 
+              name={showPassword ? 'eye-off' : 'eye'} 
+              size={22} 
+              color={theme.textSecondary} 
+            />
+          </Pressable>
+        </View>
 
         {password.length > 0 ? (
           <ThemedText style={[Typography.caption, { color: strength.color, marginTop: Spacing.sm }]}>
@@ -130,12 +144,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.xl,
   },
+  inputContainer: {
+    position: 'relative',
+  },
   input: {
     height: Spacing.inputHeight,
     borderWidth: 1,
     borderRadius: BorderRadius.xs,
     paddingHorizontal: Spacing.lg,
+    paddingRight: 50,
     fontSize: 16,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: Spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   termsContainer: {
     flexDirection: 'row',

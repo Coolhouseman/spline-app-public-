@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Keyboard } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Keyboard, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -27,6 +27,7 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
   const [countdown, setCountdown] = useState(60);
   
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const hiddenInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -46,6 +47,25 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
   const handleCodeChange = (index: number, value: string) => {
     if (!/^\d*$/.test(value)) return;
     
+    // Handle paste/autofill of complete OTP code (iOS quick-fill)
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, '').slice(0, 6).split('');
+      const newCode = ['', '', '', '', '', ''];
+      digits.forEach((digit, i) => {
+        newCode[i] = digit;
+      });
+      setCode(newCode);
+      setError('');
+      
+      if (digits.length === 6) {
+        Keyboard.dismiss();
+        handleVerify(newCode.join(''));
+      } else if (digits.length > 0) {
+        inputRefs.current[digits.length]?.focus();
+      }
+      return;
+    }
+    
     const newCode = [...code];
     newCode[index] = value;
     setCode(newCode);
@@ -58,6 +78,26 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
     if (newCode.every(digit => digit !== '') && newCode.join('').length === 6) {
       Keyboard.dismiss();
       handleVerify(newCode.join(''));
+    }
+  };
+  
+  // Handle iOS SMS autofill on hidden input
+  const handleHiddenInputChange = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 6);
+    if (digits.length > 0) {
+      const newCode = ['', '', '', '', '', ''];
+      digits.split('').forEach((digit, i) => {
+        newCode[i] = digit;
+      });
+      setCode(newCode);
+      setError('');
+      
+      if (digits.length === 6) {
+        Keyboard.dismiss();
+        handleVerify(digits);
+      } else {
+        inputRefs.current[digits.length]?.focus();
+      }
     }
   };
 
@@ -144,6 +184,19 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
           We sent a 6-digit code to {maskedPhone}
         </ThemedText>
 
+        {/* Hidden input for iOS SMS autofill - captures full OTP code */}
+        {Platform.OS === 'ios' ? (
+          <TextInput
+            ref={hiddenInputRef}
+            style={styles.hiddenInput}
+            textContentType="oneTimeCode"
+            autoComplete="sms-otp"
+            keyboardType="number-pad"
+            onChangeText={handleHiddenInputChange}
+            autoFocus
+          />
+        ) : null}
+        
         <View style={styles.codeContainer}>
           {code.map((digit, index) => (
             <TextInput
@@ -158,12 +211,14 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
                 }
               ]}
               value={digit}
-              onChangeText={(value) => handleCodeChange(index, value.slice(-1))}
+              onChangeText={(value) => handleCodeChange(index, value)}
               onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
               keyboardType="number-pad"
-              maxLength={1}
+              maxLength={6}
               selectTextOnFocus
-              autoFocus={index === 0}
+              autoFocus={Platform.OS !== 'ios' && index === 0}
+              textContentType={index === 0 ? 'oneTimeCode' : 'none'}
+              autoComplete={index === 0 ? 'sms-otp' : 'off'}
             />
           ))}
         </View>
@@ -241,6 +296,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
   },
   resendContainer: {
     alignItems: 'center',
