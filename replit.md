@@ -71,6 +71,7 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: Supabase Auth with admin_roles verification.
 - **Features**: Overview, Buffer Analysis, Transactions, Withdrawals processing, Settings (admin user management).
 - **Live Updates**: Server-Sent Events (SSE) stream at `/api/admin/stream` broadcasts metrics every 5 seconds. Dashboard auto-updates without manual refresh, with visual "Live" indicator showing connection status.
+- **Supabase Client Pattern**: All admin database queries use fresh Supabase clients (created per-request with explicit schema configuration) to avoid connection state issues with the global client. This ensures reliable data fetching across server restarts.
 
 ### Withdrawal Email Notifications
 - Automatic email to admin (`hzeng1217@gmail.com`) upon user withdrawal request using nodemailer.

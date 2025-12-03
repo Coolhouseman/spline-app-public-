@@ -15,7 +15,16 @@ if (!supabaseAnonKey) {
   console.error('FATAL: SUPABASE_ANON_KEY is not configured');
 }
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '');
+// Create admin client with explicit db schema options
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '', {
+  db: {
+    schema: 'public'
+  },
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 interface AuthenticatedRequest extends express.Request {
   adminUser?: { id: string; email: string; role: string; name: string };
@@ -308,12 +317,16 @@ router.get('/me', adminAuthMiddleware, async (req: AuthenticatedRequest, res) =>
 
 router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
+    // Create fresh client for metrics (to ensure clean state)
+    const metricsClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    
     // Get total wallet liabilities (sum of all wallet balances)
-    // Note: For production with >1000 wallets, use PostgreSQL RPC for aggregation
-    const { data: walletData, error: walletError } = await supabaseAdmin
+    const { data: walletData, error: walletError } = await metricsClient
       .from('wallets')
-      .select('balance')
-      .range(0, 99999);
+      .select('balance, user_id');
     
     if (walletError) {
       console.error('Wallet query error:', walletError);
@@ -324,11 +337,9 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
     const activeWalletCount = walletData?.filter(w => Number(w.balance || 0) > 0).length || 0;
 
     // Get transaction totals
-    // Note: For production with >1000 transactions, use PostgreSQL RPC for aggregation
-    const { data: txData, error: txError } = await supabaseAdmin
+    const { data: txData, error: txError } = await metricsClient
       .from('transactions')
-      .select('type, amount, metadata, created_at, description')
-      .range(0, 99999);
+      .select('type, amount, metadata, created_at, description, user_id');
     
     if (txError) {
       console.error('Transaction query error:', txError);
@@ -996,20 +1007,24 @@ const sseClients: Set<express.Response> = new Set();
 
 // Helper function to fetch all metrics data (reused from /metrics and /buffer)
 async function fetchAllMetrics() {
+  // Create fresh client to avoid connection state issues
+  const client = createClient(supabaseUrl, supabaseServiceKey || '', {
+    db: { schema: 'public' },
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  
   // Get wallet data
-  const { data: walletData } = await supabaseAdmin
+  const { data: walletData } = await client
     .from('wallets')
-    .select('balance')
-    .range(0, 99999);
+    .select('balance');
   
   const totalLiabilities = walletData?.reduce((sum, w) => sum + Number(w.balance || 0), 0) || 0;
   const activeWalletCount = walletData?.filter(w => Number(w.balance || 0) > 0).length || 0;
 
   // Get transaction data
-  const { data: txData } = await supabaseAdmin
+  const { data: txData } = await client
     .from('transactions')
-    .select('type, amount, metadata, created_at, description')
-    .range(0, 99999);
+    .select('type, amount, metadata, created_at, description');
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1090,7 +1105,7 @@ async function fetchAllMetrics() {
   }
 
   // Get pending withdrawal count
-  const { count: pendingWithdrawals } = await supabaseAdmin
+  const { count: pendingWithdrawals } = await client
     .from('transactions')
     .select('*', { count: 'exact', head: true })
     .eq('type', 'withdrawal')
