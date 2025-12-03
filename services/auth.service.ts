@@ -57,36 +57,35 @@ export class AuthService {
       console.log('No profile picture provided in signup data');
     }
 
-    // Include profile_picture URL in the initial INSERT to avoid RLS UPDATE blocking
+    // Use SECURITY DEFINER functions to bypass RLS for user/wallet creation
     console.log('Creating user profile with ID:', authData.user.id);
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
-        unique_id: data.uniqueId,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        date_of_birth: data.dateOfBirth,
-        bio: data.bio,
-        profile_picture: profilePictureUrl,
-      })
-      .select()
-      .single();
+    const { data: profileData, error: profileError } = await supabase
+      .rpc('create_user_profile', {
+        user_id: authData.user.id,
+        user_unique_id: data.uniqueId,
+        user_name: data.name,
+        user_email: data.email,
+        user_phone: data.phone || null,
+        user_dob: data.dateOfBirth || null,
+        user_bio: data.bio || null,
+        user_profile_picture: profilePictureUrl,
+      });
 
     if (profileError) {
       console.error('Failed to create user profile:', JSON.stringify(profileError));
       throw profileError;
     }
+    
+    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
+    if (!profile) {
+      throw new Error('Failed to create user profile - no data returned');
+    }
     console.log('User profile created successfully:', profile.id);
 
     console.log('Creating wallet for user:', authData.user.id);
     const { error: walletError } = await supabase
-      .from('wallets')
-      .insert({
-        user_id: authData.user.id,
-        balance: 0,
-        bank_connected: false,
+      .rpc('create_user_wallet', {
+        p_user_id: authData.user.id,
       });
 
     if (walletError) {
@@ -114,43 +113,33 @@ export class AuthService {
       .eq('id', authData.user.id)
       .single();
 
-    // If profile doesn't exist, create it from auth metadata
+    // If profile doesn't exist, create it from auth metadata using RPC
     if (profileError && profileError.code === 'PGRST116') {
       console.log('Profile not found, creating from auth metadata...');
       const authMetadata = authData.user.user_metadata || {};
       const uniqueId = authMetadata.unique_id || String(Math.floor(10000000 + Math.random() * 90000000));
       
-      const { data: newProfile, error: insertError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          unique_id: uniqueId,
-          name: authMetadata.name || email.split('@')[0],
-          email: email,
-          phone: authMetadata.phone || null,
-          date_of_birth: authMetadata.date_of_birth || null,
-          bio: authMetadata.bio || null,
-        })
-        .select()
-        .single();
+      const { data: newProfileData, error: insertError } = await supabase
+        .rpc('create_user_profile', {
+          user_id: authData.user.id,
+          user_unique_id: uniqueId,
+          user_name: authMetadata.name || email.split('@')[0],
+          user_email: email,
+          user_phone: authMetadata.phone || null,
+          user_dob: authMetadata.date_of_birth || null,
+          user_bio: authMetadata.bio || null,
+          user_profile_picture: null,
+        });
 
       if (insertError) {
         console.error('Failed to create profile:', insertError);
         throw new Error('Failed to create user profile');
       }
 
-      profile = newProfile;
+      profile = Array.isArray(newProfileData) ? newProfileData[0] : newProfileData;
 
-      // Also create wallet if it doesn't exist
-      await supabase
-        .from('wallets')
-        .insert({
-          user_id: authData.user.id,
-          balance: 0,
-          bank_connected: false,
-        })
-        .select()
-        .single();
+      // Also create wallet using RPC
+      await supabase.rpc('create_user_wallet', { p_user_id: authData.user.id });
       
       console.log('Profile and wallet created for user:', authData.user.id);
     } else if (profileError) {
@@ -165,13 +154,7 @@ export class AuthService {
       .single();
 
     if (!wallet) {
-      await supabase
-        .from('wallets')
-        .insert({
-          user_id: authData.user.id,
-          balance: 0,
-          bank_connected: false,
-        });
+      await supabase.rpc('create_user_wallet', { p_user_id: authData.user.id });
     }
 
     return { user: profile as User, session: authData.session };
