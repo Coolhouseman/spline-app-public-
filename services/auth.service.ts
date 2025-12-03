@@ -58,6 +58,7 @@ export class AuthService {
     }
 
     // Include profile_picture URL in the initial INSERT to avoid RLS UPDATE blocking
+    console.log('Creating user profile with ID:', authData.user.id);
     const { data: profile, error: profileError } = await supabase
       .from('users')
       .insert({
@@ -73,8 +74,13 @@ export class AuthService {
       .select()
       .single();
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      console.error('Failed to create user profile:', JSON.stringify(profileError));
+      throw profileError;
+    }
+    console.log('User profile created successfully:', profile.id);
 
+    console.log('Creating wallet for user:', authData.user.id);
     const { error: walletError } = await supabase
       .from('wallets')
       .insert({
@@ -83,7 +89,11 @@ export class AuthService {
         bank_connected: false,
       });
 
-    if (walletError) throw walletError;
+    if (walletError) {
+      console.error('Failed to create wallet:', JSON.stringify(walletError));
+      throw walletError;
+    }
+    console.log('Wallet created successfully');
 
     return { user: profile as User, session: authData.session };
   }
