@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { StyleSheet, ActivityIndicator, View, useColorScheme, Platform } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -12,6 +12,7 @@ import MainTabNavigator from "@/navigation/MainTabNavigator";
 import AuthStackNavigator from "@/navigation/AuthStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StripeWrapper } from "@/components/StripeWrapper";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
@@ -49,12 +50,22 @@ function RootNavigator() {
     console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading, 'isSigningUp:', isSigningUp);
   }, [user, isLoading, isSigningUp]);
 
-  // Show loading during initial load OR during signup transition
-  if (isLoading || isSigningUp) {
+  // Show loading during initial load
+  if (isLoading) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
+        <LoadingOverlay visible={true} message="Loading..." />
+      </View>
+    );
+  }
+
+  // Show loading overlay during signup transition
+  if (isSigningUp) {
+    const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+    return (
+      <View style={[styles.loading, { backgroundColor: splashBg }]}>
+        <LoadingOverlay visible={true} message="Creating your account..." />
       </View>
     );
   }

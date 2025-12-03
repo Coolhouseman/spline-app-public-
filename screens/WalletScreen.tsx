@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
@@ -38,6 +39,7 @@ export default function WalletScreen({ navigation }: Props) {
   
   const [amount, setAmount] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [cardSetupLoading, setCardSetupLoading] = useState(false);
   const [loadingAccountId, setLoadingAccountId] = useState<string | null>(null);
   
   const hasCard = !!wallet?.stripe_payment_method_id;
@@ -150,6 +152,7 @@ export default function WalletScreen({ navigation }: Props) {
   const handleAddCard = async () => {
     if (!user) return;
     
+    setCardSetupLoading(true);
     setProcessing(true);
     try {
       const userName = user.name || 'User';
@@ -160,6 +163,8 @@ export default function WalletScreen({ navigation }: Props) {
           userName,
           wallet?.stripe_customer_id
         );
+        
+        setCardSetupLoading(false);
         
         const browserResult = await WebBrowser.openAuthSessionAsync(
           cardSetupUrl,
@@ -193,6 +198,7 @@ export default function WalletScreen({ navigation }: Props) {
           wallet?.stripe_customer_id
         );
         
+        setCardSetupLoading(false);
         setCardSetupData({ customerId, setupIntentId, clientSecret });
         setShowCardInputModal(true);
       }
@@ -200,6 +206,7 @@ export default function WalletScreen({ navigation }: Props) {
       console.error('Add card error:', error);
       Alert.alert('Error', error.message || 'Failed to add card');
     } finally {
+      setCardSetupLoading(false);
       setProcessing(false);
     }
   };
@@ -380,8 +387,8 @@ export default function WalletScreen({ navigation }: Props) {
 
   if (loading || !wallet) {
     return (
-      <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl, justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
+      <ThemedView style={[styles.container, { paddingTop: insets.top + Spacing.xl }]}>
+        <LoadingOverlay visible={true} message="Loading wallet..." />
       </ThemedView>
     );
   }
@@ -595,6 +602,11 @@ export default function WalletScreen({ navigation }: Props) {
         />
       )}
 
+      <LoadingOverlay 
+        visible={cardSetupLoading} 
+        message="Setting up secure payment..." 
+        fullScreen 
+      />
     </ThemedView>
   );
 }
