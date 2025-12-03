@@ -66,6 +66,15 @@ Preferred communication style: Simple, everyday language.
 - CVV handling via Stripe Elements, PaymentMethod token storage, off-session payments.
 - Only card brand and last four digits stored in the database for display.
 
+### Stripe Dual-Mode Architecture (App Store Review)
+- **Purpose**: Enables Apple reviewers to test payment features without real charges.
+- **Test Mode Flag**: `stripe_test_mode` boolean column in wallets table (admin-controlled only).
+- **Demo Accounts**: `account1@gmail.com` and `account2@gmail.com` with test mode enabled.
+- **Security**: All Stripe endpoints require Supabase JWT authentication. Test mode is determined server-side only via `userAuthMiddleware`, which reads the wallet's `stripe_test_mode` flag after token verification.
+- **Endpoints**: All card setup, charge, and payment method endpoints derive userId from auth token (no client-supplied userId).
+- **Public Endpoint**: Only `/api/stripe/publishable-key` is unauthenticated (returns live key for StripeProvider initialization).
+- **Files**: `server/routes/stripe.routes.ts`, `services/stripe.service.ts`, `APP_STORE_REVIEW_NOTES.md`.
+
 ### Admin Dashboard
 - **Access**: `http://localhost:8082/admin` (dev) / `https://splinepay.replit.app/admin` (prod).
 - **Authentication**: Supabase Auth with admin_roles verification.

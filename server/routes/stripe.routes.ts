@@ -57,6 +57,14 @@ async function checkUserTestMode(userId: string): Promise<boolean> {
   }
 }
 
+router.get('/publishable-key', (req, res) => {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
+  if (!publishableKey) {
+    return res.status(500).json({ error: 'Stripe publishable key not configured' });
+  }
+  res.json({ publishableKey });
+});
+
 function userAuthMiddleware(
   req: AuthenticatedRequest,
   res: express.Response,
@@ -84,31 +92,16 @@ function userAuthMiddleware(
   });
 }
 
-router.get('/publishable-key/:userId', async (req, res) => {
-  const { userId } = req.params;
-  const testMode = await checkUserTestMode(userId);
-  const publishableKey = getPublishableKey(testMode);
-  
-  if (!publishableKey) {
-    return res.status(500).json({ error: 'Stripe publishable key not configured' });
-  }
-  
-  res.json({ publishableKey, testMode });
-});
 
-router.post('/create-customer', async (req, res) => {
+router.post('/create-customer', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { email, name, userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    const testMode = await checkUserTestMode(userId);
+    const { email, name } = req.body;
+    const userId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
     const stripe = getStripeInstance(testMode);
 
     const customer = await stripe.customers.create({
-      email,
+      email: email || req.user!.email,
       name,
       metadata: {
         spline_user_id: userId,
@@ -125,19 +118,16 @@ router.post('/create-customer', async (req, res) => {
   }
 });
 
-router.post('/create-setup-intent', async (req, res) => {
+router.post('/create-setup-intent', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { customerId, userId } = req.body;
+    const { customerId } = req.body;
+    const userId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
 
     if (!customerId) {
       return res.status(400).json({ error: 'Customer ID is required' });
     }
 
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    const testMode = await checkUserTestMode(userId);
     const stripe = getStripeInstance(testMode);
 
     const setupIntent = await stripe.setupIntents.create({
@@ -145,6 +135,8 @@ router.post('/create-setup-intent', async (req, res) => {
       payment_method_types: ['card'],
       usage: 'off_session',
     });
+
+    console.log(`Created SetupIntent ${setupIntent.id} for user ${userId} (testMode: ${testMode})`);
 
     res.json({
       clientSecret: setupIntent.client_secret,
@@ -157,19 +149,16 @@ router.post('/create-setup-intent', async (req, res) => {
   }
 });
 
-router.post('/confirm-setup', async (req, res) => {
+router.post('/confirm-setup', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { setupIntentId, userId } = req.body;
+    const { setupIntentId } = req.body;
+    const userId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
 
     if (!setupIntentId) {
       return res.status(400).json({ error: 'SetupIntent ID is required' });
     }
 
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    const testMode = await checkUserTestMode(userId);
     const stripe = getStripeInstance(testMode);
 
     const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
@@ -183,6 +172,8 @@ router.post('/confirm-setup', async (req, res) => {
 
     const paymentMethodId = setupIntent.payment_method as string;
     const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    console.log(`Confirmed setup ${setupIntentId} for user ${userId} (testMode: ${testMode})`);
 
     res.json({
       paymentMethodId,
@@ -294,15 +285,11 @@ router.delete('/payment-method/:id', userAuthMiddleware, async (req: Authenticat
   }
 });
 
-router.post('/initiate-card-setup', async (req, res) => {
+router.post('/initiate-card-setup', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { userId, email, name, customerId: existingCustomerId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    const testMode = await checkUserTestMode(userId);
+    const { email, name, customerId: existingCustomerId } = req.body;
+    const userId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
     const stripe = getStripeInstance(testMode);
     const publishableKey = getPublishableKey(testMode);
 
@@ -310,7 +297,7 @@ router.post('/initiate-card-setup', async (req, res) => {
 
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email,
+        email: email || req.user!.email,
         name,
         metadata: {
           spline_user_id: userId,
@@ -360,15 +347,11 @@ router.post('/initiate-card-setup', async (req, res) => {
   }
 });
 
-router.post('/create-native-setup-intent', async (req, res) => {
+router.post('/create-native-setup-intent', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    const { userId, email, name, customerId: existingCustomerId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    const testMode = await checkUserTestMode(userId);
+    const { email, name, customerId: existingCustomerId } = req.body;
+    const userId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
     const stripe = getStripeInstance(testMode);
     const publishableKey = getPublishableKey(testMode);
 
@@ -376,7 +359,7 @@ router.post('/create-native-setup-intent', async (req, res) => {
 
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email,
+        email: email || req.user!.email,
         name,
         metadata: {
           spline_user_id: userId,

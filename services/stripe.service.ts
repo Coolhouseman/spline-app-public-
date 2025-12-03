@@ -34,15 +34,28 @@ interface ChargeResponse {
 }
 
 export class StripeService {
+  private static async getAuthToken(): Promise<string> {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    return accessToken;
+  }
+
   static async createCustomer(
-    userId: string, 
     email: string, 
     name: string
   ): Promise<string> {
+    const accessToken = await this.getAuthToken();
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/create-customer`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, email, name }),
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ email, name }),
     });
 
     if (!response.ok) {
@@ -55,9 +68,14 @@ export class StripeService {
   }
 
   static async createSetupIntent(customerId: string): Promise<SetupIntentResponse> {
+    const accessToken = await this.getAuthToken();
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/create-setup-intent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ customerId }),
     });
 
@@ -70,9 +88,14 @@ export class StripeService {
   }
 
   static async confirmSetup(setupIntentId: string): Promise<ConfirmSetupResponse> {
+    const accessToken = await this.getAuthToken();
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/confirm-setup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ setupIntentId }),
     });
 
@@ -136,7 +159,7 @@ export class StripeService {
       return wallet.stripe_customer_id;
     }
 
-    const customerId = await this.createCustomer(userId, email, name);
+    const customerId = await this.createCustomer(email, name);
 
     await supabase
       .from('wallets')
@@ -234,25 +257,27 @@ export class StripeService {
   }
 
   static async initiateCardSetup(
-    userId: string,
     email: string,
     name: string,
     existingCustomerId?: string
   ): Promise<{ customerId: string; setupIntentId: string; cardSetupUrl: string }> {
     console.log('Initiating card setup with SERVER_URL:', SERVER_URL);
     
+    const accessToken = await this.getAuthToken();
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/initiate-card-setup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ 
-        userId, 
         email, 
         name,
         customerId: existingCustomerId 
       }),
     });
 
-    // Check content type to ensure we got JSON, not HTML
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       console.error('Server returned non-JSON response:', contentType);
@@ -268,18 +293,21 @@ export class StripeService {
   }
 
   static async createNativeSetupIntent(
-    userId: string,
     email: string,
     name: string,
     existingCustomerId?: string
   ): Promise<{ customerId: string; setupIntentId: string; clientSecret: string; publishableKey?: string; testMode?: boolean }> {
     console.log('Creating native setup intent with SERVER_URL:', SERVER_URL);
     
+    const accessToken = await this.getAuthToken();
+    
     const response = await fetch(`${SERVER_URL}/api/stripe/create-native-setup-intent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ 
-        userId, 
         email, 
         name,
         customerId: existingCustomerId 

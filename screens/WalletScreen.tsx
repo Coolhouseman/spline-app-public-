@@ -156,7 +156,6 @@ export default function WalletScreen({ navigation }: Props) {
       
       if (Platform.OS === 'web') {
         const { customerId, setupIntentId, cardSetupUrl } = await StripeService.initiateCardSetup(
-          user.id,
           user.email,
           userName,
           wallet?.stripe_customer_id
@@ -189,7 +188,6 @@ export default function WalletScreen({ navigation }: Props) {
         }
       } else {
         const { customerId, setupIntentId, clientSecret } = await StripeService.createNativeSetupIntent(
-          user.id,
           user.email,
           userName,
           wallet?.stripe_customer_id
