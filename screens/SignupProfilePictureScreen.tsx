@@ -17,12 +17,42 @@ export default function SignupProfilePictureScreen({ navigation, route }: Props)
   const params = route.params as { firstName: string; lastName: string; email: string; password: string; phone: string; dateOfBirth: string };
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll permission to continue');
-      return;
+    // Check current permission status first
+    const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+    
+    if (currentStatus !== 'granted') {
+      // Show our own clear explanation before the system dialog
+      Alert.alert(
+        'Photo Library Access',
+        'Spline would like to access your photo library to let you choose a profile picture.',
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+          },
+          {
+            text: 'Allow Access',
+            onPress: async () => {
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status === 'granted') {
+                await launchImagePicker();
+              } else {
+                Alert.alert(
+                  'Permission Required',
+                  'To upload a profile picture, please enable photo library access in your device settings.',
+                  [{ text: 'OK' }]
+                );
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      await launchImagePicker();
     }
+  };
 
+  const launchImagePicker = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
