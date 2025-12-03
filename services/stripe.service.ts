@@ -399,4 +399,45 @@ export class StripeService {
       })
       .eq('user_id', userId);
   }
+
+  /**
+   * Process split payment via server-side API
+   * This bypasses Supabase RPC schema cache issues
+   */
+  static async processSplitPayment(
+    amount: number,
+    splitEventId: string,
+    description: string
+  ): Promise<{ success: boolean; new_balance?: number; transaction_id?: string; error?: string }> {
+    try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
+      const response = await fetch(`${SERVER_URL}/api/stripe/process-split-payment`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ amount, splitEventId, description }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { 
+          success: false, 
+          error: data.error || 'Failed to process payment'
+        };
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('Split payment API error:', error);
+      return { success: false, error: error.message || 'Network error' };
+    }
+  }
 }

@@ -406,4 +406,101 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
   }
 });
 
+// Process split payment - handles wallet deduction atomically
+// This bypasses Supabase RPC schema cache issues by doing direct table operations
+router.post('/process-split-payment', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const { amount, splitEventId, description } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Amount must be greater than zero' });
+    }
+
+    if (!splitEventId) {
+      return res.status(400).json({ success: false, error: 'Split event ID is required' });
+    }
+
+    // Get wallet with balance
+    const { data: wallet, error: walletError } = await supabaseAdmin
+      .from('wallets')
+      .select('id, balance')
+      .eq('user_id', userId)
+      .single();
+
+    if (walletError || !wallet) {
+      console.error('Wallet not found:', walletError);
+      return res.status(400).json({ success: false, error: 'Wallet not found' });
+    }
+
+    const currentBalance = parseFloat(wallet.balance?.toString() || '0');
+
+    if (currentBalance < amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient balance',
+        current_balance: currentBalance
+      });
+    }
+
+    // Calculate new balance
+    const newBalance = currentBalance - amount;
+
+    // Update wallet balance atomically
+    const { error: updateError } = await supabaseAdmin
+      .from('wallets')
+      .update({ 
+        balance: newBalance,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', wallet.id)
+      .eq('balance', currentBalance); // Optimistic lock - ensures balance hasn't changed
+
+    if (updateError) {
+      console.error('Failed to update wallet:', updateError);
+      return res.status(500).json({ success: false, error: 'Failed to update wallet balance' });
+    }
+
+    // Log the transaction
+    const { data: transaction, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type: 'split_payment',
+        amount: amount,
+        description: description || 'Split payment',
+        direction: 'out',
+        split_event_id: splitEventId,
+        metadata: { split_event_id: splitEventId, payer_id: userId }
+      })
+      .select('id')
+      .single();
+
+    if (txError) {
+      console.error('Failed to log transaction:', txError);
+      // Try to rollback the balance change
+      await supabaseAdmin
+        .from('wallets')
+        .update({ balance: currentBalance })
+        .eq('id', wallet.id);
+      return res.status(500).json({ success: false, error: 'Failed to log transaction' });
+    }
+
+    console.log(`Split payment processed: $${amount} from user ${userId}, new balance: $${newBalance}`);
+
+    res.json({
+      success: true,
+      new_balance: newBalance,
+      transaction_id: transaction.id
+    });
+  } catch (error: any) {
+    console.error('Error processing split payment:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

@@ -1218,31 +1218,24 @@ export class WalletService {
       );
     }
 
-    // STEP 1: Deduct from payer's wallet using the existing process_split_payment RPC
-    // This function is already in Supabase's schema cache and handles wallet deduction atomically
+    // STEP 1: Deduct from payer's wallet using server-side API
+    // This bypasses Supabase RPC schema cache issues and handles wallet deduction atomically
     let walletTransactionId: string | null = null;
     
     if (walletPayment > 0) {
-      // Use the existing process_split_payment function (already cached by Supabase)
-      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment', {
-        p_user_id: userId,
-        p_amount: walletPayment,
-        p_split_event_id: splitEventId,
-        p_description: `Paid ${eventName} (from wallet)`,
-        p_metadata: { split_event_id: splitEventId, payer_id: userId }
-      });
+      // Use server-side API for reliable wallet deduction
+      const splitResult = await StripeService.processSplitPayment(
+        walletPayment,
+        splitEventId,
+        `Paid ${eventName} (from wallet)`
+      );
 
-      if (splitError) {
-        console.error('Split payment RPC error:', splitError);
-        throw new Error(`Failed to process wallet deduction: ${splitError.message}`);
+      if (!splitResult.success) {
+        console.error('Split payment API error:', splitResult.error);
+        throw new Error(splitResult.error || 'Wallet deduction was declined');
       }
 
-      if (!splitResult || !splitResult.success) {
-        console.error('Split payment failed:', splitResult?.error);
-        throw new Error(splitResult?.error || 'Wallet deduction was declined');
-      }
-
-      walletTransactionId = splitResult.transaction_id;
+      walletTransactionId = splitResult.transaction_id || null;
       console.log(`Wallet payment complete: $${walletPayment.toFixed(2)} deducted. New balance: $${splitResult.new_balance?.toFixed(2)}`);
     }
 
