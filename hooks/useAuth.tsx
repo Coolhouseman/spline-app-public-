@@ -16,24 +16,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Global flag to track signup state (survives re-renders and closures)
+let globalIsSigningUp = false;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const isSigningUp = useRef(false);
+  const userSetBySignup = useRef(false);
 
   useEffect(() => {
     loadUser();
     
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, 'isSigningUp:', isSigningUp.current);
+      console.log('Auth state changed:', event, 'globalIsSigningUp:', globalIsSigningUp, 'userSetBySignup:', userSetBySignup.current);
       
-      // Skip auth state changes during active signup - signup() will set user directly
-      if (isSigningUp.current) {
-        console.log('Skipping auth state change during signup');
+      // Skip ALL auth state changes during active signup or if user was just set by signup
+      if (globalIsSigningUp || userSetBySignup.current) {
+        console.log('Skipping auth state change - signup in progress or just completed');
         return;
       }
       
-      if (event === 'SIGNED_IN' && session?.user) {
+      // Only handle SIGNED_OUT - never override user set by signup/login
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        userSetBySignup.current = false;
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Only fetch profile on SIGNED_IN if user is null (not set by signup/login)
         const { data: profile } = await supabase
           .from('users')
           .select('*')
@@ -43,8 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (profile) {
           setUser(profile as User);
         }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         const { data: profile } = await supabase
           .from('users')
@@ -56,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(profile as User);
         }
       }
+      // Ignore INITIAL_SESSION - it can fire during uploads and cause issues
     });
 
     return () => {
@@ -89,22 +96,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (userData: SignupData): Promise<string> => {
     try {
-      // Set flag to prevent auth state listener from interfering
-      isSigningUp.current = true;
-      console.log('Starting signup, setting isSigningUp flag');
+      // Set global flag to prevent auth state listener from interfering
+      globalIsSigningUp = true;
+      console.log('Starting signup, setting globalIsSigningUp flag');
       
       const { user: newUser } = await AuthService.signup(userData);
       console.log('Signup complete, setting user:', newUser.id);
+      
+      // Mark that user was set by signup (prevents auth listener from overriding)
+      userSetBySignup.current = true;
       setUser(newUser);
       
-      // Clear the flag after user is set
-      isSigningUp.current = false;
-      console.log('Cleared isSigningUp flag');
+      // Clear the global flag after user is set
+      globalIsSigningUp = false;
+      console.log('Cleared globalIsSigningUp flag, userSetBySignup is now true');
       
       return newUser.unique_id;
     } catch (error) {
-      // Always clear the flag on error
-      isSigningUp.current = false;
+      // Always clear the flags on error
+      globalIsSigningUp = false;
+      userSetBySignup.current = false;
       console.error('Signup failed:', error);
       throw error;
     }
@@ -114,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await AuthService.logout();
       setUser(null);
+      userSetBySignup.current = false;
     } catch (error) {
       console.error('Logout failed:', error);
     }
