@@ -232,7 +232,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                       {
                         text: 'Add Card',
                         onPress: () => {
-                          navigation.getParent()?.navigate('WalletTab');
+                          // First go back to dismiss this screen, then navigate to wallet
+                          navigation.goBack();
+                          setTimeout(() => {
+                            navigation.getParent()?.navigate('WalletTab');
+                          }, 100);
                         }
                       }
                     ]
@@ -307,7 +311,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     {
                       text: 'Add Card',
                       onPress: () => {
-                        navigation.getParent()?.navigate('WalletTab');
+                        // First go back to dismiss this screen, then navigate to wallet
+                        navigation.goBack();
+                        setTimeout(() => {
+                          navigation.getParent()?.navigate('WalletTab');
+                        }, 100);
                       }
                     }
                   ]

@@ -370,6 +370,13 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
         depositTransactionCount++;
         if (createdAt >= thirtyDaysAgo) deposits30d += amount;
         if (createdAt >= sevenDaysAgo) deposits7d += amount;
+      } else if (tx.type === 'card_charge') {
+        // Card charges for split payments - external money coming into business
+        totalDeposits += amount;
+        cardPaymentTransactionCount++;
+        cardPaymentVolume += amount;
+        if (createdAt >= thirtyDaysAgo) deposits30d += amount;
+        if (createdAt >= sevenDaysAgo) deposits7d += amount;
       } else if (tx.type === 'withdrawal') {
         totalWithdrawals += amount;
         if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
@@ -379,6 +386,7 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
           fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
         }
       } else if (tx.type === 'split_payment' && tx.description?.includes('from card')) {
+        // Legacy: old card payments logged as split_payment
         cardPaymentTransactionCount++;
         cardPaymentVolume += amount;
       }
@@ -482,6 +490,11 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
       if (tx.type === 'deposit') {
         totalDeposits += amount;
         depositTransactionCount++;
+      } else if (tx.type === 'card_charge') {
+        // Card charges for split payments - external money coming into business
+        totalDeposits += amount;
+        cardPaymentTransactionCount++;
+        cardPaymentVolume += amount;
       } else if (tx.type === 'withdrawal') {
         totalWithdrawals += amount;
         if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
@@ -491,6 +504,7 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
           fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
         }
       } else if (tx.type === 'split_payment' && (tx.description as string)?.includes('from card')) {
+        // Legacy: old card payments logged as split_payment
         cardPaymentTransactionCount++;
         cardPaymentVolume += amount;
       }
@@ -632,7 +646,8 @@ router.get('/trends', adminAuthMiddleware, async (req: AuthenticatedRequest, res
         dailyData[dateStr] = { deposits: 0, withdrawals: 0 };
       }
       
-      if (tx.type === 'deposit') {
+      if (tx.type === 'deposit' || tx.type === 'card_charge') {
+        // Both deposits and card charges represent external money coming in
         dailyData[dateStr].deposits += amount;
       } else if (tx.type === 'withdrawal') {
         dailyData[dateStr].withdrawals += amount;
@@ -1050,6 +1065,13 @@ async function fetchAllMetrics() {
       depositTransactionCount++;
       if (createdAt >= thirtyDaysAgo) deposits30d += amount;
       if (createdAt >= sevenDaysAgo) deposits7d += amount;
+    } else if (tx.type === 'card_charge') {
+      // Card charges for split payments - external money coming into business
+      totalDeposits += amount;
+      cardPaymentTransactionCount++;
+      cardPaymentVolume += amount;
+      if (createdAt >= thirtyDaysAgo) deposits30d += amount;
+      if (createdAt >= sevenDaysAgo) deposits7d += amount;
     } else if (tx.type === 'withdrawal') {
       totalWithdrawals += amount;
       if (createdAt >= thirtyDaysAgo) withdrawals30d += amount;
@@ -1059,6 +1081,7 @@ async function fetchAllMetrics() {
         fastWithdrawalFeeRevenue += Number(tx.metadata.fee_amount);
       }
     } else if (tx.type === 'split_payment' && tx.description?.includes('from card')) {
+      // Legacy: old card payments logged as split_payment
       cardPaymentTransactionCount++;
       cardPaymentVolume += amount;
     }

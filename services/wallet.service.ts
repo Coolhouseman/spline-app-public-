@@ -1275,7 +1275,32 @@ export class WalletService {
           throw new Error('Card payment failed. No charges were made.');
         }
 
-        console.log(`Stripe payment confirmed: $${cardPayment.toFixed(2)}`);
+        console.log(`Stripe payment confirmed: $${cardPayment.toFixed(2)}, paymentIntentId: ${chargeResult.paymentIntentId}`);
+
+        // CRITICAL: Log this card charge as 'card_charge' to track external money coming into business
+        // This is separate from 'deposit' because user isn't adding to their own wallet
+        // Admin dashboard will sum both 'deposit' and 'card_charge' for total incoming funds
+        const { error: cardChargeLogError } = await supabase.rpc('log_transaction_rpc', {
+          p_user_id: userId,
+          p_type: 'card_charge',
+          p_amount: cardPayment,
+          p_description: `Card charged for split: ${eventName}`,
+          p_direction: 'out',
+          p_split_event_id: splitEventId,
+          p_metadata: { 
+            source: 'stripe_card',
+            stripe_payment_intent_id: chargeResult.paymentIntentId,
+            split_event_id: splitEventId,
+            payment_type: 'split_card_payment'
+          }
+        });
+
+        if (cardChargeLogError) {
+          console.error('Failed to log card charge:', cardChargeLogError);
+          // Don't throw - card was charged successfully, this is just for tracking
+        } else {
+          console.log(`Card charge logged: $${cardPayment.toFixed(2)} for split ${splitEventId}`);
+        }
       } catch (cardError) {
         // Card processing error - refund wallet if we already deducted
         if (walletTransactionId && walletPayment > 0) {

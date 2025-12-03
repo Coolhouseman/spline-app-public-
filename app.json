@@ -2,6 +2,7 @@
   "expo": {
     "name": "Spline",
     "slug": "split-payment-app",
+    "owner": "spline",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
