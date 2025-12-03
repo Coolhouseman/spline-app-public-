@@ -22,12 +22,17 @@ let globalIsSigningUp = false;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserInternal] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [, forceUpdate] = useState(0);
   const userSetBySignup = useRef(false);
+  const userRef = useRef<User | null>(null);
 
-  // Wrapper to log all user state changes
+  // Wrapper to log and ensure state changes propagate
   const setUser = (newUser: User | null) => {
     console.log('setUser called with:', newUser ? newUser.id : 'null');
+    userRef.current = newUser;
     setUserInternal(newUser);
+    // Force a re-render to ensure context consumers update
+    forceUpdate(n => n + 1);
   };
 
   useEffect(() => {
