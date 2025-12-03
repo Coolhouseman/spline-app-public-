@@ -36,18 +36,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, 'globalIsSigningUp:', globalIsSigningUp, 'userSetBySignup:', userSetBySignup.current);
       
-      // Skip ALL auth state changes during active signup or if user was just set by signup
-      if (globalIsSigningUp || userSetBySignup.current) {
-        console.log('Skipping auth state change - signup in progress or just completed');
+      // Skip ALL auth state changes during active signup
+      if (globalIsSigningUp) {
+        console.log('Skipping auth state change - signup in progress');
         return;
       }
       
-      // Only handle SIGNED_OUT - never override user set by signup/login
+      // For SIGNED_OUT, verify there's actually no session before clearing user
+      // Supabase can emit spurious SIGNED_OUT during RPC/storage operations
       if (event === 'SIGNED_OUT') {
+        // If user was just set by signup, verify with Supabase before clearing
+        if (userSetBySignup.current) {
+          console.log('SIGNED_OUT received but userSetBySignup is true, verifying session...');
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          if (currentSession?.user) {
+            console.log('Session still valid, ignoring spurious SIGNED_OUT');
+            return;
+          }
+        }
+        console.log('Processing SIGNED_OUT - clearing user');
         setUser(null);
         userSetBySignup.current = false;
       } else if (event === 'SIGNED_IN' && session?.user) {
-        // Only fetch profile on SIGNED_IN if user is null (not set by signup/login)
+        // Skip if user was already set by signup
+        if (userSetBySignup.current) {
+          console.log('Skipping SIGNED_IN - user already set by signup');
+          return;
+        }
         const { data: profile } = await supabase
           .from('users')
           .select('*')
@@ -112,10 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Mark that user was set by signup (prevents auth listener from overriding)
       userSetBySignup.current = true;
       setUser(newUser);
+      console.log('User state updated, userSetBySignup is now true');
       
-      // Clear the global flag after user is set
-      globalIsSigningUp = false;
-      console.log('Cleared globalIsSigningUp flag, userSetBySignup is now true');
+      // Defer clearing globalIsSigningUp to allow any pending auth events to be skipped
+      // This prevents race conditions with Supabase's auth state changes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verify session is stable before clearing the flag
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id === newUser.id) {
+        console.log('Session verified stable, clearing globalIsSigningUp flag');
+        globalIsSigningUp = false;
+      } else {
+        console.log('Session mismatch, keeping globalIsSigningUp flag for safety');
+        // Still clear it eventually to prevent getting stuck
+        setTimeout(() => { globalIsSigningUp = false; }, 2000);
+      }
       
       return newUser.unique_id;
     } catch (error) {
