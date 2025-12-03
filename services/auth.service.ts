@@ -231,8 +231,21 @@ export class AuthService {
 
   static async uploadProfilePicture(userId: string, fileUri: string): Promise<string> {
     console.log('uploadProfilePicture called with userId:', userId);
+    console.log('Full file URI:', fileUri);
     
-    const fileExt = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
+    // Handle different URI formats
+    let cleanUri = fileUri;
+    
+    // Extract file extension properly
+    let fileExt = 'jpg';
+    const uriParts = fileUri.split('.');
+    if (uriParts.length > 1) {
+      const lastPart = uriParts[uriParts.length - 1].split('?')[0].toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(lastPart)) {
+        fileExt = lastPart;
+      }
+    }
+    
     const fileName = `${userId}-${Date.now()}.${fileExt}`;
     const filePath = `profile-pictures/${fileName}`;
     console.log('File path:', filePath, 'Extension:', fileExt);
@@ -240,17 +253,41 @@ export class AuthService {
     let uploadData: ArrayBuffer | Blob;
     let contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
 
-    if (Platform.OS === 'web') {
-      console.log('Web platform - using fetch/blob');
-      const response = await fetch(fileUri);
-      uploadData = await response.blob();
-    } else {
-      console.log('Native platform - using FileSystem');
-      const base64 = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: 'base64',
-      });
-      console.log('Base64 length:', base64.length);
-      uploadData = decode(base64);
+    try {
+      if (Platform.OS === 'web') {
+        console.log('Web platform - using fetch/blob');
+        const response = await fetch(fileUri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+        uploadData = await response.blob();
+        console.log('Blob size:', (uploadData as Blob).size);
+      } else {
+        console.log('Native platform - using FileSystem');
+        
+        // Check if file exists
+        const fileInfo = await FileSystem.getInfoAsync(cleanUri);
+        console.log('File info:', JSON.stringify(fileInfo));
+        
+        if (!fileInfo.exists) {
+          throw new Error('File does not exist at URI');
+        }
+        
+        const base64 = await FileSystem.readAsStringAsync(cleanUri, {
+          encoding: 'base64',
+        });
+        console.log('Base64 length:', base64.length);
+        
+        if (!base64 || base64.length === 0) {
+          throw new Error('Failed to read file as base64');
+        }
+        
+        uploadData = decode(base64);
+        console.log('Decoded ArrayBuffer size:', (uploadData as ArrayBuffer).byteLength);
+      }
+    } catch (fileError: any) {
+      console.error('Error reading file:', fileError);
+      throw new Error(`Failed to read image file: ${fileError.message}`);
     }
 
     console.log('Uploading to Supabase storage...');
