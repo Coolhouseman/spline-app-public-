@@ -629,7 +629,13 @@ router.get('/trends', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const { data: txData, error: txError } = await supabaseAdmin
+    // Use fresh client to avoid stale connection issues
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: txData, error: txError } = await freshClient
       .from('transactions')
       .select('type, amount, created_at')
       .gte('created_at', startDate.toISOString())
@@ -676,7 +682,7 @@ router.get('/trends', adminAuthMiddleware, async (req: AuthenticatedRequest, res
         withdrawals: data.withdrawals
       }));
 
-    res.json(trends);
+    res.json({ trends });
   } catch (error: any) {
     console.error('Trends error:', error);
     res.status(500).json({ error: error.message });
@@ -689,8 +695,14 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
     const offset = parseInt(req.query.offset as string) || 0;
     const type = req.query.type as string || null;
 
+    // Use fresh client to avoid stale connection issues
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
     // Build query
-    let query = supabaseAdmin
+    let query = freshClient
       .from('transactions')
       .select('*', { count: 'exact' });
     
@@ -709,7 +721,7 @@ router.get('/transactions', adminAuthMiddleware, async (req: AuthenticatedReques
     // Get user info for each transaction
     const userIds = [...new Set(txData?.map(tx => tx.user_id) || [])];
     
-    const { data: usersData } = await supabaseAdmin
+    const { data: usersData } = await freshClient
       .from('users')
       .select('id, name, email, phone, unique_id')
       .in('id', userIds);
@@ -884,8 +896,14 @@ router.get('/withdrawals', adminAuthMiddleware, async (req: AuthenticatedRequest
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
+    // Use fresh client to avoid stale connection issues
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
     // Query withdrawal transactions
-    let query = supabaseAdmin
+    let query = freshClient
       .from('transactions')
       .select('*', { count: 'exact' })
       .eq('type', 'withdrawal');
@@ -907,11 +925,11 @@ router.get('/withdrawals', adminAuthMiddleware, async (req: AuthenticatedRequest
     const userIds = [...new Set(withdrawals?.map(w => w.user_id) || [])];
     
     const [usersResult, walletsResult] = await Promise.all([
-      supabaseAdmin
+      freshClient
         .from('users')
         .select('id, unique_id, name, email, phone')
         .in('id', userIds),
-      supabaseAdmin
+      freshClient
         .from('wallets')
         .select('user_id, bank_details')
         .in('user_id', userIds)
