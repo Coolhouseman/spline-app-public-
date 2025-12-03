@@ -1,27 +1,10 @@
 import { supabase } from './supabase';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { resolveBackendOrigin } from '../utils/backend';
 
-const getServerUrl = () => {
-  // For web, use the same origin (works for both dev and production)
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      const origin = window.location.origin;
-      // For Replit web, use the same origin (includes port 8082)
-      if (origin.includes('replit') || origin.includes('localhost')) {
-        return origin;
-      }
-    }
-    return 'http://localhost:8082';
-  }
-  
-  // For mobile (iOS/Android), ALWAYS use the production backend URL
-  // The dev server on Replit is only accessible via web, not via mobile devices
-  // Mobile devices running Expo Go need to hit the published backend
-  return 'https://splinepay.replit.app';
-};
-
-const SERVER_URL = getServerUrl();
+// Use centralized backend URL resolution that handles all platforms properly
+const SERVER_URL = resolveBackendOrigin();
 
 interface CardDetails {
   brand: string;
