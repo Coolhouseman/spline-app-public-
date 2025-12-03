@@ -261,14 +261,6 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
           </ThemedText>
         </Pressable>
 
-        <Pressable
-          style={styles.skipButton}
-          onPress={() => navigation.navigate('SignupDOB', { ...params })}
-        >
-          <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
-            Skip for now
-          </ThemedText>
-        </Pressable>
       </View>
     </ScreenKeyboardAwareScrollView>
   );
@@ -316,10 +308,5 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  skipButton: {
-    alignItems: 'center',
-    marginTop: Spacing.lg,
-    paddingVertical: Spacing.sm,
   },
 });
