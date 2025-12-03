@@ -7,6 +7,7 @@ import { supabase } from '@/services/supabase';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  isSigningUp: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (userData: SignupData) => Promise<string>;
   logout: () => Promise<void>;
@@ -22,6 +23,7 @@ let globalIsSigningUp = false;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const userSetBySignup = useRef(false);
   const instanceId = useRef(Date.now());
 
@@ -114,8 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (userData: SignupData): Promise<string> => {
     try {
-      // Set global flag to prevent auth state listener from interfering
+      // Set flags to prevent auth state listener from interfering and show loading
       globalIsSigningUp = true;
+      setIsSigningUp(true);
       console.log('[Signup] Starting, setting globalIsSigningUp flag');
       
       const { user: newUser } = await AuthService.signup(userData);
@@ -126,6 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(newUser);
       setIsLoading(false);
       console.log('[Signup] User state updated, userSetBySignup is now true');
+      
+      // Clear isSigningUp AFTER user is set - this triggers navigation
+      setIsSigningUp(false);
       
       // Defer clearing globalIsSigningUp to allow any pending auth events to be skipped
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -143,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return newUser.unique_id;
     } catch (error) {
       globalIsSigningUp = false;
+      setIsSigningUp(false);
       userSetBySignup.current = false;
       console.error('Signup failed:', error);
       throw error;
@@ -190,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoading, isSigningUp, login, signup, logout, updateUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

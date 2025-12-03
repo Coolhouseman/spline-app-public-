@@ -41,15 +41,16 @@ const DarkNavTheme = {
 };
 
 function RootNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isSigningUp } = useAuth();
   const colorScheme = useColorScheme();
 
   // Debug logging - track user state in RootNavigator
   React.useEffect(() => {
-    console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading);
-  }, [user, isLoading]);
+    console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading, 'isSigningUp:', isSigningUp);
+  }, [user, isLoading, isSigningUp]);
 
-  if (isLoading) {
+  // Show loading during initial load OR during signup transition
+  if (isLoading || isSigningUp) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
