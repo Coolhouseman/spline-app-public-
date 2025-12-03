@@ -65,6 +65,17 @@ router.get('/publishable-key', (req, res) => {
   res.json({ publishableKey });
 });
 
+router.get('/user-publishable-key', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  const testMode = req.stripeTestMode || false;
+  const publishableKey = getPublishableKey(testMode);
+  
+  if (!publishableKey) {
+    return res.status(500).json({ error: 'Stripe publishable key not configured' });
+  }
+  
+  res.json({ publishableKey, testMode });
+});
+
 function userAuthMiddleware(
   req: AuthenticatedRequest,
   res: express.Response,

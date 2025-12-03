@@ -1,6 +1,7 @@
-import React, { ReactElement, useEffect, useState } from 'react';
+import React, { ReactElement, useEffect, useState, useCallback } from 'react';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { Platform, View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { supabase } from '@/services/supabase';
 
 const getServerUrl = () => {
   if (Platform.OS === 'web') {
@@ -21,34 +22,73 @@ interface StripeWrapperProps {
 
 export function StripeWrapper({ children }: StripeWrapperProps) {
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const fetchPublishableKey = async () => {
-      try {
-        const response = await fetch(`${getServerUrl()}/api/stripe/publishable-key`);
+  const fetchUserSpecificKey = useCallback(async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      
+      if (accessToken) {
+        const response = await fetch(`${getServerUrl()}/api/stripe/user-publishable-key`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+        
         if (response.ok) {
           const data = await response.json();
           if (data.publishableKey) {
             setPublishableKey(data.publishableKey);
+            setTestMode(data.testMode || false);
             setError(null);
-          } else {
-            setError('Invalid key response');
+            return;
           }
-        } else {
-          setError('Failed to fetch payment configuration');
         }
-      } catch (err) {
-        console.error('Error fetching Stripe publishable key:', err);
-        setError('Network error fetching payment configuration');
-      } finally {
-        setLoading(false);
       }
-    };
-
-    fetchPublishableKey();
+      
+      const response = await fetch(`${getServerUrl()}/api/stripe/publishable-key`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.publishableKey) {
+          setPublishableKey(data.publishableKey);
+          setTestMode(false);
+          setError(null);
+        } else {
+          setError('Invalid key response');
+        }
+      } else {
+        setError('Failed to fetch payment configuration');
+      }
+    } catch (err) {
+      console.error('Error fetching Stripe publishable key:', err);
+      setError('Network error fetching payment configuration');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchUserSpecificKey();
+    
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      const wasAuthenticated = isAuthenticated;
+      const nowAuthenticated = !!session;
+      setIsAuthenticated(nowAuthenticated);
+      
+      if (wasAuthenticated !== nowAuthenticated || event === 'SIGNED_IN') {
+        setLoading(true);
+        fetchUserSpecificKey();
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [fetchUserSpecificKey, isAuthenticated]);
 
   if (loading) {
     return (
@@ -71,6 +111,7 @@ export function StripeWrapper({ children }: StripeWrapperProps) {
 
   return (
     <StripeProvider
+      key={`stripe-${testMode ? 'test' : 'live'}`}
       publishableKey={publishableKey}
       merchantIdentifier="merchant.com.splinepay.app"
     >

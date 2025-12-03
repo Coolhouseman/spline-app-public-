@@ -36,6 +36,38 @@ export function CardInputModal({
     setCardDetails(details);
   };
 
+  const getFriendlyErrorMessage = (error: any): string => {
+    const message = error?.message?.toLowerCase() || '';
+    const code = error?.code?.toLowerCase() || '';
+    
+    if (message.includes('test card') || message.includes('test mode') || 
+        message.includes('known test') || code === 'card_declined') {
+      return 'Please enter a valid card number. The card you entered cannot be used.';
+    }
+    
+    if (message.includes('expired')) {
+      return 'Your card has expired. Please use a different card.';
+    }
+    
+    if (message.includes('insufficient funds') || code === 'insufficient_funds') {
+      return 'Your card was declined due to insufficient funds.';
+    }
+    
+    if (message.includes('incorrect cvc') || code === 'incorrect_cvc') {
+      return 'The security code (CVC) is incorrect. Please check and try again.';
+    }
+    
+    if (message.includes('no such setupintent') || message.includes('resource_missing')) {
+      return 'Card setup session expired. Please try again.';
+    }
+    
+    if (message.includes('declined')) {
+      return 'Your card was declined. Please try a different card.';
+    }
+    
+    return error?.message || 'Failed to add card. Please try again.';
+  };
+
   const handleConfirm = async () => {
     if (!cardComplete || !clientSecret) {
       Alert.alert('Error', 'Please enter valid card details');
@@ -50,7 +82,7 @@ export function CardInputModal({
 
       if (error) {
         console.error('Setup Intent Error:', error);
-        Alert.alert('Error', error.message || 'Failed to add card');
+        Alert.alert('Error', getFriendlyErrorMessage(error));
         setProcessing(false);
         return;
       }
@@ -62,7 +94,7 @@ export function CardInputModal({
       }
     } catch (error: any) {
       console.error('Card setup error:', error);
-      Alert.alert('Error', error.message || 'Failed to add card');
+      Alert.alert('Error', getFriendlyErrorMessage(error));
     } finally {
       setProcessing(false);
     }
