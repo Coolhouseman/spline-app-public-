@@ -48,11 +48,20 @@ async function verifyAuthToken(token: string): Promise<{ id: string; email: stri
 
 async function checkAdminRole(email: string): Promise<{ authorized: boolean; role?: string; name?: string }> {
   try {
-    const { data, error } = await supabaseAdmin
+    console.log('Checking admin role for email:', email.toLowerCase());
+    
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    
+    const { data, error } = await freshClient
       .from('admin_roles')
-      .select('role, name')
+      .select('role, name, email')
       .eq('email', email.toLowerCase())
       .maybeSingle();
+    
+    console.log('Admin role check result:', { data, error: error?.message });
     
     if (error) {
       console.error('Admin role check error:', error.message);
@@ -60,9 +69,13 @@ async function checkAdminRole(email: string): Promise<{ authorized: boolean; rol
     }
     
     if (!data) {
+      console.log('No admin role found for email:', email.toLowerCase());
+      const { data: allRoles } = await freshClient.from('admin_roles').select('email');
+      console.log('All admin emails in database:', allRoles?.map(r => r.email));
       return { authorized: false };
     }
     
+    console.log('Admin role found:', data);
     return { authorized: true, role: data.role, name: data.name };
   } catch (err) {
     console.error('Admin role check exception:', err);
