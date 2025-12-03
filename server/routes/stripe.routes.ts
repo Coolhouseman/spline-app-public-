@@ -4,7 +4,18 @@ import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripeLive = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripeTest = new Stripe(process.env.STRIPE_TEST_SECRET_KEY || '');
+
+function getStripeInstance(testMode: boolean): Stripe {
+  return testMode ? stripeTest : stripeLive;
+}
+
+function getPublishableKey(testMode: boolean): string {
+  return testMode 
+    ? (process.env.STRIPE_TEST_PUBLISHABLE_KEY || '')
+    : (process.env.STRIPE_PUBLISHABLE_KEY || '');
+}
 
 const supabaseAdmin = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL || '',
@@ -13,6 +24,7 @@ const supabaseAdmin = createClient(
 
 interface AuthenticatedRequest extends express.Request {
   user?: { id: string; email: string };
+  stripeTestMode?: boolean;
 }
 
 async function verifyUserToken(token: string): Promise<{ id: string; email: string } | null> {
@@ -31,6 +43,20 @@ async function verifyUserToken(token: string): Promise<{ id: string; email: stri
   }
 }
 
+async function checkUserTestMode(userId: string): Promise<boolean> {
+  try {
+    const { data: wallet } = await supabaseAdmin
+      .from('wallets')
+      .select('stripe_test_mode')
+      .eq('user_id', userId)
+      .single();
+    
+    return wallet?.stripe_test_mode === true;
+  } catch (err) {
+    return false;
+  }
+}
+
 function userAuthMiddleware(
   req: AuthenticatedRequest,
   res: express.Response,
@@ -44,12 +70,13 @@ function userAuthMiddleware(
   
   const token = authHeader.replace('Bearer ', '');
   
-  verifyUserToken(token).then(user => {
+  verifyUserToken(token).then(async user => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
     
     req.user = user;
+    req.stripeTestMode = await checkUserTestMode(user.id);
     next();
   }).catch(err => {
     console.error('Auth middleware error:', err);
@@ -57,15 +84,16 @@ function userAuthMiddleware(
   });
 }
 
-// Public endpoint to get Stripe publishable key (safe to expose)
-router.get('/publishable-key', (req, res) => {
-  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+router.get('/publishable-key/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const testMode = await checkUserTestMode(userId);
+  const publishableKey = getPublishableKey(testMode);
   
   if (!publishableKey) {
     return res.status(500).json({ error: 'Stripe publishable key not configured' });
   }
   
-  res.json({ publishableKey });
+  res.json({ publishableKey, testMode });
 });
 
 router.post('/create-customer', async (req, res) => {
@@ -76,15 +104,21 @@ router.post('/create-customer', async (req, res) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
+    const testMode = await checkUserTestMode(userId);
+    const stripe = getStripeInstance(testMode);
+
     const customer = await stripe.customers.create({
       email,
       name,
       metadata: {
         spline_user_id: userId,
+        test_mode: testMode ? 'true' : 'false',
       },
     });
 
-    res.json({ customerId: customer.id });
+    console.log(`Created Stripe customer ${customer.id} for user ${userId} (testMode: ${testMode})`);
+
+    res.json({ customerId: customer.id, testMode });
   } catch (error: any) {
     console.error('Error creating Stripe customer:', error);
     res.status(500).json({ error: error.message });
@@ -93,11 +127,18 @@ router.post('/create-customer', async (req, res) => {
 
 router.post('/create-setup-intent', async (req, res) => {
   try {
-    const { customerId } = req.body;
+    const { customerId, userId } = req.body;
 
     if (!customerId) {
       return res.status(400).json({ error: 'Customer ID is required' });
     }
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const testMode = await checkUserTestMode(userId);
+    const stripe = getStripeInstance(testMode);
 
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
@@ -108,6 +149,7 @@ router.post('/create-setup-intent', async (req, res) => {
     res.json({
       clientSecret: setupIntent.client_secret,
       setupIntentId: setupIntent.id,
+      testMode,
     });
   } catch (error: any) {
     console.error('Error creating SetupIntent:', error);
@@ -117,11 +159,18 @@ router.post('/create-setup-intent', async (req, res) => {
 
 router.post('/confirm-setup', async (req, res) => {
   try {
-    const { setupIntentId } = req.body;
+    const { setupIntentId, userId } = req.body;
 
     if (!setupIntentId) {
       return res.status(400).json({ error: 'SetupIntent ID is required' });
     }
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const testMode = await checkUserTestMode(userId);
+    const stripe = getStripeInstance(testMode);
 
     const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
 
@@ -143,6 +192,7 @@ router.post('/confirm-setup', async (req, res) => {
         exp_month: paymentMethod.card?.exp_month,
         exp_year: paymentMethod.card?.exp_year,
       },
+      testMode,
     });
   } catch (error: any) {
     console.error('Error confirming setup:', error);
@@ -150,9 +200,11 @@ router.post('/confirm-setup', async (req, res) => {
   }
 });
 
-router.post('/charge', async (req, res) => {
+router.post('/charge', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { customerId, paymentMethodId, amount, description, metadata } = req.body;
+    const userId = req.user?.id;
+    const testMode = req.stripeTestMode || false;
 
     if (!customerId || !paymentMethodId || !amount) {
       return res.status(400).json({ 
@@ -160,6 +212,7 @@ router.post('/charge', async (req, res) => {
       });
     }
 
+    const stripe = getStripeInstance(testMode);
     const amountInCents = Math.round(amount * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -170,14 +223,17 @@ router.post('/charge', async (req, res) => {
       off_session: true,
       confirm: true,
       description: description || 'Spline payment',
-      metadata: metadata || {},
+      metadata: { ...(metadata || {}), test_mode: testMode ? 'true' : 'false', user_id: userId || '' },
     });
+
+    console.log(`Stripe charge ${paymentIntent.id}: $${amount} by user ${userId} (testMode: ${testMode})`);
 
     if (paymentIntent.status === 'succeeded') {
       res.json({
         success: true,
         paymentIntentId: paymentIntent.id,
         status: paymentIntent.status,
+        testMode,
       });
     } else {
       res.status(400).json({
@@ -201,9 +257,12 @@ router.post('/charge', async (req, res) => {
   }
 });
 
-router.get('/payment-method/:id', async (req, res) => {
+router.get('/payment-method/:id', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+    const testMode = req.stripeTestMode || false;
+    const stripe = getStripeInstance(testMode);
+    
     const paymentMethod = await stripe.paymentMethods.retrieve(id);
 
     res.json({
@@ -221,9 +280,12 @@ router.get('/payment-method/:id', async (req, res) => {
   }
 });
 
-router.delete('/payment-method/:id', async (req, res) => {
+router.delete('/payment-method/:id', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+    const testMode = req.stripeTestMode || false;
+    const stripe = getStripeInstance(testMode);
+    
     await stripe.paymentMethods.detach(id);
     res.json({ success: true });
   } catch (error: any) {
@@ -232,19 +294,19 @@ router.delete('/payment-method/:id', async (req, res) => {
   }
 });
 
-router.get('/publishable-key', (req, res) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
-});
-
 router.post('/initiate-card-setup', async (req, res) => {
   try {
-    const { userId, email, name } = req.body;
+    const { userId, email, name, customerId: existingCustomerId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    let customerId = req.body.customerId;
+    const testMode = await checkUserTestMode(userId);
+    const stripe = getStripeInstance(testMode);
+    const publishableKey = getPublishableKey(testMode);
+
+    let customerId = existingCustomerId;
 
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -252,6 +314,7 @@ router.post('/initiate-card-setup', async (req, res) => {
         name,
         metadata: {
           spline_user_id: userId,
+          test_mode: testMode ? 'true' : 'false',
         },
       });
       customerId = customer.id;
@@ -263,24 +326,20 @@ router.post('/initiate-card-setup', async (req, res) => {
       usage: 'off_session',
     });
 
-    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-    // Use x-forwarded headers (set by Replit's proxy) or fallback to production URL
     const forwardedHost = req.get('x-forwarded-host');
     const forwardedProto = req.get('x-forwarded-proto') || 'https';
     const directHost = req.get('host') || 'localhost:8082';
     
-    // Prefer forwarded host (from proxy), then check for production
     let baseUrl: string;
     if (forwardedHost) {
       baseUrl = `${forwardedProto}://${forwardedHost}`;
     } else if (directHost.includes('localhost')) {
       baseUrl = `http://${directHost}`;
     } else {
-      // Production fallback - use hardcoded production URL
       baseUrl = 'https://splinepay.replit.app';
     }
     
-    console.log(`Card setup URL base: ${baseUrl} (forwardedHost: ${forwardedHost}, directHost: ${directHost})`);
+    console.log(`Card setup for user ${userId}: ${setupIntent.id} (testMode: ${testMode})`);
 
     const cardSetupUrl = `${baseUrl}/card-setup.html?` + 
       `client_secret=${setupIntent.client_secret}` +
@@ -293,6 +352,7 @@ router.post('/initiate-card-setup', async (req, res) => {
       customerId,
       setupIntentId: setupIntent.id,
       cardSetupUrl,
+      testMode,
     });
   } catch (error: any) {
     console.error('Error initiating card setup:', error);
@@ -302,13 +362,17 @@ router.post('/initiate-card-setup', async (req, res) => {
 
 router.post('/create-native-setup-intent', async (req, res) => {
   try {
-    const { userId, email, name } = req.body;
+    const { userId, email, name, customerId: existingCustomerId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    let customerId = req.body.customerId;
+    const testMode = await checkUserTestMode(userId);
+    const stripe = getStripeInstance(testMode);
+    const publishableKey = getPublishableKey(testMode);
+
+    let customerId = existingCustomerId;
 
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -316,6 +380,7 @@ router.post('/create-native-setup-intent', async (req, res) => {
         name,
         metadata: {
           spline_user_id: userId,
+          test_mode: testMode ? 'true' : 'false',
         },
       });
       customerId = customer.id;
@@ -327,12 +392,14 @@ router.post('/create-native-setup-intent', async (req, res) => {
       usage: 'off_session',
     });
 
-    console.log(`Created native setup intent for user ${userId}: ${setupIntent.id}`);
+    console.log(`Native setup intent for user ${userId}: ${setupIntent.id} (testMode: ${testMode})`);
 
     res.json({
       customerId,
       setupIntentId: setupIntent.id,
       clientSecret: setupIntent.client_secret,
+      publishableKey,
+      testMode,
     });
   } catch (error: any) {
     console.error('Error creating native setup intent:', error);
@@ -344,6 +411,8 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
   try {
     const { paymentMethodId, customerId, setupIntentId } = req.body;
     const authenticatedUserId = req.user!.id;
+    const testMode = req.stripeTestMode || false;
+    const stripe = getStripeInstance(testMode);
 
     if (!paymentMethodId || !customerId || !setupIntentId) {
       return res.status(400).json({ error: 'Payment method ID, customer ID, and setup intent ID are required' });
@@ -388,7 +457,7 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
       },
     });
 
-    console.log(`Verified native setup for authenticated user ${authenticatedUserId}, customer ${customerId}: ${paymentMethodId}`);
+    console.log(`Verified native setup for user ${authenticatedUserId}: ${paymentMethodId} (testMode: ${testMode})`);
 
     res.json({
       success: true,
@@ -399,6 +468,7 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
         exp_month: paymentMethod.card.exp_month,
         exp_year: paymentMethod.card.exp_year,
       },
+      testMode,
     });
   } catch (error: any) {
     console.error('Error verifying native setup:', error);
@@ -406,8 +476,6 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
   }
 });
 
-// Process split payment - handles wallet deduction atomically
-// This bypasses Supabase RPC schema cache issues by doing direct table operations
 router.post('/process-split-payment', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
@@ -425,7 +493,6 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
       return res.status(400).json({ success: false, error: 'Split event ID is required' });
     }
 
-    // Get wallet with balance
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
       .select('id, balance')
@@ -447,10 +514,8 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
       });
     }
 
-    // Calculate new balance
     const newBalance = currentBalance - amount;
 
-    // Update wallet balance atomically
     const { error: updateError } = await supabaseAdmin
       .from('wallets')
       .update({ 
@@ -458,14 +523,13 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
         updated_at: new Date().toISOString()
       })
       .eq('id', wallet.id)
-      .eq('balance', currentBalance); // Optimistic lock - ensures balance hasn't changed
+      .eq('balance', currentBalance);
 
     if (updateError) {
       console.error('Failed to update wallet:', updateError);
       return res.status(500).json({ success: false, error: 'Failed to update wallet balance' });
     }
 
-    // Log the transaction
     const { data: transaction, error: txError } = await supabaseAdmin
       .from('transactions')
       .insert({
@@ -482,7 +546,6 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
 
     if (txError) {
       console.error('Failed to log transaction:', txError);
-      // Try to rollback the balance change
       await supabaseAdmin
         .from('wallets')
         .update({ balance: currentBalance })
@@ -490,7 +553,7 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
       return res.status(500).json({ success: false, error: 'Failed to log transaction' });
     }
 
-    console.log(`Split payment processed: $${amount} from user ${userId}, new balance: $${newBalance}`);
+    console.log(`Split payment: $${amount} from user ${userId}, new balance: $${newBalance}`);
 
     res.json({
       success: true,
