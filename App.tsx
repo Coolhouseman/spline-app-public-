@@ -188,15 +188,15 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <View style={[styles.root, { backgroundColor: splashBg }]}>
-        <StripeWrapper>
-          <SafeAreaProvider>
-            <AuthProvider>
+      <AuthProvider>
+        <View style={[styles.root, { backgroundColor: splashBg }]}>
+          <StripeWrapper>
+            <SafeAreaProvider>
               <AppContent />
-            </AuthProvider>
-          </SafeAreaProvider>
-        </StripeWrapper>
-      </View>
+            </SafeAreaProvider>
+          </StripeWrapper>
+        </View>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
