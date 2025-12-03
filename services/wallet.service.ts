@@ -1218,15 +1218,13 @@ export class WalletService {
       );
     }
 
-    // STEP 1: Deduct from payer's wallet AND update split status ATOMICALLY
-    // Uses process_split_payment_atomic which handles both operations in one transaction
-    // This prevents race conditions and ensures data consistency
+    // STEP 1: Deduct from payer's wallet using the existing process_split_payment RPC
+    // This function is already in Supabase's schema cache and handles wallet deduction atomically
     let walletTransactionId: string | null = null;
-    let splitStatusUpdated = false;
     
     if (walletPayment > 0) {
-      // Use atomic function that does wallet deduction + split status update together
-      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment_atomic', {
+      // Use the existing process_split_payment function (already cached by Supabase)
+      const { data: splitResult, error: splitError } = await supabase.rpc('process_split_payment', {
         p_user_id: userId,
         p_amount: walletPayment,
         p_split_event_id: splitEventId,
@@ -1245,8 +1243,7 @@ export class WalletService {
       }
 
       walletTransactionId = splitResult.transaction_id;
-      splitStatusUpdated = true; // Atomic function already updated split status
-      console.log(`Atomic payment complete: $${walletPayment.toFixed(2)} deducted, split status updated. New balance: $${splitResult.new_balance?.toFixed(2)}`);
+      console.log(`Wallet payment complete: $${walletPayment.toFixed(2)} deducted. New balance: $${splitResult.new_balance?.toFixed(2)}`);
     }
 
     // STEP 2: Charge card for any shortfall (only after wallet deduction succeeds)
@@ -1414,21 +1411,24 @@ export class WalletService {
       throw new Error('No payment was processed');
     }
 
-    // STEP 5: Ensure split participant status is updated (for card-only payments)
-    // The atomic RPC handles this for wallet payments, but card-only needs explicit update
-    if (!splitStatusUpdated && cardPayment > 0) {
-      try {
-        await supabase
-          .from('split_participants')
-          .update({ status: 'paid', updated_at: new Date().toISOString() })
-          .eq('split_event_id', splitEventId)
-          .eq('user_id', userId)
-          .eq('is_creator', false);
-        console.log(`Split participant status updated to paid for event ${splitEventId}`);
-      } catch (statusError) {
+    // STEP 5: Update split participant status to 'paid'
+    // This needs to happen after all payments are successful
+    try {
+      const { error: statusError } = await supabase
+        .from('split_participants')
+        .update({ status: 'paid', updated_at: new Date().toISOString() })
+        .eq('split_event_id', splitEventId)
+        .eq('user_id', userId)
+        .eq('is_creator', false);
+      
+      if (statusError) {
         console.error('Failed to update split participant status:', statusError);
-        // Don't throw - payment was successful, just log the issue
+      } else {
+        console.log(`Split participant status updated to paid for event ${splitEventId}`);
       }
+    } catch (statusError) {
+      console.error('Failed to update split participant status:', statusError);
+      // Don't throw - payment was successful, just log the issue
     }
 
     console.log(`Split payment completed: $${amount.toFixed(2)} from ${userId} to ${recipientId}`);
