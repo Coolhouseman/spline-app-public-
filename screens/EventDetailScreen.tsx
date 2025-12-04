@@ -7,6 +7,7 @@ import { useHeaderHeight } from '@react-navigation/elements';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
+import { LevelBadge } from '@/components/ProfileStatsCard';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useLevelUp } from '@/contexts/LevelUpContext';
@@ -14,6 +15,7 @@ import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 import { WalletService } from '@/services/wallet.service';
 import { FriendsService } from '@/services/friends.service';
+import { GamificationService } from '@/services/gamification.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
@@ -38,6 +40,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [participantGamification, setParticipantGamification] = useState<Record<string, { level: number; title: string } | null>>({});
 
   useEffect(() => {
     loadEvent();
@@ -103,6 +106,29 @@ export default function EventDetailScreen({ route, navigation }: Props) {
       setLoading(true);
       const data = await SplitsService.getSplitDetails(eventId);
       setEvent(data);
+      
+      // Load gamification data for all participants
+      if (data?.participants) {
+        const gamificationMap: Record<string, { level: number; title: string } | null> = {};
+        await Promise.all(
+          data.participants.map(async (p: any) => {
+            try {
+              const profile = await GamificationService.getProfile(p.user_id);
+              if (profile) {
+                gamificationMap[p.user_id] = {
+                  level: profile.current_level,
+                  title: profile.title || GamificationService.getTitleForLevel(profile.current_level),
+                };
+              } else {
+                gamificationMap[p.user_id] = null;
+              }
+            } catch {
+              gamificationMap[p.user_id] = null;
+            }
+          })
+        );
+        setParticipantGamification(gamificationMap);
+      }
     } catch (error) {
       console.error('Failed to load event:', error);
       setEvent(null);
@@ -552,6 +578,13 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     {isCurrentUser ? (
                       <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}> (You)</ThemedText>
                     ) : null}
+                    {participantGamification[participant.user_id]?.level ? (
+                      <LevelBadge 
+                        level={participantGamification[participant.user_id]!.level} 
+                        size="small" 
+                        showTitle 
+                      />
+                    ) : null}
                   </View>
                   <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
                     ID: {participant.user?.unique_id || 'N/A'}
@@ -898,6 +931,8 @@ const styles = StyleSheet.create({
   participantNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
   },
   participantSubRow: {
     flexDirection: 'row',

@@ -198,7 +198,7 @@ export default function FriendsScreen({ navigation }: Props) {
               {details.name}
             </ThemedText>
             {item.gamification?.current_level ? (
-              <LevelBadge level={item.gamification.current_level} size="small" />
+              <LevelBadge level={item.gamification.current_level} size="small" showTitle />
             ) : null}
           </View>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
@@ -392,9 +392,14 @@ export default function FriendsScreen({ navigation }: Props) {
                     )}
                   </View>
                   <View style={styles.friendInfo}>
-                    <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-                      {details.name}
-                    </ThemedText>
+                    <View style={styles.friendNameRow}>
+                      <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                        {details.name}
+                      </ThemedText>
+                      {item.gamification?.current_level ? (
+                        <LevelBadge level={item.gamification.current_level} size="small" showTitle />
+                      ) : null}
+                    </View>
                     <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
                       ID: {details.unique_id}
                     </ThemedText>

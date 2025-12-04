@@ -804,6 +804,13 @@ export class GamificationService {
     return '#808080'; // Gray
   }
 
+  /**
+   * Get title for a given level (public static method)
+   */
+  static getTitleForLevel(level: number): string {
+    return getTitleForLevel(level);
+  }
+
   // ========== BALANCE MOMENTUM FEATURE ==========
 
   /**
