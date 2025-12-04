@@ -22,7 +22,7 @@ export function LevelUpProvider({ children }: { children: ReactNode }) {
     visible: false,
     newLevel: 1,
     oldLevel: 1,
-    newTitle: 'Newcomer',
+    newTitle: 'Member',
     totalXp: 0,
   });
 

@@ -79,17 +79,17 @@ export const XP_VALUES = {
 // Level titles and their perks
 // Perks are manually approved by admin to prevent abuse
 export const LEVEL_INFO: Record<number, { title: string; perk?: string }> = {
-  1: { title: 'Newcomer' },
-  3: { title: 'Getting Started' },
-  5: { title: 'Active Member' },
-  7: { title: 'Rising Star' },
-  10: { title: 'Trusted Splitter', perk: '$50 Dinner Voucher (claim in app)' },
-  15: { title: 'Split Champion', perk: 'Extended withdrawal limits' },
-  20: { title: 'Payment Pro', perk: '10% discount on fast withdrawals' },
-  25: { title: 'Bill Boss', perk: 'VIP restaurant partner discounts' },
-  30: { title: 'Split Legend', perk: 'Hotel partner benefits' },
-  40: { title: 'Master Organizer', perk: 'Airport lounge access (coming soon)' },
-  50: { title: 'Elite Splitter', perk: 'Premium concierge service' },
+  1: { title: 'Member' },
+  3: { title: 'Verified' },
+  5: { title: 'Silver' },
+  7: { title: 'Gold' },
+  10: { title: 'Platinum', perk: '$50 Dinner Voucher (claim in app)' },
+  15: { title: 'Premier', perk: 'Extended withdrawal limits' },
+  20: { title: 'Select', perk: '10% discount on fast withdrawals' },
+  25: { title: 'Private', perk: 'VIP restaurant partner discounts' },
+  30: { title: 'Elite', perk: 'Hotel partner benefits' },
+  40: { title: 'Prestige', perk: 'Airport lounge access (coming soon)' },
+  50: { title: 'Chairman', perk: 'Premium concierge service' },
 };
 
 // Anti-abuse constants for XP system
@@ -264,17 +264,17 @@ function calculateXPToNextLevel(totalXP: number, currentLevel: number): number {
 }
 
 function getTitleForLevel(level: number): string {
-  if (level >= 50) return 'Elite Splitter';
-  if (level >= 40) return 'Master Organizer';
-  if (level >= 30) return 'Split Legend';
-  if (level >= 25) return 'Bill Boss';
-  if (level >= 20) return 'Payment Pro';
-  if (level >= 15) return 'Split Champion';
-  if (level >= 10) return 'Trusted Splitter';
-  if (level >= 7) return 'Rising Star';
-  if (level >= 5) return 'Active Member';
-  if (level >= 3) return 'Getting Started';
-  return 'Newcomer';
+  if (level >= 50) return 'Chairman';
+  if (level >= 40) return 'Prestige';
+  if (level >= 30) return 'Elite';
+  if (level >= 25) return 'Private';
+  if (level >= 20) return 'Select';
+  if (level >= 15) return 'Premier';
+  if (level >= 10) return 'Platinum';
+  if (level >= 7) return 'Gold';
+  if (level >= 5) return 'Silver';
+  if (level >= 3) return 'Verified';
+  return 'Member';
 }
 
 export class GamificationService {
@@ -364,7 +364,7 @@ export class GamificationService {
       xp_progress_percent: 0,
       current_streak: 0,
       longest_streak: 0,
-      title: 'Newcomer',
+      title: 'Member',
       splits_created: 0,
       splits_paid_on_time: 0,
       splits_completed_as_creator: 0,
@@ -821,7 +821,7 @@ export class GamificationService {
    */
   static getLevelInfo(level: number): { title: string; perk?: string; nextPerkLevel?: number } {
     // Find the highest level info that applies
-    let currentInfo = { title: 'Newcomer' };
+    let currentInfo = { title: 'Member' };
     let nextPerkLevel: number | undefined;
 
     for (const [lvl, info] of Object.entries(LEVEL_INFO).sort((a, b) => Number(a[0]) - Number(b[0]))) {

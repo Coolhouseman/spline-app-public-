@@ -100,7 +100,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Gamification / XP System
 - **Pure Status-Based**: No monetary rewards, focused on engagement and recognition.
-- **Level System**: 50 levels with progressive XP thresholds. Titles earned: Newcomer → Getting Started → Active Member → Rising Star → Trusted Splitter → Split Champion → Payment Pro → Bill Boss → Split Legend → Master Organizer → Elite Splitter.
+- **Level System**: 50 levels with progressive XP thresholds. Professional titles reflecting trust and status: Member → Verified → Silver → Gold → Platinum → Premier → Select → Private → Elite → Prestige → Chairman.
 - **XP Awards**: 
   - Split creation (25-40 XP based on size)
   - Paying splits (20-35 XP based on speed)
@@ -129,7 +129,7 @@ Preferred communication style: Simple, everyday language.
   - Gold Tier ($500+ avg balance): 50 XP/day
   - Based on 7-day rolling average balance, processed daily via `process_all_balance_momentum` RPC
   - Tables: `wallet_balance_history` (daily snapshots), fields on `user_gamification`
-- **Graceful Degradation**: Service returns sensible defaults (Level 1, "Newcomer") if gamification tables not available, ensuring core payment flows are never blocked.
+- **Graceful Degradation**: Service returns sensible defaults (Level 1, "Member") if gamification tables not available, ensuring core payment flows are never blocked.
 - **Migration Requirement**: `GAMIFICATION_MIGRATION.sql` must be applied in Supabase for full functionality. Includes Balance Momentum tables.
 - **Components**: `ProfileStatsCard.tsx`, `LevelBadge.tsx`, `LevelUpModal.tsx`, `LevelUpContext.tsx`.
 - **Service**: `services/gamification.service.ts` with XP awarding, streak tracking, badge logic, Balance Momentum status.

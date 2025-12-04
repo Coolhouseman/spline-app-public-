@@ -1426,7 +1426,7 @@
               <td class="py-3 pr-4">
                 <span class="px-2 py-1 rounded-full text-xs font-bold ${getLevelBadgeClass(user.current_level)}">${user.current_level}</span>
               </td>
-              <td class="py-3 pr-4 text-gray-700">${user.title || 'Newcomer'}</td>
+              <td class="py-3 pr-4 text-gray-700">${user.title || 'Member'}</td>
               <td class="py-3 pr-4 font-semibold text-purple-600">${(user.total_xp || 0).toLocaleString()}</td>
               <td class="py-3 pr-4">
                 ${user.current_streak > 0 ? `<span class="text-orange-600">${user.current_streak} days</span>` : '<span class="text-gray-400">-</span>'}
