@@ -13,6 +13,8 @@ interface LevelUpState {
 interface LevelUpContextValue {
   showLevelUp: (result: XPAwardResult) => void;
   checkLevelUp: (result: XPAwardResult) => void;
+  xpRefreshTrigger: number;
+  triggerXPRefresh: () => void;
 }
 
 const LevelUpContext = createContext<LevelUpContextValue | null>(null);
@@ -25,6 +27,11 @@ export function LevelUpProvider({ children }: { children: ReactNode }) {
     newTitle: 'Member',
     totalXp: 0,
   });
+  const [xpRefreshTrigger, setXpRefreshTrigger] = useState(0);
+
+  const triggerXPRefresh = useCallback(() => {
+    setXpRefreshTrigger(prev => prev + 1);
+  }, []);
 
   const showLevelUp = useCallback((result: XPAwardResult) => {
     setState({
@@ -34,20 +41,23 @@ export function LevelUpProvider({ children }: { children: ReactNode }) {
       newTitle: result.new_title,
       totalXp: result.new_total_xp,
     });
-  }, []);
+    triggerXPRefresh();
+  }, [triggerXPRefresh]);
 
   const checkLevelUp = useCallback((result: XPAwardResult) => {
     if (result.leveled_up) {
       showLevelUp(result);
+    } else if (result.xp_awarded > 0) {
+      triggerXPRefresh();
     }
-  }, [showLevelUp]);
+  }, [showLevelUp, triggerXPRefresh]);
 
   const handleDismiss = useCallback(() => {
     setState(prev => ({ ...prev, visible: false }));
   }, []);
 
   return (
-    <LevelUpContext.Provider value={{ showLevelUp, checkLevelUp }}>
+    <LevelUpContext.Provider value={{ showLevelUp, checkLevelUp, xpRefreshTrigger, triggerXPRefresh }}>
       {children}
       <LevelUpModal
         visible={state.visible}

@@ -12,6 +12,7 @@ import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
+import { useLevelUp } from '@/contexts/LevelUpContext';
 import { GamificationService, GamificationProfile, LEVEL_INFO } from '@/services/gamification.service';
 import { VoucherClaimModal } from './VoucherClaimModal';
 
@@ -70,6 +71,7 @@ const STAT_HELP_INFO = {
 
 export function ProfileStatsCard({ userId, compact = false, showBadges = true, onPress }: ProfileStatsCardProps) {
   const { theme: colors, isDark } = useTheme();
+  const { xpRefreshTrigger } = useLevelUp();
   const [profile, setProfile] = useState<GamificationProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -84,7 +86,7 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
 
   useEffect(() => {
     loadProfile();
-  }, [userId]);
+  }, [userId, xpRefreshTrigger]);
 
   useEffect(() => {
     if (profile) {
