@@ -8,6 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
+import { ProfileStatsCard } from '@/components/ProfileStatsCard';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography, Colors } from '@/constants/theme';
@@ -357,6 +358,13 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
               </>
             )}
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+            Your Stats
+          </ThemedText>
+          <ProfileStatsCard userId={user.id} showBadges={true} />
         </View>
 
         <View style={styles.section}>
