@@ -802,6 +802,75 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend server is running' });
 });
 
+// Admin cleanup endpoint - removes orphaned data
+app.post('/api/admin/cleanup-database', async (req, res) => {
+  try {
+    const { adminSecret, keepUserIds } = req.body;
+    
+    if (adminSecret !== process.env.SESSION_SECRET) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    const protectedIds = keepUserIds || [];
+    const results: any = { deleted: { users: 0, wallets: 0, transactions: 0, friends: 0, notifications: 0 } };
+    
+    // Get all user IDs to delete (except protected ones)
+    const { data: users } = await supabaseServer
+      .from('users')
+      .select('id, email')
+      .not('id', 'in', `(${protectedIds.join(',')})`);
+    
+    if (users && users.length > 0) {
+      const userIds = users.map(u => u.id);
+      
+      // Delete related data first
+      const { count: txCount } = await supabaseServer
+        .from('transactions')
+        .delete()
+        .in('user_id', userIds)
+        .select('*', { count: 'exact', head: true });
+      results.deleted.transactions = txCount || 0;
+      
+      const { count: walletCount } = await supabaseServer
+        .from('wallets')
+        .delete()
+        .in('user_id', userIds)
+        .select('*', { count: 'exact', head: true });
+      results.deleted.wallets = walletCount || 0;
+      
+      const { count: friendCount } = await supabaseServer
+        .from('friends')
+        .delete()
+        .or(`user_id.in.(${userIds.join(',')}),friend_id.in.(${userIds.join(',')})`)
+        .select('*', { count: 'exact', head: true });
+      results.deleted.friends = friendCount || 0;
+      
+      const { count: notifCount } = await supabaseServer
+        .from('notifications')
+        .delete()
+        .in('user_id', userIds)
+        .select('*', { count: 'exact', head: true });
+      results.deleted.notifications = notifCount || 0;
+      
+      // Delete user profiles
+      const { count: userCount } = await supabaseServer
+        .from('users')
+        .delete()
+        .in('id', userIds)
+        .select('*', { count: 'exact', head: true });
+      results.deleted.users = userCount || 0;
+      
+      results.deletedEmails = users.map(u => u.email);
+    }
+    
+    res.json({ success: true, ...results });
+    
+  } catch (error: any) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.use('/api/blinkpay', blinkpayRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/twilio', twilioRouter);
