@@ -1010,19 +1010,30 @@ router.patch('/withdrawals/:transactionId', adminAuthMiddleware, async (req: Aut
     const { transactionId } = req.params;
     const { status, note } = req.body;
 
+    console.log(`Updating withdrawal ${transactionId} to status: ${status}`);
+
     if (!['pending', 'processing', 'completed', 'failed'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status. Must be pending, processing, completed, or failed' });
     }
 
+    // Use fresh client to avoid stale connection issues (same pattern as GET /withdrawals)
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
     // Get current transaction
-    const { data: currentTx, error: fetchError } = await supabaseAdmin
+    const { data: currentTx, error: fetchError } = await freshClient
       .from('transactions')
       .select('metadata')
       .eq('id', transactionId)
       .eq('type', 'withdrawal')
       .single();
 
+    console.log('Fetch result:', { currentTx, fetchError });
+
     if (fetchError || !currentTx) {
+      console.error('Withdrawal transaction not found:', transactionId, fetchError);
       return res.status(404).json({ error: 'Withdrawal transaction not found' });
     }
 
@@ -1035,7 +1046,7 @@ router.patch('/withdrawals/:transactionId', adminAuthMiddleware, async (req: Aut
       admin_note: note || currentTx.metadata?.admin_note
     };
 
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await freshClient
       .from('transactions')
       .update({ metadata: updatedMetadata })
       .eq('id', transactionId);
