@@ -1399,14 +1399,24 @@ router.get('/gamification/stats', adminAuthMiddleware, async (req: Authenticated
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Get all gamification profiles
+    // Get all gamification profiles (include balance_momentum_tier for processed tier counts)
     const { data: profiles, error: profilesError } = await freshClient
       .from('user_gamification')
-      .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak');
+      .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak, balance_momentum_tier');
 
     if (profilesError) {
-      console.error('Gamification stats fetch error:', profilesError);
-      return res.status(500).json({ error: profilesError.message });
+      // If the query fails (e.g., column doesn't exist), try without the momentum tier
+      console.log('Gamification stats fetch with momentum tier failed, trying without:', profilesError.message);
+      const { data: fallbackProfiles, error: fallbackError } = await freshClient
+        .from('user_gamification')
+        .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak');
+      
+      if (fallbackError) {
+        console.error('Gamification stats fetch error:', fallbackError);
+        return res.status(500).json({ error: fallbackError.message });
+      }
+      // Use fallback profiles without momentum tier data
+      (profiles as any) = fallbackProfiles;
     }
 
     // Calculate level distribution
@@ -1452,18 +1462,73 @@ router.get('/gamification/stats', adminAuthMiddleware, async (req: Authenticated
       badgeCounts[b.badge_id] = (badgeCounts[b.badge_id] || 0) + 1;
     });
 
+    // Get Balance Momentum tier counts based on current wallet balances (potential eligibility)
+    // Bronze: $50+, Silver: $200+, Gold: $500+
+    const { data: wallets, error: walletsError } = await freshClient
+      .from('wallets')
+      .select('balance');
+
+    let momentumBronze = 0;
+    let momentumSilver = 0;
+    let momentumGold = 0;
+
+    (wallets || []).forEach(w => {
+      const balance = Number(w.balance) || 0;
+      if (balance >= 500) {
+        momentumGold++;
+      } else if (balance >= 200) {
+        momentumSilver++;
+      } else if (balance >= 50) {
+        momentumBronze++;
+      }
+    });
+
+    // Also get the actual processed momentum tiers from user_gamification
+    let processedBronze = 0;
+    let processedSilver = 0;
+    let processedGold = 0;
+    
+    (profiles || []).forEach(p => {
+      const tier = p.balance_momentum_tier || 'none';
+      if (tier === 'gold') processedGold++;
+      else if (tier === 'silver') processedSilver++;
+      else if (tier === 'bronze') processedBronze++;
+    });
+
+    // Determine if momentum has been processed (processed tiers > 0)
+    const momentumProcessed = processedBronze + processedSilver + processedGold > 0;
+
     res.json({
       total_users_with_gamification: totalUsers,
       average_level: Math.round(avgLevel * 100) / 100,
       average_xp: Math.round(avgXP),
+      total_xp_awarded: totalXP,
       total_xp_in_system: totalXP,
       xp_awarded_7days: xpAwarded7d,
       total_splits_paid: totalSplitsPaid,
       total_splits_created: totalSplitsCreated,
+      users_with_active_streak: activeStreaks,
       users_with_active_streaks: activeStreaks,
       longest_streak_ever: longestStreak,
       level_distribution: levelDistribution,
-      badge_distribution: badgeCounts
+      badge_distribution: badgeCounts,
+      // Use processed tiers if momentum has been run, otherwise fall back to eligible counts
+      momentum_tier_bronze: momentumProcessed ? processedBronze : momentumBronze,
+      momentum_tier_silver: momentumProcessed ? processedSilver : momentumSilver,
+      momentum_tier_gold: momentumProcessed ? processedGold : momentumGold,
+      // Also provide both groups for transparency
+      momentum_processed: {
+        bronze: processedBronze,
+        silver: processedSilver,
+        gold: processedGold,
+        is_active: momentumProcessed
+      },
+      momentum_eligible: {
+        bronze: momentumBronze,
+        silver: momentumSilver,
+        gold: momentumGold
+      },
+      total_wallets_with_balance: (wallets || []).filter(w => Number(w.balance) > 0).length
     });
   } catch (error: any) {
     console.error('Gamification stats error:', error);
@@ -1606,6 +1671,104 @@ router.post('/gamification/users/:userId/award-xp', adminAuthMiddleware, async (
     });
   } catch (error: any) {
     console.error('XP award error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Trigger Balance Momentum processing for all users (admin tool - can be called by cron)
+router.post('/gamification/process-balance-momentum', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // First, backfill history if this is the first time running
+    // This seeds the past 7 days with current balances so averages work immediately
+    let backfillResult = null;
+    try {
+      const { data: backfillData, error: backfillError } = await freshClient.rpc('backfill_balance_history');
+      if (!backfillError) {
+        backfillResult = backfillData;
+        console.log('Balance history backfilled:', backfillData);
+      }
+    } catch (backfillErr) {
+      // Backfill may fail if function doesn't exist (older migration) - that's ok
+      console.log('Backfill skipped (function may not exist yet)');
+    }
+
+    // Call the PostgreSQL function to process all users
+    const { data, error } = await freshClient.rpc('process_all_balance_momentum');
+
+    if (error) {
+      // If the function doesn't exist, provide a helpful message
+      if (error.message.includes('does not exist')) {
+        return res.status(400).json({ 
+          error: 'Balance Momentum feature not set up. Please run GAMIFICATION_MIGRATION.sql in Supabase.',
+          details: error.message
+        });
+      }
+      throw error;
+    }
+
+    console.log('Balance Momentum processed:', data);
+    res.json({
+      success: true,
+      message: 'Balance Momentum processing completed',
+      result: data,
+      backfill: backfillResult
+    });
+  } catch (error: any) {
+    console.error('Balance Momentum processing error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Balance Momentum stats for admin dashboard
+router.get('/gamification/balance-momentum/stats', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Get momentum tier distribution from user_gamification
+    const { data: profiles, error: profilesError } = await freshClient
+      .from('user_gamification')
+      .select('balance_momentum_tier, avg_balance_7d, balance_streak_days');
+
+    const tierCounts = { none: 0, bronze: 0, silver: 0, gold: 0 };
+    let totalStreakDays = 0;
+    let usersWithStreak = 0;
+
+    (profiles || []).forEach(p => {
+      const tier = (p.balance_momentum_tier || 'none') as keyof typeof tierCounts;
+      tierCounts[tier] = (tierCounts[tier] || 0) + 1;
+      if (p.balance_streak_days > 0) {
+        totalStreakDays += p.balance_streak_days;
+        usersWithStreak++;
+      }
+    });
+
+    // Get recent balance momentum XP awards
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentAwards, error: awardsError } = await freshClient
+      .from('xp_history')
+      .select('xp_amount')
+      .eq('action_type', 'balance_momentum')
+      .gte('created_at', sevenDaysAgo);
+
+    const momentumXP7d = (recentAwards || []).reduce((sum, x) => sum + (x.xp_amount || 0), 0);
+
+    res.json({
+      tier_distribution: tierCounts,
+      total_momentum_xp_7d: momentumXP7d,
+      users_with_momentum_streak: usersWithStreak,
+      average_streak_days: usersWithStreak > 0 ? Math.round(totalStreakDays / usersWithStreak) : 0,
+      total_enrolled: (profiles || []).length
+    });
+  } catch (error: any) {
+    console.error('Balance Momentum stats error:', error);
     res.status(500).json({ error: error.message });
   }
 });

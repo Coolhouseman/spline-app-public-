@@ -803,4 +803,87 @@ export class GamificationService {
     if (level >= 5) return '#4169E1';  // Royal Blue
     return '#808080'; // Gray
   }
+
+  // ========== BALANCE MOMENTUM FEATURE ==========
+
+  /**
+   * Get user's current Balance Momentum status
+   * Returns tier, average balance, and streak info
+   */
+  static async getBalanceMomentum(userId: string): Promise<{
+    tier: 'none' | 'bronze' | 'silver' | 'gold';
+    avgBalance7d: number;
+    streakDays: number;
+    nextTierThreshold?: number;
+    xpPerDay: number;
+  }> {
+    try {
+      const { data, error } = await supabase
+        .from('user_gamification')
+        .select('balance_momentum_tier, avg_balance_7d, balance_streak_days')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error || !data) {
+        return {
+          tier: 'none',
+          avgBalance7d: 0,
+          streakDays: 0,
+          nextTierThreshold: 50,
+          xpPerDay: 0
+        };
+      }
+
+      const tier = (data.balance_momentum_tier || 'none') as 'none' | 'bronze' | 'silver' | 'gold';
+      const avgBalance = Number(data.avg_balance_7d) || 0;
+      
+      // Calculate next tier threshold
+      let nextTierThreshold: number | undefined;
+      if (avgBalance < 50) nextTierThreshold = 50;
+      else if (avgBalance < 200) nextTierThreshold = 200;
+      else if (avgBalance < 500) nextTierThreshold = 500;
+
+      // XP per day based on tier
+      const xpPerDay = tier === 'gold' ? 50 : tier === 'silver' ? 25 : tier === 'bronze' ? 10 : 0;
+
+      return {
+        tier,
+        avgBalance7d: avgBalance,
+        streakDays: data.balance_streak_days || 0,
+        nextTierThreshold,
+        xpPerDay
+      };
+    } catch (error) {
+      console.log('Balance Momentum: Could not fetch status');
+      return {
+        tier: 'none',
+        avgBalance7d: 0,
+        streakDays: 0,
+        nextTierThreshold: 50,
+        xpPerDay: 0
+      };
+    }
+  }
+
+  /**
+   * Get Balance Momentum tier info for display
+   */
+  static getMomentumTierInfo(tier: string): {
+    name: string;
+    color: string;
+    icon: string;
+    minBalance: number;
+    xpPerDay: number;
+  } {
+    switch (tier) {
+      case 'gold':
+        return { name: 'Gold', color: '#FFD700', icon: 'award', minBalance: 500, xpPerDay: 50 };
+      case 'silver':
+        return { name: 'Silver', color: '#C0C0C0', icon: 'star', minBalance: 200, xpPerDay: 25 };
+      case 'bronze':
+        return { name: 'Bronze', color: '#CD7F32', icon: 'zap', minBalance: 50, xpPerDay: 10 };
+      default:
+        return { name: 'None', color: '#808080', icon: 'circle', minBalance: 0, xpPerDay: 0 };
+    }
+  }
 }

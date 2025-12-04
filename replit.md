@@ -78,9 +78,10 @@ Preferred communication style: Simple, everyday language.
 ### Admin Dashboard
 - **Access**: `http://localhost:8082/admin` (dev) / `https://splinepay.replit.app/admin` (prod).
 - **Authentication**: Supabase Auth with admin_roles verification.
-- **Features**: Overview, Buffer Analysis, Transactions, Withdrawals processing, Settings (admin user management).
+- **Features**: Overview, Buffer Analysis, Transactions, Withdrawals processing, Users & Levels (gamification), Settings (admin user management).
 - **Live Updates**: Server-Sent Events (SSE) stream at `/api/admin/stream` broadcasts metrics every 5 seconds. Dashboard auto-updates without manual refresh, with visual "Live" indicator showing connection status.
 - **Supabase Client Pattern**: All admin database queries use fresh Supabase clients (created per-request with explicit schema configuration) to avoid connection state issues with the global client. This ensures reliable data fetching across server restarts.
+- **Users & Levels Tab**: Displays gamification stats including total XP, average level, active streaks, Balance Momentum tier distribution, level distribution chart, and user leaderboard.
 
 ### Withdrawal Email Notifications
 - Automatic email to admin (`hzeng1217@gmail.com`) upon user withdrawal request using nodemailer.
@@ -105,14 +106,27 @@ Preferred communication style: Simple, everyday language.
   - Paying splits (20-35 XP based on speed)
   - Completion bonuses for creators (50 XP)
   - Streak bonuses (weekly/monthly)
+  - Balance Momentum (10-50 XP/day based on tier)
 - **Perks Begin at Level 10**: Priority support, extended limits, fast withdrawal discounts, partner benefits.
 - **Badges**: Bronze → Silver → Gold → Platinum tiers for milestones (creator, payer, streak, social).
 - **Streak System**: Daily activity tracking with bonus XP at 7 and 30 day milestones.
+- **Balance Momentum**: Wallet retention incentive system. Users earn XP for maintaining wallet balances over time.
+  - Bronze Tier ($50+ avg balance): 10 XP/day
+  - Silver Tier ($200+ avg balance): 25 XP/day
+  - Gold Tier ($500+ avg balance): 50 XP/day
+  - Based on 7-day rolling average balance, processed daily via `process_all_balance_momentum` RPC
+  - Tables: `wallet_balance_history` (daily snapshots), fields on `user_gamification`
 - **Graceful Degradation**: Service returns sensible defaults (Level 1, "Newcomer") if gamification tables not available, ensuring core payment flows are never blocked.
-- **Migration Requirement**: `GAMIFICATION_MIGRATION.sql` must be applied in Supabase for full functionality.
+- **Migration Requirement**: `GAMIFICATION_MIGRATION.sql` must be applied in Supabase for full functionality. Includes Balance Momentum tables.
 - **Components**: `ProfileStatsCard.tsx`, `LevelBadge.tsx`, `LevelUpModal.tsx`, `LevelUpContext.tsx`.
-- **Service**: `services/gamification.service.ts` with XP awarding, streak tracking, badge logic.
-- **Admin Monitoring**: `/api/admin/gamification/overview` and `/api/admin/gamification/users` endpoints.
+- **Service**: `services/gamification.service.ts` with XP awarding, streak tracking, badge logic, Balance Momentum status.
+- **Admin Monitoring**: 
+  - `/api/admin/gamification/stats` - Overall stats including momentum tier distribution (both processed and eligible)
+  - `/api/admin/gamification/users` - User leaderboard with XP, levels, streaks
+  - `/api/admin/gamification/process-balance-momentum` - Manual trigger for momentum processing (backfills history first)
+  - `/api/admin/gamification/balance-momentum/stats` - Detailed momentum analytics
+  - Admin dashboard "Users & Levels" tab with "Process Momentum" button for manual triggering
+- **Future Enhancement**: Add Supabase cron or server-side job to run process_all_balance_momentum() daily at 9 AM
 
 ### Error Handling
 - Class-based error boundary component with fallback UI.

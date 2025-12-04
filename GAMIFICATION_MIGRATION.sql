@@ -518,3 +518,253 @@ GRANT EXECUTE ON FUNCTION get_user_gamification(UUID) TO authenticated;
 GRANT ALL ON user_gamification TO service_role;
 GRANT ALL ON xp_history TO service_role;
 GRANT ALL ON user_badges TO service_role;
+
+-- =============================================================================
+-- BALANCE MOMENTUM FEATURE
+-- Encourages users to keep funds in their wallet by awarding XP for maintaining
+-- a positive balance over time. This reduces withdrawal velocity.
+-- =============================================================================
+
+-- TABLE: wallet_balance_history - Daily snapshots of wallet balances
+CREATE TABLE IF NOT EXISTS wallet_balance_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+  
+  balance NUMERIC(10,2) NOT NULL DEFAULT 0,
+  snapshot_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  
+  CONSTRAINT unique_daily_snapshot UNIQUE(user_id, snapshot_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_balance_history_user_date ON wallet_balance_history(user_id, snapshot_date DESC);
+
+-- Add Balance Momentum fields to user_gamification
+ALTER TABLE user_gamification 
+  ADD COLUMN IF NOT EXISTS balance_momentum_tier VARCHAR(20) DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS avg_balance_7d NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS balance_streak_days INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_momentum_award DATE;
+
+-- Enable RLS on balance history
+ALTER TABLE wallet_balance_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own balance history"
+  ON wallet_balance_history FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Service role can manage all balance history"
+  ON wallet_balance_history FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+GRANT ALL ON wallet_balance_history TO service_role;
+
+-- =============================================================================
+-- FUNCTION: record_daily_balance_snapshot
+-- Records the current balance for a user. Call this daily via cron.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION record_daily_balance_snapshot(p_user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_wallet RECORD;
+BEGIN
+  -- Get user's wallet
+  SELECT id, balance INTO v_wallet
+  FROM wallets
+  WHERE user_id = p_user_id
+  LIMIT 1;
+  
+  IF v_wallet.id IS NULL THEN
+    RETURN;
+  END IF;
+  
+  -- Insert or update today's snapshot
+  INSERT INTO wallet_balance_history (user_id, wallet_id, balance, snapshot_date)
+  VALUES (p_user_id, v_wallet.id, v_wallet.balance, CURRENT_DATE)
+  ON CONFLICT (user_id, snapshot_date) 
+  DO UPDATE SET balance = EXCLUDED.balance;
+END;
+$$;
+
+-- =============================================================================
+-- FUNCTION: process_balance_momentum
+-- Calculates 7-day average balance and awards XP based on tier thresholds.
+-- Bronze ($50+): 10 XP/day, Silver ($200+): 25 XP/day, Gold ($500+): 50 XP/day
+-- =============================================================================
+CREATE OR REPLACE FUNCTION process_balance_momentum(p_user_id UUID)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_avg_balance NUMERIC(10,2);
+  v_current_tier VARCHAR(20);
+  v_xp_to_award INTEGER;
+  v_last_award DATE;
+  v_gamification RECORD;
+  v_result jsonb;
+BEGIN
+  -- Calculate 7-day average balance (exactly 7 days including today)
+  SELECT COALESCE(AVG(balance), 0) INTO v_avg_balance
+  FROM wallet_balance_history
+  WHERE user_id = p_user_id
+    AND snapshot_date >= CURRENT_DATE - INTERVAL '6 days';
+  
+  -- Determine tier based on average balance
+  v_current_tier := CASE
+    WHEN v_avg_balance >= 500 THEN 'gold'
+    WHEN v_avg_balance >= 200 THEN 'silver'
+    WHEN v_avg_balance >= 50 THEN 'bronze'
+    ELSE 'none'
+  END;
+  
+  -- Get current gamification state
+  SELECT last_momentum_award, balance_streak_days INTO v_last_award, v_gamification.balance_streak_days
+  FROM user_gamification
+  WHERE user_id = p_user_id;
+  
+  -- Check if we should award XP today (once per day)
+  IF v_last_award = CURRENT_DATE THEN
+    -- Already awarded today
+    RETURN jsonb_build_object(
+      'success', false,
+      'reason', 'already_awarded_today',
+      'tier', v_current_tier,
+      'avg_balance_7d', v_avg_balance
+    );
+  END IF;
+  
+  -- Determine XP to award based on tier
+  v_xp_to_award := CASE v_current_tier
+    WHEN 'gold' THEN 50
+    WHEN 'silver' THEN 25
+    WHEN 'bronze' THEN 10
+    ELSE 0
+  END;
+  
+  -- Update user_gamification with momentum data
+  UPDATE user_gamification
+  SET 
+    balance_momentum_tier = v_current_tier,
+    avg_balance_7d = v_avg_balance,
+    balance_streak_days = CASE 
+      WHEN v_current_tier != 'none' THEN COALESCE(balance_streak_days, 0) + 1
+      ELSE 0
+    END,
+    last_momentum_award = CURRENT_DATE,
+    updated_at = NOW()
+  WHERE user_id = p_user_id;
+  
+  -- Award XP if eligible
+  IF v_xp_to_award > 0 THEN
+    PERFORM award_xp(
+      p_user_id,
+      v_xp_to_award,
+      'balance_momentum',
+      'Balance Momentum: ' || INITCAP(v_current_tier) || ' tier reward',
+      NULL
+    );
+  END IF;
+  
+  RETURN jsonb_build_object(
+    'success', true,
+    'tier', v_current_tier,
+    'xp_awarded', v_xp_to_award,
+    'avg_balance_7d', v_avg_balance,
+    'balance_streak_days', COALESCE(v_gamification.balance_streak_days, 0) + 1
+  );
+END;
+$$;
+
+-- =============================================================================
+-- FUNCTION: process_all_balance_momentum
+-- Batch process all users for balance momentum. Call via daily cron.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION process_all_balance_momentum()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_user RECORD;
+  v_processed INTEGER := 0;
+  v_awarded INTEGER := 0;
+BEGIN
+  -- First, record daily snapshots for all users with wallets
+  FOR v_user IN 
+    SELECT DISTINCT user_id FROM wallets WHERE balance > 0
+  LOOP
+    PERFORM record_daily_balance_snapshot(v_user.user_id);
+    v_processed := v_processed + 1;
+  END LOOP;
+  
+  -- Then process momentum awards for users with gamification profiles
+  FOR v_user IN 
+    SELECT user_id FROM user_gamification
+  LOOP
+    DECLARE
+      v_result jsonb;
+    BEGIN
+      v_result := process_balance_momentum(v_user.user_id);
+      IF (v_result->>'success')::boolean AND (v_result->>'xp_awarded')::integer > 0 THEN
+        v_awarded := v_awarded + 1;
+      END IF;
+    END;
+  END LOOP;
+  
+  RETURN jsonb_build_object(
+    'snapshots_recorded', v_processed,
+    'momentum_awards_given', v_awarded,
+    'processed_at', NOW()
+  );
+END;
+$$;
+
+-- =============================================================================
+-- FUNCTION: backfill_balance_history
+-- Seeds wallet_balance_history with current balance for past 7 days.
+-- Call this once before first momentum processing to enable immediate tier calculation.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION backfill_balance_history()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_wallet RECORD;
+  v_date DATE;
+  v_filled INTEGER := 0;
+BEGIN
+  -- For each wallet with positive balance
+  FOR v_wallet IN 
+    SELECT id, user_id, balance FROM wallets WHERE balance > 0
+  LOOP
+    -- Insert snapshots for the past 7 days (including today)
+    FOR v_date IN 
+      SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date
+    LOOP
+      INSERT INTO wallet_balance_history (user_id, wallet_id, balance, snapshot_date)
+      VALUES (v_wallet.user_id, v_wallet.id, v_wallet.balance, v_date)
+      ON CONFLICT (user_id, snapshot_date) DO NOTHING;
+      v_filled := v_filled + 1;
+    END LOOP;
+  END LOOP;
+  
+  RETURN jsonb_build_object(
+    'snapshots_backfilled', v_filled,
+    'backfilled_at', NOW()
+  );
+END;
+$$;
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION record_daily_balance_snapshot(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION process_balance_momentum(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION process_all_balance_momentum() TO service_role;
+GRANT EXECUTE ON FUNCTION backfill_balance_history() TO service_role;
