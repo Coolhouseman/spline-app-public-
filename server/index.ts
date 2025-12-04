@@ -660,6 +660,144 @@ app.get('/reset-password', (req, res) => {
   res.type('html').send(html);
 });
 
+// API endpoint for account deletion - requires authenticated user
+app.delete('/api/delete-account', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Verify the user token
+    const { data: authData, error: authError } = await supabaseServer.auth.getUser(token);
+    
+    if (authError || !authData.user) {
+      console.error('Token verification failed:', authError?.message);
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    
+    const userId = authData.user.id;
+    const userEmail = authData.user.email;
+    
+    console.log(`Account deletion requested for user: ${userEmail} (${userId})`);
+    
+    // Track deletion errors to ensure complete data removal
+    const deletionErrors: string[] = [];
+    
+    // Delete user data in order (respecting foreign key constraints)
+    // 1. Delete notifications
+    const { error: notifError } = await supabaseServer
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId);
+    if (notifError && notifError.code !== 'PGRST116') {
+      console.error('Notifications delete error:', notifError.message);
+      deletionErrors.push(`notifications: ${notifError.message}`);
+    }
+    
+    // 2. Delete split participants where user is participant
+    const { error: participantError } = await supabaseServer
+      .from('split_participants')
+      .delete()
+      .eq('user_id', userId);
+    if (participantError && participantError.code !== 'PGRST116') {
+      console.error('Split participants delete error:', participantError.message);
+      deletionErrors.push(`split_participants: ${participantError.message}`);
+    }
+    
+    // 3. Delete split events created by user
+    const { error: splitsError } = await supabaseServer
+      .from('split_events')
+      .delete()
+      .eq('creator_id', userId);
+    if (splitsError && splitsError.code !== 'PGRST116') {
+      console.error('Split events delete error:', splitsError.message);
+      deletionErrors.push(`split_events: ${splitsError.message}`);
+    }
+    
+    // 4. Delete friend relationships (both directions)
+    const { error: friendsError1 } = await supabaseServer
+      .from('friends')
+      .delete()
+      .eq('user_id', userId);
+    if (friendsError1 && friendsError1.code !== 'PGRST116') {
+      console.error('Friends (user_id) delete error:', friendsError1.message);
+      deletionErrors.push(`friends_user: ${friendsError1.message}`);
+    }
+    
+    const { error: friendsError2 } = await supabaseServer
+      .from('friends')
+      .delete()
+      .eq('friend_id', userId);
+    if (friendsError2 && friendsError2.code !== 'PGRST116') {
+      console.error('Friends (friend_id) delete error:', friendsError2.message);
+      deletionErrors.push(`friends_friend: ${friendsError2.message}`);
+    }
+    
+    // 5. Delete transactions
+    const { error: txError } = await supabaseServer
+      .from('transactions')
+      .delete()
+      .eq('user_id', userId);
+    if (txError && txError.code !== 'PGRST116') {
+      console.error('Transactions delete error:', txError.message);
+      deletionErrors.push(`transactions: ${txError.message}`);
+    }
+    
+    // 6. Delete wallet
+    const { error: walletError } = await supabaseServer
+      .from('wallets')
+      .delete()
+      .eq('user_id', userId);
+    if (walletError && walletError.code !== 'PGRST116') {
+      console.error('Wallet delete error:', walletError.message);
+      deletionErrors.push(`wallet: ${walletError.message}`);
+    }
+    
+    // 7. Delete user profile
+    const { error: profileError } = await supabaseServer
+      .from('users')
+      .delete()
+      .eq('id', userId);
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('User profile delete error:', profileError.message);
+      deletionErrors.push(`user_profile: ${profileError.message}`);
+    }
+    
+    // Check if critical data deletion failed (wallet and user profile are critical)
+    if (deletionErrors.some(e => e.includes('wallet:') || e.includes('user_profile:'))) {
+      console.error('Critical deletion errors:', deletionErrors);
+      return res.status(500).json({ 
+        error: 'Failed to delete account data. Please contact support.',
+        details: deletionErrors 
+      });
+    }
+    
+    // 8. Delete auth user (this is the final step - only proceed if data was deleted)
+    const { error: authDeleteError } = await supabaseServer.auth.admin.deleteUser(userId);
+    
+    if (authDeleteError) {
+      console.error('Auth user deletion failed:', authDeleteError);
+      return res.status(500).json({ error: 'Failed to complete account deletion. Please contact support.' });
+    }
+    
+    // Log any non-critical deletion issues for monitoring
+    if (deletionErrors.length > 0) {
+      console.warn(`Account deleted with some non-critical errors for ${userEmail}:`, deletionErrors);
+    }
+    
+    console.log(`Account successfully deleted for: ${userEmail}`);
+    res.json({ success: true, message: 'Account deleted successfully' });
+    
+  } catch (error: any) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'An error occurred during account deletion' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend server is running' });
 });

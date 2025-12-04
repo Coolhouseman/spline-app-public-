@@ -413,4 +413,29 @@ export class AuthService {
 
     return publicUrl;
   }
+
+  static async deleteAccount(): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
+    }
+
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
+    
+    const response = await fetch(`${backendUrl}/api/delete-account`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to delete account');
+    }
+
+    await supabase.auth.signOut();
+  }
 }

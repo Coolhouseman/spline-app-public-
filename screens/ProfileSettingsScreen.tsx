@@ -28,6 +28,8 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [supportMessage, setSupportMessage] = useState('');
   const [sendingSupport, setSendingSupport] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const copyToClipboard = async () => {
     if (user?.unique_id) {
@@ -212,6 +214,19 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
       Alert.alert('Error', 'Could not open email app. Please email hzeng1217@gmail.com directly.');
     } finally {
       setSendingSupport(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      await AuthService.deleteAccount();
+      setShowDeleteModal(false);
+    } catch (error: any) {
+      console.error('Delete account error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete account. Please try again or contact support.');
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -428,6 +443,21 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
             </>
           )}
         </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.deleteAccountButton,
+            { 
+              opacity: pressed ? 0.7 : 1 
+            }
+          ]}
+          onPress={() => setShowDeleteModal(true)}
+        >
+          <Feather name="trash-2" size={18} color={Colors.light.danger} />
+          <ThemedText style={[Typography.body, { color: Colors.light.danger, marginLeft: Spacing.sm, fontWeight: '500' }]}>
+            Delete Account
+          </ThemedText>
+        </Pressable>
       </ThemedView>
 
       <Modal
@@ -526,6 +556,90 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showDeleteModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable 
+            style={styles.modalBackdrop} 
+            onPress={() => !deletingAccount && setShowDeleteModal(false)}
+          />
+          <View style={[styles.deleteModalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.deleteModalIcon}>
+              <Feather name="alert-triangle" size={48} color={Colors.light.danger} />
+            </View>
+
+            <ThemedText style={[Typography.h2, { color: theme.text, textAlign: 'center', marginTop: Spacing.lg }]}>
+              Delete Account?
+            </ThemedText>
+
+            <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.md, lineHeight: 22 }]}>
+              This action is permanent and cannot be undone. Before proceeding, please be aware:
+            </ThemedText>
+
+            <View style={[styles.warningBox, { backgroundColor: `${Colors.light.danger}10`, borderColor: `${Colors.light.danger}30` }]}>
+              <View style={styles.warningItem}>
+                <Feather name="x-circle" size={16} color={Colors.light.danger} />
+                <ThemedText style={[Typography.small, { color: theme.text, marginLeft: Spacing.sm, flex: 1 }]}>
+                  Any remaining wallet balance will be forfeited
+                </ThemedText>
+              </View>
+              <View style={styles.warningItem}>
+                <Feather name="x-circle" size={16} color={Colors.light.danger} />
+                <ThemedText style={[Typography.small, { color: theme.text, marginLeft: Spacing.sm, flex: 1 }]}>
+                  All payment history and splits will be permanently deleted
+                </ThemedText>
+              </View>
+              <View style={styles.warningItem}>
+                <Feather name="x-circle" size={16} color={Colors.light.danger} />
+                <ThemedText style={[Typography.small, { color: theme.text, marginLeft: Spacing.sm, flex: 1 }]}>
+                  Your account cannot be recovered once deleted
+                </ThemedText>
+              </View>
+            </View>
+
+            <ThemedText style={[Typography.caption, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.md, fontStyle: 'italic' }]}>
+              To avoid losing funds, please withdraw your remaining balance before deleting your account.
+            </ThemedText>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => setShowDeleteModal(false)}
+                disabled={deletingAccount}
+              >
+                <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  { backgroundColor: Colors.light.danger, opacity: pressed || deletingAccount ? 0.7 : 1 }
+                ]}
+                onPress={handleDeleteAccount}
+                disabled={deletingAccount}
+              >
+                {deletingAccount ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                    Delete Account
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </ScreenScrollView>
   );
@@ -684,5 +798,35 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing['2xl'],
+  },
+  deleteModalContent: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    marginHorizontal: Spacing.lg,
+    width: '90%',
+    maxWidth: 400,
+  },
+  deleteModalIcon: {
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  warningBox: {
+    marginTop: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+  },
+  warningItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginVertical: Spacing.xs,
   },
 });
