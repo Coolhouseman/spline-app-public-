@@ -232,11 +232,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                       {
                         text: 'Add Card',
                         onPress: () => {
-                          // First go back to dismiss this screen, then navigate to wallet
-                          navigation.goBack();
-                          setTimeout(() => {
-                            navigation.getParent()?.navigate('WalletTab');
-                          }, 100);
+                          // Navigate directly to WalletTab, ensuring it comes to front
+                          navigation.getParent()?.reset({
+                            index: 0,
+                            routes: [{ name: 'WalletTab' }],
+                          });
                         }
                       }
                     ]
@@ -311,11 +311,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     {
                       text: 'Add Card',
                       onPress: () => {
-                        // First go back to dismiss this screen, then navigate to wallet
-                        navigation.goBack();
-                        setTimeout(() => {
-                          navigation.getParent()?.navigate('WalletTab');
-                        }, 100);
+                        // Navigate directly to WalletTab, ensuring it comes to front
+                        navigation.getParent()?.reset({
+                          index: 0,
+                          routes: [{ name: 'WalletTab' }],
+                        });
                       }
                     }
                   ]
