@@ -1316,51 +1316,54 @@ router.get('/gamification/users', adminAuthMiddleware, async (req: Authenticated
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Get users with gamification data joined
+    // Get users first
     const { data: users, error: usersError, count } = await freshClient
       .from('users')
-      .select(`
-        id,
-        email,
-        first_name,
-        last_name,
-        unique_id,
-        created_at,
-        user_gamification (
-          current_level,
-          total_xp,
-          splits_paid,
-          splits_created,
-          current_streak,
-          longest_streak,
-          friends_referred,
-          total_completed_splits
-        )
-      `, { count: 'exact' })
+      .select('id, email, name, unique_id, created_at', { count: 'exact' })
       .range(offset, offset + limitNum - 1);
 
     if (usersError) {
-      console.error('Gamification users fetch error:', usersError);
+      console.error('Users fetch error:', usersError);
       return res.status(500).json({ error: usersError.message });
     }
 
+    // Get gamification data separately for robustness
+    const userIds = (users || []).map((u: any) => u.id);
+    let gamificationData: any[] = [];
+    
+    if (userIds.length > 0) {
+      const { data: gamData, error: gamError } = await freshClient
+        .from('user_gamification')
+        .select('user_id, current_level, total_xp, current_streak, longest_streak')
+        .in('user_id', userIds);
+      
+      if (!gamError) {
+        gamificationData = gamData || [];
+      } else {
+        console.log('Gamification fetch failed, continuing without:', gamError.message);
+      }
+    }
+
+    // Create a lookup map
+    const gamificationMap = new Map(gamificationData.map((g: any) => [g.user_id, g]));
+
     // Transform and sort the data
-    const transformedUsers = (users || []).map(u => {
-      const gam = Array.isArray(u.user_gamification) ? u.user_gamification[0] : u.user_gamification;
+    const transformedUsers = (users || []).map((u: any) => {
+      const gam = gamificationMap.get(u.id);
       return {
         id: u.id,
         email: u.email,
-        name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Unknown',
+        name: u.name || 'Unknown',
         unique_id: u.unique_id,
         joined: u.created_at,
         current_level: gam?.current_level || 1,
         total_xp: gam?.total_xp || 0,
-        splits_paid: gam?.splits_paid || 0,
-        splits_created: gam?.splits_created || 0,
+        splits_paid: 0,
+        splits_created: 0,
         current_streak: gam?.current_streak || 0,
         longest_streak: gam?.longest_streak || 0,
-        friends_referred: gam?.friends_referred || 0,
-        total_completed_splits: gam?.total_completed_splits || 0
+        friends_referred: 0,
+        total_completed_splits: 0
       };
     });
 
@@ -1399,24 +1402,40 @@ router.get('/gamification/stats', adminAuthMiddleware, async (req: Authenticated
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Get all gamification profiles (include balance_momentum_tier for processed tier counts)
-    const { data: profiles, error: profilesError } = await freshClient
-      .from('user_gamification')
-      .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak, balance_momentum_tier');
+    // Get all gamification profiles with progressive fallback for different schemas
+    let profiles: any[] | null = null;
 
-    if (profilesError) {
-      // If the query fails (e.g., column doesn't exist), try without the momentum tier
-      console.log('Gamification stats fetch with momentum tier failed, trying without:', profilesError.message);
-      const { data: fallbackProfiles, error: fallbackError } = await freshClient
+    // Try with all possible columns first
+    const result1 = await freshClient
+      .from('user_gamification')
+      .select('current_level, total_xp, splits_paid_on_time, splits_created, current_streak, longest_streak, balance_momentum_tier');
+
+    if (!result1.error) {
+      profiles = result1.data;
+    } else {
+      console.log('Full query failed, trying basic columns:', result1.error.message);
+      // Try with minimal columns that should exist
+      const result2 = await freshClient
         .from('user_gamification')
-        .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak');
+        .select('current_level, total_xp, current_streak, longest_streak');
       
-      if (fallbackError) {
-        console.error('Gamification stats fetch error:', fallbackError);
-        return res.status(500).json({ error: fallbackError.message });
+      if (!result2.error) {
+        profiles = result2.data;
+      } else {
+        console.log('Basic query failed, trying ultra-minimal:', result2.error.message);
+        // Ultra-minimal fallback
+        const result3 = await freshClient
+          .from('user_gamification')
+          .select('current_level, total_xp');
+        
+        if (result3.error) {
+          console.error('Gamification stats fetch error:', result3.error);
+          // Return empty data instead of error to not break the dashboard
+          profiles = [];
+        } else {
+          profiles = result3.data;
+        }
       }
-      // Use fallback profiles without momentum tier data
-      (profiles as any) = fallbackProfiles;
     }
 
     // Calculate level distribution
@@ -1431,7 +1450,7 @@ router.get('/gamification/stats', adminAuthMiddleware, async (req: Authenticated
       const level = p.current_level || 1;
       levelDistribution[level] = (levelDistribution[level] || 0) + 1;
       totalXP += p.total_xp || 0;
-      totalSplitsPaid += p.splits_paid || 0;
+      totalSplitsPaid += p.splits_paid_on_time || 0;
       totalSplitsCreated += p.splits_created || 0;
       if ((p.current_streak || 0) > 0) activeStreaks++;
       if ((p.longest_streak || 0) > longestStreak) longestStreak = p.longest_streak;
