@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { LevelBadge } from '@/components/ProfileStatsCard';
+import { FriendProfileModal } from '@/components/FriendProfileModal';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
@@ -78,6 +79,13 @@ function getResendStatus(request: SentRequest): { canResend: boolean; hoursRemai
   };
 }
 
+interface SelectedFriend {
+  id: string;
+  name: string;
+  unique_id?: string;
+  profile_picture_url?: string;
+}
+
 export default function FriendsScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -89,6 +97,19 @@ export default function FriendsScreen({ navigation }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<SelectedFriend | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+
+  const handleFriendPress = (details: FriendWithDetails['friend_details']) => {
+    if (!details) return;
+    setSelectedFriend({
+      id: details.id,
+      name: details.name,
+      unique_id: details.unique_id,
+      profile_picture_url: details.profile_picture,
+    });
+    setProfileModalVisible(true);
+  };
 
   useEffect(() => {
     loadData();
@@ -383,7 +404,14 @@ export default function FriendsScreen({ navigation }: Props) {
               if (!details) return null;
               
               return (
-                <View key={item.id} style={[styles.friendCard, { borderBottomColor: theme.border }]}>
+                <Pressable 
+                  key={item.id} 
+                  onPress={() => handleFriendPress(details)}
+                  style={({ pressed }) => [
+                    styles.friendCard, 
+                    { borderBottomColor: theme.border, opacity: pressed ? 0.7 : 1 }
+                  ]}
+                >
                   <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
                     {details.profile_picture ? (
                       <Image source={{ uri: details.profile_picture }} style={styles.avatarImage} />
@@ -404,7 +432,8 @@ export default function FriendsScreen({ navigation }: Props) {
                       ID: {details.unique_id}
                     </ThemedText>
                   </View>
-                </View>
+                  <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+                </Pressable>
               );
             })}
           </View>
@@ -432,6 +461,12 @@ export default function FriendsScreen({ navigation }: Props) {
           </View>
         ) : null}
       </ScrollView>
+
+      <FriendProfileModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        friend={selectedFriend}
+      />
     </ThemedView>
   );
 }

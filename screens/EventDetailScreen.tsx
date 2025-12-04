@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { LevelBadge } from '@/components/ProfileStatsCard';
+import { FriendProfileModal } from '@/components/FriendProfileModal';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useLevelUp } from '@/contexts/LevelUpContext';
@@ -18,6 +19,13 @@ import { FriendsService } from '@/services/friends.service';
 import { GamificationService } from '@/services/gamification.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
+
+interface SelectedParticipant {
+  id: string;
+  name: string;
+  unique_id?: string;
+  profile_picture_url?: string;
+}
 
 type Props = NativeStackScreenProps<any, 'EventDetail'>;
 
@@ -41,6 +49,19 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [participantGamification, setParticipantGamification] = useState<Record<string, { level: number; title: string } | null>>({});
+  const [selectedParticipant, setSelectedParticipant] = useState<SelectedParticipant | null>(null);
+  const [participantModalVisible, setParticipantModalVisible] = useState(false);
+
+  const handleParticipantPress = (participant: any) => {
+    if (!participant.user) return;
+    setSelectedParticipant({
+      id: participant.user_id,
+      name: participant.user.name || 'Unknown',
+      unique_id: participant.user.unique_id,
+      profile_picture_url: participant.user.profile_picture,
+    });
+    setParticipantModalVisible(true);
+  };
 
   useEffect(() => {
     loadEvent();
@@ -559,9 +580,13 @@ export default function EventDetailScreen({ route, navigation }: Props) {
             const showAmount = !isSpecifiedSplit || hasEnteredAmount;
             
             return (
-              <View
+              <Pressable
                 key={participant.user_id}
-                style={[styles.participantCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                onPress={() => handleParticipantPress(participant)}
+                style={({ pressed }) => [
+                  styles.participantCard, 
+                  { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }
+                ]}
               >
                 <View style={[styles.avatarLarge, { backgroundColor: theme.backgroundSecondary }]}>
                   {participant.user?.profile_picture ? (
@@ -639,7 +664,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     {getStatusText(getDisplayStatus(participant))}
                   </ThemedText>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -829,6 +854,12 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      <FriendProfileModal
+        visible={participantModalVisible}
+        onClose={() => setParticipantModalVisible(false)}
+        friend={selectedParticipant}
+      />
     </ThemedView>
   );
 }
