@@ -13,6 +13,7 @@ import { ThemedView } from './ThemedView';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { GamificationService, GamificationProfile, LEVEL_INFO } from '@/services/gamification.service';
+import { VoucherClaimModal } from './VoucherClaimModal';
 
 interface ProfileStatsCardProps {
   userId: string;
@@ -76,6 +77,7 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
     visible: false,
     stat: null,
   });
+  const [voucherModal, setVoucherModal] = useState(false);
 
   const progressWidth = useSharedValue(0);
   const expandHeight = useSharedValue(0);
@@ -278,9 +280,20 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
         {levelInfo.perk ? (
           <View style={[styles.currentPerk, { backgroundColor: colors.success + '15' }]}>
             <Feather name="check-circle" size={16} color={colors.success} />
-            <ThemedText style={[styles.currentPerkText, { color: colors.success }]}>
-              Unlocked: {levelInfo.perk}
-            </ThemedText>
+            <View style={styles.currentPerkContent}>
+              <ThemedText style={[styles.currentPerkText, { color: colors.success }]}>
+                Unlocked: {levelInfo.perk}
+              </ThemedText>
+              {profile.current_level >= 10 && levelInfo.perk.includes('Voucher') ? (
+                <Pressable 
+                  style={[styles.claimButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setVoucherModal(true)}
+                >
+                  <Feather name="gift" size={14} color="#fff" />
+                  <ThemedText style={styles.claimButtonText}>Claim</ThemedText>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : null}
 
@@ -385,6 +398,15 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
           example={STAT_HELP_INFO[helpModal.stat].example}
         />
       ) : null}
+
+      <VoucherClaimModal
+        visible={voucherModal}
+        onClose={() => setVoucherModal(false)}
+        userId={userId}
+        voucherType="dinner_voucher"
+        voucherValue="$50 Dinner Voucher"
+        levelRequired={10}
+      />
     </ThemedView>
   );
 }
@@ -638,15 +660,34 @@ const styles = StyleSheet.create({
   },
   currentPerk: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.sm,
     padding: Spacing.md,
     borderRadius: BorderRadius.sm,
     marginTop: Spacing.md,
   },
+  currentPerkContent: {
+    flex: 1,
+    gap: Spacing.sm,
+  },
   currentPerkText: {
     ...Typography.caption,
     fontWeight: '500',
+  },
+  claimButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    alignSelf: 'flex-start',
+  },
+  claimButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
   },
   detailedStats: {
     marginTop: Spacing.lg,

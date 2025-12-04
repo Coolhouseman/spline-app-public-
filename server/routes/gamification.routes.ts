@@ -49,13 +49,22 @@ const userAuthMiddleware = async (req: AuthenticatedRequest, res: express.Respon
   next();
 };
 
+const VOUCHER_REQUIREMENTS: Record<string, { requiredLevel: number; value: string }> = {
+  dinner_voucher: { requiredLevel: 10, value: '$50 Dinner Voucher' },
+};
+
 router.post('/claim-voucher', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { level, voucherType, voucherValue } = req.body;
+    const { voucherType } = req.body;
 
-    if (!level || !voucherType || !voucherValue) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!voucherType) {
+      return res.status(400).json({ error: 'Missing voucher type' });
+    }
+
+    const voucherConfig = VOUCHER_REQUIREMENTS[voucherType];
+    if (!voucherConfig) {
+      return res.status(400).json({ error: 'Invalid voucher type' });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey || '', {
@@ -83,8 +92,8 @@ router.post('/claim-voucher', userAuthMiddleware, async (req: AuthenticatedReque
       return res.status(404).json({ error: 'Gamification profile not found' });
     }
 
-    if (gamProfile.level < level) {
-      return res.status(403).json({ error: 'Level requirement not met' });
+    if (gamProfile.level < voucherConfig.requiredLevel) {
+      return res.status(403).json({ error: `Level ${voucherConfig.requiredLevel} required to claim this voucher` });
     }
 
     const { data: existingClaim, error: claimCheckError } = await supabase
@@ -105,8 +114,8 @@ router.post('/claim-voucher', userAuthMiddleware, async (req: AuthenticatedReque
       .insert({
         user_id: userId,
         voucher_type: voucherType,
-        voucher_value: voucherValue,
-        level_required: level,
+        voucher_value: voucherConfig.value,
+        level_required: voucherConfig.requiredLevel,
         status: 'pending'
       });
 
@@ -125,7 +134,7 @@ router.post('/claim-voucher', userAuthMiddleware, async (req: AuthenticatedReque
       userPhone: userData.phone || 'Not provided',
       level: gamProfile.level,
       voucherType,
-      voucherValue,
+      voucherValue: voucherConfig.value,
       claimedAt
     });
 
