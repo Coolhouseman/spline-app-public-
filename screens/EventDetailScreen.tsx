@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
@@ -34,6 +35,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
   const [customAmount, setCustomAmount] = useState('');
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   useEffect(() => {
     loadEvent();
@@ -208,6 +210,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
           {
             text: 'Confirm',
             onPress: async () => {
+              setPaymentProcessing(true);
               try {
                 // paySplitEvent now atomically handles wallet deduction AND split status update
                 await WalletService.paySplitEvent(
@@ -219,9 +222,11 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                 );
                 
                 // No need to call SplitsService.paySplit() - atomic RPC already updated status
+                setPaymentProcessing(false);
                 Alert.alert('Payment Successful', 'Your payment has been processed');
                 loadEvent();
               } catch (error: any) {
+                setPaymentProcessing(false);
                 console.error('Payment failed:', error);
                 if (error.message.includes('Insufficient wallet balance') || error.message.includes('Add a payment card')) {
                   Alert.alert(
@@ -284,6 +289,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
         {
           text: 'Confirm',
           onPress: async () => {
+            setPaymentProcessing(true);
             try {
               await SplitsService.updateParticipantAmount(user.id, eventId, amount);
               
@@ -297,10 +303,12 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               );
               
               // No need to call SplitsService.paySplit() - atomic RPC already updated status
+              setPaymentProcessing(false);
               setPaymentAmount('');
               Alert.alert('Payment Successful', 'Your payment has been processed');
               loadEvent();
             } catch (error: any) {
+              setPaymentProcessing(false);
               console.error('Payment failed:', error);
               if (error.message.includes('Insufficient wallet balance') || error.message.includes('Add a payment card')) {
                 Alert.alert(
@@ -403,6 +411,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
 
   return (
     <ThemedView style={styles.container}>
+      <LoadingOverlay visible={paymentProcessing} message="Processing payment..." fullScreen />
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={[

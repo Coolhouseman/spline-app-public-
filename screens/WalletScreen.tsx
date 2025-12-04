@@ -214,6 +214,8 @@ export default function WalletScreen({ navigation }: Props) {
   const handleCardSuccess = async (paymentMethodId: string, cardDetails: { brand: string; last4: string }) => {
     if (!user || !cardSetupData) return;
     
+    // Note: CardInputModal awaits this function to keep its loading overlay visible
+    // We also set processing state to prevent duplicate submissions
     setProcessing(true);
     try {
       await StripeService.verifyAndSaveNativeCardSetup(

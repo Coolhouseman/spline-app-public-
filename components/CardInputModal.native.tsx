@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 interface CardInputModalProps {
   visible: boolean;
   onClose: () => void;
-  onSuccess: (paymentMethodId: string, cardDetails: { brand: string; last4: string }) => void;
+  onSuccess: (paymentMethodId: string, cardDetails: { brand: string; last4: string }) => Promise<void> | void;
   clientSecret: string;
   customerId: string;
   setupIntentId: string;
@@ -91,7 +91,9 @@ export function CardInputModal({
       if (setupIntent && setupIntent.paymentMethodId) {
         const brand = cardDetails?.brand || 'card';
         const last4 = cardDetails?.last4 || '****';
-        onSuccess(setupIntent.paymentMethodId, { brand, last4 });
+        // Await the full onSuccess flow (including backend verification)
+        // This keeps the loading overlay visible until everything is complete
+        await onSuccess(setupIntent.paymentMethodId, { brand, last4 });
       }
     } catch (error: any) {
       console.error('Card setup error:', error);
