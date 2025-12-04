@@ -4,10 +4,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { LevelBadge } from '@/components/ProfileStatsCard';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { FriendsService } from '@/services/friends.service';
+import { GamificationService } from '@/services/gamification.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 
@@ -41,6 +43,10 @@ interface FriendWithDetails {
     profile_picture?: string;
     bio?: string;
   };
+  gamification?: {
+    current_level: number;
+    total_xp: number;
+  } | null;
 }
 
 interface SentRequest {
@@ -100,7 +106,19 @@ export default function FriendsScreen({ navigation }: Props) {
         FriendsService.getPendingRequests(user.id),
         FriendsService.getSentPendingRequests(user.id),
       ]);
-      setFriends(friendsData as FriendWithDetails[]);
+      
+      const friendsWithGamification = await Promise.all(
+        (friendsData as FriendWithDetails[]).map(async (friend) => {
+          try {
+            const gamification = await GamificationService.getProfile(friend.friend_details.id);
+            return { ...friend, gamification };
+          } catch {
+            return { ...friend, gamification: null };
+          }
+        })
+      );
+      
+      setFriends(friendsWithGamification);
       setPendingRequests(requestsData as unknown as PendingRequest[]);
       setSentRequests(sentData as unknown as SentRequest[]);
     } catch (error) {
@@ -175,9 +193,14 @@ export default function FriendsScreen({ navigation }: Props) {
           )}
         </View>
         <View style={styles.friendInfo}>
-          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
-            {details.name}
-          </ThemedText>
+          <View style={styles.friendNameRow}>
+            <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+              {details.name}
+            </ThemedText>
+            {item.gamification?.current_level ? (
+              <LevelBadge level={item.gamification.current_level} size="small" />
+            ) : null}
+          </View>
           <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
             ID: {details.unique_id}
           </ThemedText>
@@ -465,6 +488,11 @@ const styles = StyleSheet.create({
   friendInfo: {
     flex: 1,
     marginLeft: Spacing.md,
+  },
+  friendNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   emptyState: {
     alignItems: 'center',

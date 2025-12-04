@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { useLevelUp } from '@/contexts/LevelUpContext';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 
@@ -24,6 +25,7 @@ type Props = NativeStackScreenProps<any, 'CreateSplitDetails'>;
 export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { checkLevelUp } = useLevelUp();
   const { selectedFriends, splitType } = route.params as { selectedFriends: Friend[]; splitType: 'equal' | 'specified' };
 
   const [eventName, setEventName] = useState('');
@@ -123,7 +125,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           return;
         }
 
-        await SplitsService.createSplit({
+        const result = await SplitsService.createSplit({
           name: eventName.trim(),
           totalAmount: amount,
           splitType,
@@ -131,6 +133,10 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           participants,
           receiptUri: receiptImage,
         });
+        
+        if (result.xpResult) {
+          checkLevelUp(result.xpResult);
+        }
       } else {
         creatorAmount = parseFloat(myShare || '0');
         
@@ -142,7 +148,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           })),
         ];
 
-        await SplitsService.createSplit({
+        const result = await SplitsService.createSplit({
           name: eventName.trim(),
           totalAmount: amount,
           splitType,
@@ -150,6 +156,10 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           participants,
           receiptUri: receiptImage,
         });
+        
+        if (result.xpResult) {
+          checkLevelUp(result.xpResult);
+        }
       }
 
       // Reset the navigation stack to show MainHome with the tab bar

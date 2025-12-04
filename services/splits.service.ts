@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { BackendNotificationsService } from './backendNotifications.service';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
-import { GamificationService } from './gamification.service';
+import { GamificationService, XPAwardResult } from './gamification.service';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
@@ -16,8 +16,17 @@ export interface CreateSplitData {
   receiptUri?: string;
 }
 
+export interface CreateSplitResult {
+  split: SplitEvent;
+  xpResult?: XPAwardResult | null;
+}
+
+export interface PaySplitResult {
+  xpResult?: XPAwardResult | null;
+}
+
 export class SplitsService {
-  static async createSplit(data: CreateSplitData): Promise<SplitEvent> {
+  static async createSplit(data: CreateSplitData): Promise<CreateSplitResult> {
     let receiptUrl: string | undefined;
 
     if (data.receiptUri) {
@@ -134,8 +143,9 @@ export class SplitsService {
     }
 
     // Award XP for creating the split
+    let xpResult: import('./gamification.service').XPAwardResult | null = null;
     try {
-      await GamificationService.onSplitCreated(
+      xpResult = await GamificationService.onSplitCreated(
         data.creatorId,
         split.id,
         data.totalAmount,
@@ -145,7 +155,7 @@ export class SplitsService {
       console.error('Gamification error (non-blocking):', gamificationError);
     }
 
-    return split as SplitEvent;
+    return { split: split as SplitEvent, xpResult };
   }
 
   static async getSplits(userId: string): Promise<SplitEvent[]> {
@@ -316,7 +326,7 @@ export class SplitsService {
     if (error) throw error;
   }
 
-  static async paySplit(userId: string, splitId: string): Promise<void> {
+  static async paySplit(userId: string, splitId: string): Promise<PaySplitResult> {
     const { data: participant, error: fetchError } = await supabase
       .from('split_participants')
       .select('amount, split_events(creator_id, name, created_at)')
@@ -345,8 +355,9 @@ export class SplitsService {
       .single();
 
     // Award XP for paying the split
+    let xpResult: XPAwardResult | null = null;
     try {
-      await GamificationService.onSplitPaid(
+      xpResult = await GamificationService.onSplitPaid(
         userId,
         splitId,
         participant.amount,
@@ -375,6 +386,8 @@ export class SplitsService {
     });
 
     await this.checkAndNotifySplitCompletion(splitId);
+    
+    return { xpResult };
   }
 
   static async checkAndNotifySplitCompletion(splitId: string): Promise<void> {

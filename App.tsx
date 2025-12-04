@@ -14,6 +14,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StripeWrapper } from "@/components/StripeWrapper";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { LevelUpProvider } from "@/contexts/LevelUpContext";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
 import { supabase } from "@/services/supabase";
@@ -204,13 +205,15 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <View style={[styles.root, { backgroundColor: splashBg }]}>
-          <StripeWrapper>
-            <SafeAreaProvider>
-              <AppContent />
-            </SafeAreaProvider>
-          </StripeWrapper>
-        </View>
+        <LevelUpProvider>
+          <View style={[styles.root, { backgroundColor: splashBg }]}>
+            <StripeWrapper>
+              <SafeAreaProvider>
+                <AppContent />
+              </SafeAreaProvider>
+            </StripeWrapper>
+          </View>
+        </LevelUpProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { StripeService } from './stripe.service';
+import { GamificationService, XPAwardResult } from './gamification.service';
 import type { Wallet, Transaction } from '@/shared/types';
 
 /**
@@ -1154,7 +1155,7 @@ export class WalletService {
     amount: number,
     recipientId: string,
     eventName: string
-  ): Promise<Transaction> {
+  ): Promise<{ transaction: Transaction; xpResult?: XPAwardResult | null }> {
     if (amount <= 0) {
       throw new Error('Payment amount must be greater than zero');
     }
@@ -1425,7 +1426,55 @@ export class WalletService {
     }
 
     console.log(`Split payment completed: $${amount.toFixed(2)} from ${userId} to ${recipientId}`);
-    return payerTransaction;
+    
+    // STEP 6: Award XP for paying the split
+    let xpResult: XPAwardResult | null = null;
+    try {
+      // Get the split event creation date for speed bonuses
+      const { data: splitEvent } = await supabase
+        .from('split_events')
+        .select('created_at')
+        .eq('id', splitEventId)
+        .single();
+      
+      const splitCreatedAt = splitEvent?.created_at 
+        ? new Date(splitEvent.created_at) 
+        : new Date();
+      
+      xpResult = await GamificationService.onSplitPaid(
+        userId,
+        splitEventId,
+        amount,
+        splitCreatedAt
+      );
+      console.log(`XP awarded for split payment: ${xpResult?.xp_awarded || 0} XP`);
+    } catch (gamificationError) {
+      console.error('Gamification error (non-blocking):', gamificationError);
+    }
+    
+    // Check if this completes the split
+    try {
+      const { data: participants } = await supabase
+        .from('split_participants')
+        .select('user_id, status, is_creator')
+        .eq('split_event_id', splitEventId);
+      
+      if (participants) {
+        const nonCreatorParticipants = participants.filter(p => !p.is_creator);
+        const allPaid = nonCreatorParticipants.every(p => p.status === 'paid');
+        
+        if (allPaid && nonCreatorParticipants.length > 0) {
+          // Award completion XP
+          const participantIds = participants.map(p => p.user_id);
+          await GamificationService.onSplitCompleted(recipientId, splitEventId, participantIds);
+          console.log('Split completed - completion XP awarded');
+        }
+      }
+    } catch (completionError) {
+      console.error('Completion gamification error (non-blocking):', completionError);
+    }
+    
+    return { transaction: payerTransaction, xpResult };
   }
 
   static async getTransactions(userId: string): Promise<Transaction[]> {

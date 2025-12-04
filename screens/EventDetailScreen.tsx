@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { useLevelUp } from '@/contexts/LevelUpContext';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { SplitsService } from '@/services/splits.service';
 import { WalletService } from '@/services/wallet.service';
@@ -21,6 +22,7 @@ type Props = NativeStackScreenProps<any, 'EventDetail'>;
 export default function EventDetailScreen({ route, navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { checkLevelUp } = useLevelUp();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
   const headerHeight = useHeaderHeight();
@@ -213,13 +215,18 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               setPaymentProcessing(true);
               try {
                 // paySplitEvent now atomically handles wallet deduction AND split status update
-                await WalletService.paySplitEvent(
+                const result = await WalletService.paySplitEvent(
                   user.id,
                   eventId,
                   participantAmount,
                   event.creator_id,
                   event.name
                 );
+                
+                // Check if user leveled up
+                if (result.xpResult) {
+                  checkLevelUp(result.xpResult);
+                }
                 
                 // No need to call SplitsService.paySplit() - atomic RPC already updated status
                 setPaymentProcessing(false);
@@ -294,13 +301,18 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               await SplitsService.updateParticipantAmount(user.id, eventId, amount);
               
               // paySplitEvent now atomically handles wallet deduction AND split status update
-              await WalletService.paySplitEvent(
+              const result = await WalletService.paySplitEvent(
                 user.id,
                 eventId,
                 amount,
                 event.creator_id,
                 event.name
               );
+              
+              // Check if user leveled up
+              if (result.xpResult) {
+                checkLevelUp(result.xpResult);
+              }
               
               // No need to call SplitsService.paySplit() - atomic RPC already updated status
               setPaymentProcessing(false);
