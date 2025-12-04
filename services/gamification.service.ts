@@ -220,15 +220,72 @@ export const BADGE_DEFINITIONS = {
   },
 };
 
+// Level thresholds for calculating level from XP
+const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000, 13600, 15300, 17100, 19000, 21000, 23100, 25300, 27600, 30000, 32500, 35100, 37800, 40600, 43500, 46500, 49600, 52800, 56100, 59500, 63000, 66600, 70300, 74100, 78000, 82000, 86100, 90300, 94600, 99000, 103500, 108100, 112800, 117600, 122500];
+
+function calculateLevel(totalXP: number): number {
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (totalXP >= LEVEL_THRESHOLDS[i]) {
+      return i + 1;
+    }
+  }
+  return 1;
+}
+
+function calculateXPToNextLevel(totalXP: number, currentLevel: number): number {
+  if (currentLevel >= LEVEL_THRESHOLDS.length) return 0;
+  return LEVEL_THRESHOLDS[currentLevel] - totalXP;
+}
+
+function getTitleForLevel(level: number): string {
+  if (level >= 50) return 'Elite Splitter';
+  if (level >= 40) return 'Master Organizer';
+  if (level >= 30) return 'Split Legend';
+  if (level >= 25) return 'Bill Boss';
+  if (level >= 20) return 'Payment Pro';
+  if (level >= 15) return 'Split Champion';
+  if (level >= 10) return 'Trusted Splitter';
+  if (level >= 7) return 'Rising Star';
+  if (level >= 5) return 'Active Member';
+  if (level >= 3) return 'Getting Started';
+  return 'Newcomer';
+}
+
 export class GamificationService {
   /**
    * Initialize gamification profile for a new user
+   * Uses direct table insert as fallback if RPC function doesn't exist
    */
   static async initializeUser(userId: string): Promise<void> {
     try {
-      await supabase.rpc('initialize_user_gamification', {
+      // First try RPC
+      const { error: rpcError } = await supabase.rpc('initialize_user_gamification', {
         p_user_id: userId
       });
+      
+      if (rpcError) {
+        // Fallback: Direct table insert
+        console.log('RPC not available, using direct insert for gamification init');
+        const { error: insertError } = await supabase
+          .from('user_gamification')
+          .upsert({
+            user_id: userId,
+            total_xp: 0,
+            current_level: 1,
+            splits_paid: 0,
+            splits_created: 0,
+            current_streak: 0,
+            longest_streak: 0,
+            friends_referred: 0,
+            total_completed_splits: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+        
+        if (insertError && !insertError.message.includes('duplicate')) {
+          console.error('Failed to initialize gamification (direct):', insertError);
+        }
+      }
     } catch (error) {
       console.error('Failed to initialize gamification:', error);
     }
@@ -236,27 +293,127 @@ export class GamificationService {
 
   /**
    * Get user's gamification profile
+   * Returns a default profile if gamification tables don't exist
    */
   static async getProfile(userId: string): Promise<GamificationProfile | null> {
     try {
-      const { data, error } = await supabase.rpc('get_user_gamification', {
+      // First try RPC
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_user_gamification', {
         p_user_id: userId
       });
 
-      if (error) {
-        console.error('Failed to get gamification profile:', error);
-        return null;
+      if (!rpcError && rpcData) {
+        return rpcData as GamificationProfile;
       }
 
-      return data as GamificationProfile;
+      // RPC failed - try direct table query
+      const { data: profile, error: profileError } = await supabase
+        .from('user_gamification')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!profileError && profile) {
+        return this.buildProfileFromData(userId, profile);
+      }
+
+      // If the table doesn't exist or profile not found, return a sensible default
+      // This ensures the UI always has something to display
+      console.log('Gamification data not available, returning default profile');
+      return this.getDefaultProfile();
     } catch (error) {
       console.error('Error getting gamification profile:', error);
-      return null;
+      return this.getDefaultProfile();
     }
+  }
+  
+  /**
+   * Get a default profile for users without gamification data
+   */
+  static getDefaultProfile(): GamificationProfile {
+    return {
+      total_xp: 0,
+      current_level: 1,
+      xp_to_next_level: 100,
+      xp_progress_percent: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      title: 'Newcomer',
+      splits_created: 0,
+      splits_paid_on_time: 0,
+      splits_completed_as_creator: 0,
+      total_amount_split: 0,
+      friends_referred: 0,
+      badges: [],
+      recent_xp: []
+    };
+  }
+
+  /**
+   * Build a GamificationProfile from raw database data
+   */
+  private static async buildProfileFromData(userId: string, data: any): Promise<GamificationProfile> {
+    const totalXP = data.total_xp || 0;
+    const currentLevel = data.current_level || calculateLevel(totalXP);
+    const xpToNextLevel = calculateXPToNextLevel(totalXP, currentLevel);
+    const currentLevelThreshold = currentLevel > 0 ? LEVEL_THRESHOLDS[currentLevel - 1] : 0;
+    const nextLevelThreshold = currentLevel < LEVEL_THRESHOLDS.length ? LEVEL_THRESHOLDS[currentLevel] : LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
+    const xpProgress = nextLevelThreshold > currentLevelThreshold 
+      ? ((totalXP - currentLevelThreshold) / (nextLevelThreshold - currentLevelThreshold)) * 100
+      : 100;
+
+    // Fetch badges
+    const { data: badges } = await supabase
+      .from('user_badges')
+      .select('badge_id, earned_at')
+      .eq('user_id', userId);
+
+    // Fetch recent XP history
+    const { data: recentXP } = await supabase
+      .from('xp_history')
+      .select('xp_amount, action_type, description, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const formattedBadges: Badge[] = (badges || []).map(b => {
+      const badgeDef = BADGE_DEFINITIONS[b.badge_id as keyof typeof BADGE_DEFINITIONS];
+      return {
+        badge_id: b.badge_id,
+        badge_name: badgeDef?.name || b.badge_id,
+        badge_description: badgeDef?.description || '',
+        badge_icon: badgeDef?.icon || 'award',
+        badge_tier: badgeDef?.tier || 'bronze',
+        earned_at: b.earned_at
+      };
+    });
+
+    return {
+      total_xp: totalXP,
+      current_level: currentLevel,
+      xp_to_next_level: xpToNextLevel,
+      xp_progress_percent: Math.min(100, Math.max(0, xpProgress)),
+      current_streak: data.current_streak || 0,
+      longest_streak: data.longest_streak || 0,
+      title: getTitleForLevel(currentLevel),
+      splits_created: data.splits_created || 0,
+      splits_paid_on_time: data.splits_paid || 0,
+      splits_completed_as_creator: data.total_completed_splits || 0,
+      total_amount_split: 0, // Not tracked directly
+      friends_referred: data.friends_referred || 0,
+      badges: formattedBadges,
+      recent_xp: (recentXP || []).map(x => ({
+        xp_amount: x.xp_amount,
+        action_type: x.action_type,
+        description: x.description,
+        created_at: x.created_at
+      }))
+    };
   }
 
   /**
    * Award XP to a user
+   * Returns null if gamification system is not available (non-blocking)
    */
   static async awardXP(
     userId: string,
@@ -275,22 +432,24 @@ export class GamificationService {
       });
 
       if (error) {
-        console.error('Failed to award XP:', error);
+        // Log but don't throw - gamification is non-blocking
+        console.log('Gamification: XP award skipped (RPC not available):', actionType, xpAmount);
         return null;
       }
 
-      // Update streak as well
-      await this.updateStreak(userId);
+      // Update streak as well (non-blocking)
+      this.updateStreak(userId).catch(() => {});
 
       return data as XPAwardResult;
     } catch (error) {
-      console.error('Error awarding XP:', error);
+      console.log('Gamification: XP award skipped (error):', actionType);
       return null;
     }
   }
 
   /**
    * Update user's activity streak
+   * Non-blocking - returns null if gamification not available
    */
   static async updateStreak(userId: string): Promise<{ new_streak: number; streak_bonus_xp: number } | null> {
     try {
@@ -299,29 +458,30 @@ export class GamificationService {
       });
 
       if (error) {
-        console.error('Failed to update streak:', error);
+        console.log('Gamification: Streak update skipped (RPC not available)');
         return null;
       }
 
-      // If there's a streak bonus, award it
+      // If there's a streak bonus, award it (non-blocking)
       if (data?.streak_bonus_xp > 0) {
-        await this.awardXP(
+        this.awardXP(
           userId,
           data.streak_bonus_xp,
           'streak_bonus',
           `${data.new_streak}-day streak bonus!`
-        );
+        ).catch(() => {});
       }
 
       return data;
     } catch (error) {
-      console.error('Error updating streak:', error);
+      console.log('Gamification: Streak update skipped (error)');
       return null;
     }
   }
 
   /**
    * Update a specific stat
+   * Non-blocking - logs and continues if gamification not available
    */
   static async updateStat(
     userId: string,
@@ -329,18 +489,23 @@ export class GamificationService {
     amount: number = 1
   ): Promise<void> {
     try {
-      await supabase.rpc('update_gamification_stats', {
+      const { error } = await supabase.rpc('update_gamification_stats', {
         p_user_id: userId,
         p_stat_type: statType,
         p_amount: amount
       });
+      
+      if (error) {
+        console.log('Gamification: Stat update skipped (RPC not available):', statType);
+      }
     } catch (error) {
-      console.error('Error updating stat:', error);
+      console.log('Gamification: Stat update skipped (error):', statType);
     }
   }
 
   /**
    * Award a badge to user
+   * Non-blocking - returns false if gamification not available
    */
   static async awardBadge(
     userId: string,
@@ -360,13 +525,13 @@ export class GamificationService {
       });
 
       if (error) {
-        console.error('Failed to award badge:', error);
+        console.log('Gamification: Badge award skipped (RPC not available):', badgeId);
         return false;
       }
 
       return data?.success || false;
     } catch (error) {
-      console.error('Error awarding badge:', error);
+      console.log('Gamification: Badge award skipped (error):', badgeId);
       return false;
     }
   }

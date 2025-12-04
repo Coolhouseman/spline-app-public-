@@ -1301,4 +1301,313 @@ export async function broadcastMetricsUpdate() {
   }
 }
 
+// ======== GAMIFICATION ENDPOINTS ========
+
+// Get all users with their gamification stats
+router.get('/gamification/users', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sortBy = 'current_level', order = 'desc', page = '1', limit = '50' } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = Math.min(parseInt(limit as string) || 50, 100);
+    const offset = (pageNum - 1) * limitNum;
+
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Get users with gamification data joined
+    const { data: users, error: usersError, count } = await freshClient
+      .from('users')
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name,
+        unique_id,
+        created_at,
+        user_gamification (
+          current_level,
+          total_xp,
+          splits_paid,
+          splits_created,
+          current_streak,
+          longest_streak,
+          friends_referred,
+          total_completed_splits
+        )
+      `, { count: 'exact' })
+      .range(offset, offset + limitNum - 1);
+
+    if (usersError) {
+      console.error('Gamification users fetch error:', usersError);
+      return res.status(500).json({ error: usersError.message });
+    }
+
+    // Transform and sort the data
+    const transformedUsers = (users || []).map(u => {
+      const gam = Array.isArray(u.user_gamification) ? u.user_gamification[0] : u.user_gamification;
+      return {
+        id: u.id,
+        email: u.email,
+        name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Unknown',
+        unique_id: u.unique_id,
+        joined: u.created_at,
+        current_level: gam?.current_level || 1,
+        total_xp: gam?.total_xp || 0,
+        splits_paid: gam?.splits_paid || 0,
+        splits_created: gam?.splits_created || 0,
+        current_streak: gam?.current_streak || 0,
+        longest_streak: gam?.longest_streak || 0,
+        friends_referred: gam?.friends_referred || 0,
+        total_completed_splits: gam?.total_completed_splits || 0
+      };
+    });
+
+    // Sort locally (Supabase can't sort on joined table columns directly)
+    const validSortFields = ['current_level', 'total_xp', 'splits_paid', 'splits_created', 'current_streak', 'joined'];
+    const sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'current_level';
+    const sortOrder = order === 'asc' ? 1 : -1;
+
+    transformedUsers.sort((a: any, b: any) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return (aVal - bVal) * sortOrder;
+      }
+      return String(aVal).localeCompare(String(bVal)) * sortOrder;
+    });
+
+    res.json({
+      users: transformedUsers,
+      total_count: count || 0,
+      page: pageNum,
+      limit: limitNum,
+      total_pages: Math.ceil((count || 0) / limitNum)
+    });
+  } catch (error: any) {
+    console.error('Gamification users error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get gamification summary statistics
+router.get('/gamification/stats', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Get all gamification profiles
+    const { data: profiles, error: profilesError } = await freshClient
+      .from('user_gamification')
+      .select('current_level, total_xp, splits_paid, splits_created, current_streak, longest_streak');
+
+    if (profilesError) {
+      console.error('Gamification stats fetch error:', profilesError);
+      return res.status(500).json({ error: profilesError.message });
+    }
+
+    // Calculate level distribution
+    const levelDistribution: Record<number, number> = {};
+    let totalXP = 0;
+    let totalSplitsPaid = 0;
+    let totalSplitsCreated = 0;
+    let activeStreaks = 0;
+    let longestStreak = 0;
+
+    (profiles || []).forEach(p => {
+      const level = p.current_level || 1;
+      levelDistribution[level] = (levelDistribution[level] || 0) + 1;
+      totalXP += p.total_xp || 0;
+      totalSplitsPaid += p.splits_paid || 0;
+      totalSplitsCreated += p.splits_created || 0;
+      if ((p.current_streak || 0) > 0) activeStreaks++;
+      if ((p.longest_streak || 0) > longestStreak) longestStreak = p.longest_streak;
+    });
+
+    const totalUsers = profiles?.length || 0;
+    const avgLevel = totalUsers > 0 
+      ? (profiles || []).reduce((sum, p) => sum + (p.current_level || 1), 0) / totalUsers 
+      : 1;
+    const avgXP = totalUsers > 0 ? totalXP / totalUsers : 0;
+
+    // Get XP history for recent activity
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentXP, error: recentXPError } = await freshClient
+      .from('xp_history')
+      .select('xp_amount, created_at')
+      .gte('created_at', sevenDaysAgo);
+
+    const xpAwarded7d = (recentXP || []).reduce((sum, x) => sum + (x.xp_amount || 0), 0);
+
+    // Get badges statistics
+    const { data: badges, error: badgesError } = await freshClient
+      .from('user_badges')
+      .select('badge_id');
+
+    const badgeCounts: Record<string, number> = {};
+    (badges || []).forEach(b => {
+      badgeCounts[b.badge_id] = (badgeCounts[b.badge_id] || 0) + 1;
+    });
+
+    res.json({
+      total_users_with_gamification: totalUsers,
+      average_level: Math.round(avgLevel * 100) / 100,
+      average_xp: Math.round(avgXP),
+      total_xp_in_system: totalXP,
+      xp_awarded_7days: xpAwarded7d,
+      total_splits_paid: totalSplitsPaid,
+      total_splits_created: totalSplitsCreated,
+      users_with_active_streaks: activeStreaks,
+      longest_streak_ever: longestStreak,
+      level_distribution: levelDistribution,
+      badge_distribution: badgeCounts
+    });
+  } catch (error: any) {
+    console.error('Gamification stats error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get XP history for a specific user
+router.get('/gamification/users/:userId/xp-history', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = '50' } = req.query;
+
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: history, error: historyError } = await freshClient
+      .from('xp_history')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit as string) || 50);
+
+    if (historyError) {
+      return res.status(500).json({ error: historyError.message });
+    }
+
+    res.json({ xp_history: history || [] });
+  } catch (error: any) {
+    console.error('XP history fetch error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get badges for a specific user
+router.get('/gamification/users/:userId/badges', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: badges, error: badgesError } = await freshClient
+      .from('user_badges')
+      .select('*')
+      .eq('user_id', userId)
+      .order('earned_at', { ascending: false });
+
+    if (badgesError) {
+      return res.status(500).json({ error: badgesError.message });
+    }
+
+    res.json({ badges: badges || [] });
+  } catch (error: any) {
+    console.error('Badges fetch error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manually award XP to a user (admin tool)
+router.post('/gamification/users/:userId/award-xp', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { xp_amount, reason } = req.body;
+
+    if (!xp_amount || typeof xp_amount !== 'number' || xp_amount <= 0) {
+      return res.status(400).json({ error: 'Invalid XP amount' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ error: 'Reason is required' });
+    }
+
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Get current gamification profile
+    const { data: profile, error: profileError } = await freshClient
+      .from('user_gamification')
+      .select('current_level, total_xp')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError) {
+      return res.status(404).json({ error: 'User gamification profile not found' });
+    }
+
+    const newTotalXP = (profile.total_xp || 0) + xp_amount;
+    
+    // Calculate new level based on XP
+    const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2100, 2800];
+    let newLevel = 1;
+    for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+      if (newTotalXP >= LEVEL_THRESHOLDS[i]) {
+        newLevel = i + 1;
+        break;
+      }
+    }
+
+    // Update profile
+    const { error: updateError } = await freshClient
+      .from('user_gamification')
+      .update({
+        total_xp: newTotalXP,
+        current_level: newLevel,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    // Log XP history
+    await freshClient
+      .from('xp_history')
+      .insert({
+        user_id: userId,
+        action_type: 'admin_award',
+        xp_amount: xp_amount,
+        description: `Admin award: ${reason}`,
+        metadata: {
+          awarded_by: req.adminUser?.email,
+          reason
+        }
+      });
+
+    res.json({
+      success: true,
+      message: `Awarded ${xp_amount} XP to user`,
+      new_total_xp: newTotalXP,
+      new_level: newLevel,
+      leveled_up: newLevel > (profile.current_level || 1)
+    });
+  } catch (error: any) {
+    console.error('XP award error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
