@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Modal, Pressable, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { CardField, useStripe, CardFieldInput } from '@stripe/stripe-react-native';
 import { ThemedText } from '@/components/ThemedText';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { Feather } from '@expo/vector-icons';
@@ -115,6 +116,7 @@ export function CardInputModal({
       transparent={true}
       onRequestClose={handleClose}
     >
+      <LoadingOverlay visible={processing} message="Adding your card..." fullScreen />
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
