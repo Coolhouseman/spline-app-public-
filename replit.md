@@ -59,7 +59,11 @@ Preferred communication style: Simple, everyday language.
 - **Payment Flow**: Prioritizes wallet deduction, then card charge, with automatic refunds for failed card payments.
 - **Creator Wallet Credits**: Creator's wallet credited when participants pay their share.
 - **Withdrawal Types**: Fast Transfer (2% fee) and Normal Transfer (free). Manual processing by admin.
-- **Anti-Abuse Mechanism**: 24-hour hold on deposited funds, maximum 3 withdrawals per day.
+- **Anti-Abuse Mechanism**: 
+  - **5-day hold on deposited funds**: Users cannot withdraw deposited funds for 5 days after deposit (earned funds from split payments can be withdrawn immediately)
+  - **Maximum 2 deposits per day**: Rate limits deposits to prevent rapid fund cycling
+  - **Maximum 3 withdrawals per day**: Daily withdrawal limit across all types
+  - **4 withdrawals per month per type**: Monthly limit for both fast and normal transfers
 - **Atomic RPC Functions**: PostgreSQL RPC functions with `FOR UPDATE` row locks for all wallet balance changes (`process_deposit`, `process_withdrawal`, `process_split_payment`, `credit_recipient_wallet`, `log_transaction_rpc`).
 
 ### Stripe Card Binding (PCI Compliant)

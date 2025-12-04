@@ -591,6 +591,12 @@ export class WalletService {
       throw new Error('Deposit amount must be greater than zero');
     }
 
+    // Check deposit rate limit (max 2 deposits per day)
+    const depositLimitCheck = await this.checkDepositLimit(userId);
+    if (depositLimitCheck.blocked) {
+      throw new Error(depositLimitCheck.message || 'Deposit limit reached. Please try again later.');
+    }
+
     const { data: wallet } = await supabase
       .from('wallets')
       .select('stripe_customer_id, stripe_payment_method_id, bank_connected')
@@ -601,7 +607,7 @@ export class WalletService {
       throw new Error('Payment card must be added to deposit funds');
     }
 
-    console.log(`Processing Stripe deposit of $${amount.toFixed(2)} for user ${userId}`);
+    console.log(`Processing Stripe deposit of $${amount.toFixed(2)} for user ${userId} (deposit ${depositLimitCheck.depositsToday + 1}/2 today)`);
 
     const chargeResult = await StripeService.chargeCard(
       wallet.stripe_customer_id,
@@ -740,10 +746,49 @@ export class WalletService {
   }
 
   /**
-   * CHECK FOR POTENTIAL FUND CYCLING ABUSE
-   * Detects if user is moving money in/out rapidly to exploit the system
-   * Returns warning message if abuse detected, null if OK
+   * CHECK DEPOSIT RATE LIMIT
+   * Limits users to maximum 2 deposits per 24 hours to prevent abuse
+   * Returns blocked: true if limit reached, with remaining time until next deposit allowed
    */
+  static async checkDepositLimit(userId: string): Promise<{ 
+    blocked: boolean; 
+    message?: string; 
+    depositsToday: number;
+    hoursUntilReset?: number;
+  }> {
+    const MAX_DEPOSITS_PER_DAY = 2;
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // Get deposits in the last 24 hours
+    const { data: recentDeposits } = await supabase
+      .from('transactions')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('type', 'deposit')
+      .gte('created_at', oneDayAgo.toISOString())
+      .order('created_at', { ascending: true });
+
+    const depositsToday = recentDeposits?.length || 0;
+
+    if (depositsToday >= MAX_DEPOSITS_PER_DAY) {
+      // Calculate when the oldest deposit will "expire" from the 24-hour window
+      const oldestDeposit = recentDeposits?.[0];
+      const oldestDepositTime = oldestDeposit ? new Date(oldestDeposit.created_at) : now;
+      const resetTime = new Date(oldestDepositTime.getTime() + 24 * 60 * 60 * 1000);
+      const hoursUntilReset = Math.ceil((resetTime.getTime() - now.getTime()) / (1000 * 60 * 60));
+
+      return {
+        blocked: true,
+        message: `You have reached the maximum of ${MAX_DEPOSITS_PER_DAY} deposits per day. Please try again in ${hoursUntilReset} hour${hoursUntilReset > 1 ? 's' : ''}.`,
+        depositsToday,
+        hoursUntilReset
+      };
+    }
+
+    return { blocked: false, depositsToday };
+  }
+
   /**
    * Get monthly withdrawal counts by type
    * Returns how many withdrawals of each type the user has made this calendar month
@@ -782,9 +827,10 @@ export class WalletService {
     userId: string, 
     withdrawalAmount: number,
     withdrawalType: 'fast' | 'normal' = 'normal'
-  ): Promise<{ blocked: boolean; message?: string; cooldownHours?: number; monthlyLimits?: { fast: number; normal: number } }> {
+  ): Promise<{ blocked: boolean; message?: string; cooldownHours?: number; cooldownDays?: number; monthlyLimits?: { fast: number; normal: number } }> {
     const now = new Date();
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     // Get monthly withdrawal counts
@@ -808,7 +854,7 @@ export class WalletService {
       };
     }
 
-    // Get recent transactions
+    // Get recent transactions (extend to 7 days to capture deposits within 5-day window)
     const { data: recentTxns } = await supabase
       .from('transactions')
       .select('type, amount, direction, created_at')
@@ -820,27 +866,39 @@ export class WalletService {
       return { blocked: false, monthlyLimits };
     }
 
-    // Calculate deposits and withdrawals in the last 24 hours
+    // Calculate deposits and withdrawals in the last 24 hours (for daily withdrawal limit)
     const last24hTxns = recentTxns.filter(t => new Date(t.created_at) >= oneDayAgo);
-    const deposits24h = last24hTxns.filter(t => t.type === 'deposit').reduce((sum, t) => sum + Number(t.amount), 0);
+    
+    // Calculate deposits in the last 5 days (for withdrawal hold)
+    const last5DaysTxns = recentTxns.filter(t => new Date(t.created_at) >= fiveDaysAgo);
+    const deposits5Days = last5DaysTxns.filter(t => t.type === 'deposit').reduce((sum, t) => sum + Number(t.amount), 0);
 
-    // Rule 1: If user deposited in last 24 hours, they cannot withdraw more than earned (non-deposit) balance
+    // Rule 1: If user deposited in last 5 days, they cannot withdraw more than earned (non-deposit) balance
     const lastDeposit = recentTxns.find(t => t.type === 'deposit');
-    if (lastDeposit && new Date(lastDeposit.created_at) >= oneDayAgo) {
+    if (lastDeposit && new Date(lastDeposit.created_at) >= fiveDaysAgo) {
       // Calculate "earned" balance (split payments received, etc.) vs deposited balance
       const earnedIn7Days = recentTxns
         .filter(t => t.type === 'split_received')
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
-      if (withdrawalAmount > earnedIn7Days && deposits24h > 0) {
-        const hoursSinceDeposit = Math.ceil((now.getTime() - new Date(lastDeposit.created_at).getTime()) / (1000 * 60 * 60));
-        const cooldownRemaining = Math.max(0, 24 - hoursSinceDeposit);
+      if (withdrawalAmount > earnedIn7Days && deposits5Days > 0) {
+        const hoursSinceDeposit = (now.getTime() - new Date(lastDeposit.created_at).getTime()) / (1000 * 60 * 60);
+        const totalCooldownHours = 5 * 24; // 5 days = 120 hours
+        const cooldownHoursRemaining = Math.max(0, totalCooldownHours - hoursSinceDeposit);
+        const cooldownDaysRemaining = Math.ceil(cooldownHoursRemaining / 24);
         
-        if (cooldownRemaining > 0) {
+        if (cooldownHoursRemaining > 0) {
+          const timeMessage = cooldownDaysRemaining > 1 
+            ? `${cooldownDaysRemaining} more days`
+            : cooldownHoursRemaining > 1 
+              ? `${Math.ceil(cooldownHoursRemaining)} more hours`
+              : 'less than an hour';
+          
           return {
             blocked: true,
-            message: `To prevent fund cycling, you cannot withdraw deposited funds within 24 hours. You can withdraw up to $${earnedIn7Days.toFixed(2)} (from received payments) or wait ${cooldownRemaining} more hours.`,
-            cooldownHours: cooldownRemaining,
+            message: `To prevent fund cycling, you cannot withdraw deposited funds within 5 days of deposit. You can withdraw up to $${earnedIn7Days.toFixed(2)} (from received payments) or wait ${timeMessage}.`,
+            cooldownHours: Math.ceil(cooldownHoursRemaining),
+            cooldownDays: cooldownDaysRemaining,
             monthlyLimits
           };
         }
