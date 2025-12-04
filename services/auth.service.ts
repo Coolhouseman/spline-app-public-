@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { User } from '@/shared/types';
+import { GamificationService } from './gamification.service';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
@@ -94,6 +95,14 @@ export class AuthService {
     }
     console.log('Wallet created successfully');
 
+    // Initialize gamification profile
+    try {
+      await GamificationService.initializeUser(authData.user.id);
+      console.log('Gamification profile initialized');
+    } catch (gamificationError) {
+      console.error('Failed to initialize gamification (non-blocking):', gamificationError);
+    }
+
     return { user: profile as User, session: authData.session };
   }
 
@@ -155,6 +164,13 @@ export class AuthService {
 
     if (!wallet) {
       await supabase.rpc('create_user_wallet', { p_user_id: authData.user.id });
+    }
+
+    // Initialize gamification profile for existing users (if not exists)
+    try {
+      await GamificationService.initializeUser(authData.user.id);
+    } catch (gamificationError) {
+      console.error('Failed to initialize gamification on login (non-blocking):', gamificationError);
     }
 
     return { user: profile as User, session: authData.session };

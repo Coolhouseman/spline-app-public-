@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { BackendNotificationsService } from './backendNotifications.service';
 import type { SplitEvent, SplitParticipant, Notification } from '@/shared/types';
 import { PushNotificationsService } from './pushNotifications.service';
+import { GamificationService } from './gamification.service';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
@@ -130,6 +131,18 @@ export class SplitsService {
           },
         });
       }
+    }
+
+    // Award XP for creating the split
+    try {
+      await GamificationService.onSplitCreated(
+        data.creatorId,
+        split.id,
+        data.totalAmount,
+        data.participants.length
+      );
+    } catch (gamificationError) {
+      console.error('Gamification error (non-blocking):', gamificationError);
     }
 
     return split as SplitEvent;
@@ -306,7 +319,7 @@ export class SplitsService {
   static async paySplit(userId: string, splitId: string): Promise<void> {
     const { data: participant, error: fetchError } = await supabase
       .from('split_participants')
-      .select('amount, split_events(creator_id, name)')
+      .select('amount, split_events(creator_id, name, created_at)')
       .eq('split_event_id', splitId)
       .eq('user_id', userId)
       .single();
@@ -323,12 +336,25 @@ export class SplitsService {
 
     const creatorId = (participant as any).split_events.creator_id;
     const splitName = (participant as any).split_events.name;
+    const splitCreatedAt = new Date((participant as any).split_events.created_at);
 
     const { data: user } = await supabase
       .from('users')
       .select('name')
       .eq('id', userId)
       .single();
+
+    // Award XP for paying the split
+    try {
+      await GamificationService.onSplitPaid(
+        userId,
+        splitId,
+        participant.amount,
+        splitCreatedAt
+      );
+    } catch (gamificationError) {
+      console.error('Gamification error (non-blocking):', gamificationError);
+    }
 
     // Create notification via backend API
     await BackendNotificationsService.createNotification({
@@ -377,6 +403,14 @@ export class SplitsService {
           .single();
 
         if (!existingNotification) {
+          // Award XP for 100% completion
+          try {
+            const participantIds = participants.map(p => p.user_id);
+            await GamificationService.onSplitCompleted(creatorId, splitId, participantIds);
+          } catch (gamificationError) {
+            console.error('Gamification completion error (non-blocking):', gamificationError);
+          }
+
           // Create notification via backend API
           await BackendNotificationsService.createNotification({
             user_id: creatorId,
