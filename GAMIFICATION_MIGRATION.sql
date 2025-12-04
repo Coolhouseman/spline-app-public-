@@ -102,7 +102,7 @@ CREATE POLICY "Users can view friends gamification profiles"
   ON user_gamification FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM friendships
+      SELECT 1 FROM friends
       WHERE status = 'accepted'
       AND ((user_id = auth.uid() AND friend_id = user_gamification.user_id)
            OR (friend_id = auth.uid() AND user_id = user_gamification.user_id))
@@ -133,7 +133,7 @@ CREATE POLICY "Users can view friends badges"
   ON user_badges FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM friendships
+      SELECT 1 FROM friends
       WHERE status = 'accepted'
       AND ((user_id = auth.uid() AND friend_id = user_badges.user_id)
            OR (friend_id = auth.uid() AND user_id = user_badges.user_id))
