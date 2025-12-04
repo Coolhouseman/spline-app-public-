@@ -193,3 +193,234 @@ export async function testEmailConnection(): Promise<boolean> {
     return false;
   }
 }
+
+interface SuspiciousActivityData {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  activityType: string;
+  details: string;
+  timestamp: string;
+}
+
+export async function sendSuspiciousActivityNotification(data: SuspiciousActivityData): Promise<boolean> {
+  const transporter = createTransporter();
+
+  const emailContent = `
+SUSPICIOUS ACTIVITY DETECTED - SPLINE PAY
+==========================================
+
+Time: ${data.timestamp}
+
+USER DETAILS
+------------
+Name: ${data.userName}
+Email: ${data.userEmail}
+User ID: ${data.userId}
+
+ACTIVITY DETAILS
+----------------
+Type: ${data.activityType}
+Details: ${data.details}
+
+ACTION REQUIRED
+---------------
+Review this user's activity in the Admin Dashboard.
+
+==========================================
+This is an automated security notification from Spline Pay.
+`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+    .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 12px 12px; }
+    .section { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section-title { font-weight: 600; color: #ef4444; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+    .label { color: #666; font-size: 12px; }
+    .value { font-weight: 500; color: #333; }
+    .warning-box { background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin-top: 15px; border-radius: 0 8px 8px 0; }
+    .btn { display: inline-block; background: #ef4444; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 20px;">Suspicious Activity Alert</h1>
+      <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">${data.activityType}</p>
+    </div>
+    <div class="content">
+      <div class="section">
+        <div class="section-title">User Details</div>
+        <p><span class="label">Name:</span> <span class="value">${data.userName}</span></p>
+        <p><span class="label">Email:</span> <span class="value">${data.userEmail}</span></p>
+        <p><span class="label">User ID:</span> <span class="value" style="font-family: monospace;">${data.userId}</span></p>
+      </div>
+      
+      <div class="section" style="border: 1px solid #fecaca;">
+        <div class="section-title">Activity Details</div>
+        <p><span class="label">Type:</span> <span class="value" style="font-weight: 700; color: #ef4444;">${data.activityType}</span></p>
+        <p><span class="label">Details:</span> <span class="value">${data.details}</span></p>
+        <p><span class="label">Time:</span> <span class="value">${data.timestamp}</span></p>
+      </div>
+      
+      <div class="warning-box">
+        <strong>Action Required</strong>
+        <p style="margin: 5px 0 0; font-size: 14px;">
+          Review this user's activity in the Admin Dashboard.
+        </p>
+        <a href="https://splinepay.replit.app/admin" class="btn">Open Admin Dashboard</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  if (!transporter) {
+    console.log(`[Email] Suspicious activity notification - SMTP not configured`);
+    console.log(`[Email] User: ${data.userId}, Type: ${data.activityType}`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: ADMIN_EMAIL,
+      subject: `[Spline ALERT] Suspicious Activity: ${data.activityType} - ${data.userName}`,
+      text: emailContent,
+      html: htmlContent
+    });
+
+    console.log(`Suspicious activity notification sent for user ${data.userId}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send suspicious activity notification:', error);
+    return false;
+  }
+}
+
+interface VoucherClaimData {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  level: number;
+  voucherType: string;
+  voucherValue: string;
+  claimedAt: string;
+}
+
+export async function sendVoucherClaimNotification(data: VoucherClaimData): Promise<boolean> {
+  const transporter = createTransporter();
+
+  const emailContent = `
+NEW VOUCHER CLAIM - SPLINE PAY
+==============================
+
+Time: ${data.claimedAt}
+
+USER DETAILS
+------------
+Name: ${data.userName}
+Email: ${data.userEmail}
+Phone: ${data.userPhone}
+User ID: ${data.userId}
+Level: ${data.level}
+
+VOUCHER DETAILS
+---------------
+Type: ${data.voucherType}
+Value: ${data.voucherValue}
+
+ACTION REQUIRED
+---------------
+Contact the user to arrange their personalized dining experience.
+Collect dietary requirements and preferences.
+
+==============================
+This is an automated notification from Spline Pay.
+`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+    .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 12px 12px; }
+    .section { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section-title { font-weight: 600; color: #10b981; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+    .label { color: #666; font-size: 12px; }
+    .value { font-weight: 500; color: #333; }
+    .voucher-value { font-size: 24px; font-weight: 700; color: #10b981; }
+    .level-badge { background: #9370DB; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .action-box { background: #ecfdf5; border-left: 4px solid #10b981; padding: 15px; margin-top: 15px; border-radius: 0 8px 8px 0; }
+    .btn { display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 20px;">New Voucher Claim</h1>
+      <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">${data.voucherType}</p>
+    </div>
+    <div class="content">
+      <div class="section">
+        <div class="section-title">Voucher Details</div>
+        <div class="voucher-value">${data.voucherValue}</div>
+        <p style="margin-top: 10px;"><span class="label">Type:</span> <span class="value">${data.voucherType}</span></p>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">User Details</div>
+        <p><span class="label">Name:</span> <span class="value">${data.userName}</span></p>
+        <p><span class="label">Email:</span> <span class="value">${data.userEmail}</span></p>
+        <p><span class="label">Phone:</span> <span class="value">${data.userPhone}</span></p>
+        <p><span class="label">Level:</span> <span class="level-badge">Level ${data.level}</span></p>
+        <p><span class="label">User ID:</span> <span class="value" style="font-family: monospace; font-size: 11px;">${data.userId}</span></p>
+      </div>
+      
+      <div class="action-box">
+        <strong>Action Required</strong>
+        <p style="margin: 5px 0 0; font-size: 14px;">
+          Contact the user to arrange their personalized dining experience.
+          <br/>Collect dietary requirements and preferences.
+        </p>
+        <a href="mailto:${data.userEmail}" class="btn">Email User</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  if (!transporter) {
+    console.log(`[Email] Voucher claim notification - SMTP not configured`);
+    console.log(`[Email] User: ${data.userId}, Voucher: ${data.voucherValue}`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: ADMIN_EMAIL,
+      subject: `[Spline] Voucher Claimed: ${data.voucherValue} - ${data.userName}`,
+      text: emailContent,
+      html: htmlContent
+    });
+
+    console.log(`Voucher claim notification sent for user ${data.userId}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send voucher claim notification:', error);
+    return false;
+  }
+}

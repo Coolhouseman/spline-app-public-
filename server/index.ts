@@ -7,6 +7,7 @@ import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
 import adminRouter from './routes/admin.routes';
 import stripeRouter from './routes/stripe.routes';
+import gamificationRouter from './routes/gamification.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 import { sendWithdrawalNotification } from './services/email.service';
 
@@ -807,6 +808,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/twilio', twilioRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/stripe', stripeRouter);
+app.use('/api/gamification', gamificationRouter);
 
 app.post('/api/reminders/send-now', async (req, res) => {
   try {
