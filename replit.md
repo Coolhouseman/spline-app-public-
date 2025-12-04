@@ -97,6 +97,23 @@ Preferred communication style: Simple, everyday language.
 - Automated backend service (hourly run, 9 AM daily) for users with pending split payments.
 - Sends both in-app and push notifications.
 
+### Gamification / XP System
+- **Pure Status-Based**: No monetary rewards, focused on engagement and recognition.
+- **Level System**: 50 levels with progressive XP thresholds. Titles earned: Newcomer → Getting Started → Active Member → Rising Star → Trusted Splitter → Split Champion → Payment Pro → Bill Boss → Split Legend → Master Organizer → Elite Splitter.
+- **XP Awards**: 
+  - Split creation (25-40 XP based on size)
+  - Paying splits (20-35 XP based on speed)
+  - Completion bonuses for creators (50 XP)
+  - Streak bonuses (weekly/monthly)
+- **Perks Begin at Level 10**: Priority support, extended limits, fast withdrawal discounts, partner benefits.
+- **Badges**: Bronze → Silver → Gold → Platinum tiers for milestones (creator, payer, streak, social).
+- **Streak System**: Daily activity tracking with bonus XP at 7 and 30 day milestones.
+- **Graceful Degradation**: Service returns sensible defaults (Level 1, "Newcomer") if gamification tables not available, ensuring core payment flows are never blocked.
+- **Migration Requirement**: `GAMIFICATION_MIGRATION.sql` must be applied in Supabase for full functionality.
+- **Components**: `ProfileStatsCard.tsx`, `LevelBadge.tsx`, `LevelUpModal.tsx`, `LevelUpContext.tsx`.
+- **Service**: `services/gamification.service.ts` with XP awarding, streak tracking, badge logic.
+- **Admin Monitoring**: `/api/admin/gamification/overview` and `/api/admin/gamification/users` endpoints.
+
 ### Error Handling
 - Class-based error boundary component with fallback UI.
 - Detailed error modal in DEV mode.
