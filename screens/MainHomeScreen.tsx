@@ -426,9 +426,30 @@ export default function MainHomeScreen({ navigation }: Props) {
   });
 
   const getProgress = (event: any) => {
-    const paid = event.participants.filter((p: any) => p.status === 'paid').length;
-    const total = event.participants.length;
-    return total > 0 ? (paid / total) * 100 : 0;
+    if (!event?.participants) return 0;
+    
+    const totalAmount = parseFloat(event.total_amount) || 0;
+    if (totalAmount === 0) return 0;
+    
+    let paidAmount = 0;
+    
+    for (const participant of event.participants) {
+      const participantAmount = parseFloat(participant.amount) || 0;
+      
+      if (event.split_type === 'specified') {
+        // For specified splits: count creator + participants who paid with amount > 0
+        if (participant.is_creator || (participant.status === 'paid' && participantAmount > 0)) {
+          paidAmount += participantAmount;
+        }
+      } else {
+        // For equal splits: count creator + participants who paid
+        if (participant.is_creator || participant.status === 'paid') {
+          paidAmount += participantAmount;
+        }
+      }
+    }
+    
+    return (paidAmount / totalAmount) * 100;
   };
 
   const renderEvent = ({ item }: { item: SplitEvent }) => {

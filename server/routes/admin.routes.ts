@@ -407,8 +407,10 @@ router.get('/metrics', adminAuthMiddleware, async (req: AuthenticatedRequest, re
 
     // Comprehensive Stripe Connect Marketplace Fee Model
     // Reference: https://docs.stripe.com/connect/marketplace
+    // Note: card_charge transactions are already included in totalDeposits
+    // So totalCardVolume = totalDeposits (not totalDeposits + cardPaymentVolume to avoid double-counting)
     const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
-    const totalCardVolume = totalDeposits + cardPaymentVolume;
+    const totalCardVolume = totalDeposits;
     
     // Base Stripe fees: 2.9% + 30c per transaction
     const stripeBasePercentageFee = totalCardVolume * 0.029;
@@ -525,8 +527,10 @@ router.get('/buffer', adminAuthMiddleware, async (req: AuthenticatedRequest, res
 
     // Comprehensive Stripe Connect Marketplace Fee Model
     // Reference: https://docs.stripe.com/connect/marketplace
+    // Note: card_charge transactions are already included in totalDeposits
+    // So totalCardVolume = totalDeposits (not totalDeposits + cardPaymentVolume to avoid double-counting)
     const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
-    const totalCardVolume = totalDeposits + cardPaymentVolume;
+    const totalCardVolume = totalDeposits;
     
     // Base Stripe fees: 2.9% + 30c per transaction
     const stripeBasePercentageFee = totalCardVolume * 0.029;
@@ -1119,8 +1123,10 @@ async function fetchAllMetrics() {
   });
 
   // Stripe fee calculations
+  // Note: card_charge transactions are already included in totalDeposits
+  // So totalCardVolume = totalDeposits (not totalDeposits + cardPaymentVolume to avoid double-counting)
   const totalCardTransactions = depositTransactionCount + cardPaymentTransactionCount;
-  const totalCardVolume = totalDeposits + cardPaymentVolume;
+  const totalCardVolume = totalDeposits;
   const stripeBasePercentageFee = totalCardVolume * 0.029;
   const stripeFixedFee = totalCardTransactions * 0.30;
   const disputeRate = 0.005;
