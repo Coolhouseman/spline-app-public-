@@ -77,18 +77,44 @@ export const XP_VALUES = {
 };
 
 // Level titles and their perks
+// Perks are manually approved by admin to prevent abuse
 export const LEVEL_INFO: Record<number, { title: string; perk?: string }> = {
   1: { title: 'Newcomer' },
   3: { title: 'Getting Started' },
   5: { title: 'Active Member' },
   7: { title: 'Rising Star' },
-  10: { title: 'Trusted Splitter', perk: 'Priority support access' },
+  10: { title: 'Trusted Splitter', perk: '$50 Dinner Voucher (claim in app)' },
   15: { title: 'Split Champion', perk: 'Extended withdrawal limits' },
   20: { title: 'Payment Pro', perk: '10% discount on fast withdrawals' },
   25: { title: 'Bill Boss', perk: 'VIP restaurant partner discounts' },
   30: { title: 'Split Legend', perk: 'Hotel partner benefits' },
   40: { title: 'Master Organizer', perk: 'Airport lounge access (coming soon)' },
   50: { title: 'Elite Splitter', perk: 'Premium concierge service' },
+};
+
+// Anti-abuse constants for XP system
+export const ANTI_ABUSE_LIMITS = {
+  // Minimum split amount to earn XP
+  MIN_SPLIT_AMOUNT_FOR_XP: 5.00,
+  
+  // Maximum XP that can be earned from splits with the same friend per week
+  MAX_XP_PER_FRIEND_PER_WEEK: 200,
+  
+  // Maximum number of splits that count for XP with same friend per day
+  MAX_SPLITS_PER_FRIEND_PER_DAY: 3,
+  
+  // Cooldown between splits with identical participants (minutes)
+  IDENTICAL_PARTICIPANT_COOLDOWN_MINUTES: 30,
+  
+  // Daily XP cap from splits (prevents farming)
+  DAILY_SPLIT_XP_CAP: 500,
+  
+  // Minimum time between creating splits (seconds)
+  MIN_TIME_BETWEEN_SPLITS_SECONDS: 60,
+  
+  // Suspicious activity threshold - too many quick payments
+  SUSPICIOUS_QUICK_PAYMENT_COUNT: 10,
+  SUSPICIOUS_QUICK_PAYMENT_WINDOW_HOURS: 1,
 };
 
 // Badge definitions
@@ -631,6 +657,7 @@ export class GamificationService {
 
   /**
    * Handle split creation - award XP to creator
+   * Includes anti-abuse validation
    */
   static async onSplitCreated(
     creatorId: string,
@@ -638,6 +665,20 @@ export class GamificationService {
     totalAmount: number,
     participantCount: number
   ): Promise<XPAwardResult | null> {
+    // Anti-abuse: Validate XP eligibility
+    const validation = await this.validateXPEligibility(creatorId, totalAmount, 'split_created');
+    
+    // Always update stats even if XP not awarded
+    await this.updateStat(creatorId, 'splits_created');
+    await this.updateStat(creatorId, 'total_amount_split', totalAmount);
+    
+    if (!validation.eligible) {
+      console.log(`[Gamification] XP skipped for split creation: ${validation.reason}`);
+      // Still check badges based on stats
+      await this.checkAndAwardBadges(creatorId);
+      return null;
+    }
+
     // Get current profile to check if first split
     const profile = await this.getProfile(creatorId);
     const isFirstSplit = !profile || profile.splits_created === 0;
@@ -664,9 +705,10 @@ export class GamificationService {
       description = 'Created your first split!';
     }
 
-    // Update stats
-    await this.updateStat(creatorId, 'splits_created');
-    await this.updateStat(creatorId, 'total_amount_split', totalAmount);
+    // Apply multiplier if any
+    if (validation.xpMultiplier && validation.xpMultiplier !== 1.0) {
+      xp = Math.round(xp * validation.xpMultiplier);
+    }
 
     // Award XP
     const result = await this.awardXP(creatorId, xp, 'split_created', description, splitEventId);
@@ -679,6 +721,7 @@ export class GamificationService {
 
   /**
    * Handle split payment - award XP to payer
+   * Includes anti-abuse validation
    */
   static async onSplitPaid(
     payerId: string,
@@ -686,6 +729,19 @@ export class GamificationService {
     amount: number,
     splitCreatedAt: Date
   ): Promise<XPAwardResult | null> {
+    // Anti-abuse: Validate XP eligibility
+    const validation = await this.validateXPEligibility(payerId, amount, 'split_paid');
+    
+    // Always update stats even if XP not awarded
+    await this.updateStat(payerId, 'splits_paid_on_time');
+    
+    if (!validation.eligible) {
+      console.log(`[Gamification] XP skipped for split payment: ${validation.reason}`);
+      // Still check badges based on stats
+      await this.checkAndAwardBadges(payerId);
+      return null;
+    }
+
     const profile = await this.getProfile(payerId);
     const isFirstPayment = !profile || profile.splits_paid_on_time === 0;
 
@@ -711,8 +767,10 @@ export class GamificationService {
       description = 'Paid your first split share!';
     }
 
-    // Update stats
-    await this.updateStat(payerId, 'splits_paid_on_time');
+    // Apply multiplier if any
+    if (validation.xpMultiplier && validation.xpMultiplier !== 1.0) {
+      xp = Math.round(xp * validation.xpMultiplier);
+    }
 
     // Award XP
     const result = await this.awardXP(payerId, xp, 'split_paid', description, splitEventId);
@@ -892,5 +950,143 @@ export class GamificationService {
       default:
         return { name: 'None', color: '#808080', icon: 'circle', minBalance: 0, xpPerDay: 0 };
     }
+  }
+
+  // ========== ANTI-ABUSE PROTECTION ==========
+
+  /**
+   * Check if split amount meets minimum threshold for XP
+   * Prevents micro-split farming
+   */
+  static isAmountEligibleForXP(amount: number): boolean {
+    return amount >= ANTI_ABUSE_LIMITS.MIN_SPLIT_AMOUNT_FOR_XP;
+  }
+
+  /**
+   * Get today's XP earned from splits for a user
+   * Used to enforce daily XP cap
+   */
+  static async getDailyXPFromSplits(userId: string): Promise<number> {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const { data, error } = await supabase
+        .from('xp_history')
+        .select('xp_amount')
+        .eq('user_id', userId)
+        .in('action_type', ['split_created', 'split_paid', 'split_completed'])
+        .gte('created_at', today.toISOString());
+
+      if (error || !data) return 0;
+      return data.reduce((sum, item) => sum + (item.xp_amount || 0), 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Check if user has hit daily XP cap
+   */
+  static async hasHitDailyXPCap(userId: string): Promise<boolean> {
+    const dailyXP = await this.getDailyXPFromSplits(userId);
+    return dailyXP >= ANTI_ABUSE_LIMITS.DAILY_SPLIT_XP_CAP;
+  }
+
+  /**
+   * Get count of splits created/paid with a specific friend today
+   */
+  static async getSplitsWithFriendToday(userId: string, friendId: string): Promise<number> {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Check XP history for today's splits involving this friend pair
+      const { count, error } = await supabase
+        .from('xp_history')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .in('action_type', ['split_created', 'split_paid'])
+        .gte('created_at', today.toISOString())
+        .ilike('description', `%${friendId.substring(0, 8)}%`);
+
+      if (error) return 0;
+      return count || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Validate XP eligibility with anti-abuse checks
+   * Returns { eligible: boolean, reason?: string }
+   */
+  static async validateXPEligibility(
+    userId: string,
+    amount: number,
+    actionType: 'split_created' | 'split_paid'
+  ): Promise<{ eligible: boolean; reason?: string; xpMultiplier?: number }> {
+    // Check minimum amount
+    if (!this.isAmountEligibleForXP(amount)) {
+      return { 
+        eligible: false, 
+        reason: `Minimum $${ANTI_ABUSE_LIMITS.MIN_SPLIT_AMOUNT_FOR_XP} required for XP` 
+      };
+    }
+
+    // Check daily XP cap
+    if (await this.hasHitDailyXPCap(userId)) {
+      return { 
+        eligible: false, 
+        reason: 'Daily XP limit reached. Keep splitting tomorrow!' 
+      };
+    }
+
+    return { eligible: true, xpMultiplier: 1.0 };
+  }
+
+  /**
+   * Log suspicious activity for admin review
+   */
+  static async logSuspiciousActivity(
+    userId: string,
+    activityType: string,
+    details: string
+  ): Promise<void> {
+    try {
+      await supabase.from('admin_audit_log').insert({
+        action_type: 'suspicious_xp_activity',
+        admin_user_id: null,
+        target_user_id: userId,
+        details: JSON.stringify({ activityType, details, timestamp: new Date().toISOString() })
+      });
+      console.log(`[Anti-Abuse] Logged suspicious activity for user ${userId}: ${activityType}`);
+    } catch {
+      console.log('[Anti-Abuse] Failed to log suspicious activity');
+    }
+  }
+
+  /**
+   * Check for perk eligibility (vouchers, rewards)
+   * Perks require manual admin approval to prevent abuse
+   */
+  static async checkPerkEligibility(userId: string, level: number): Promise<{
+    eligible: boolean;
+    perk?: string;
+    requiresApproval: boolean;
+  }> {
+    const levelInfo = LEVEL_INFO[level];
+    if (!levelInfo?.perk) {
+      return { eligible: false, requiresApproval: false };
+    }
+
+    // Voucher perks require admin approval
+    const isVoucherPerk = levelInfo.perk.includes('Voucher') || levelInfo.perk.includes('$');
+    
+    return {
+      eligible: true,
+      perk: levelInfo.perk,
+      requiresApproval: isVoucherPerk
+    };
   }
 }

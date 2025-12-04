@@ -31,33 +31,39 @@ const TIER_COLORS = {
 const STAT_HELP_INFO = {
   streak: {
     title: 'Day Streak',
-    description: 'The number of consecutive days you have been active on Spline. Activity includes creating splits, paying your share, or any other engagement.',
-    howToEarn: 'Keep using Spline daily to build your streak! You earn bonus XP at 7 days and 30 days.',
+    description: 'Your CURRENT run of consecutive days using Spline. This counter resets back to zero if you miss a day of activity (creating or paying splits).',
+    howToEarn: 'Use Spline every day to keep your streak alive. You earn 20 bonus XP at 7 days and 100 XP at 30 days!',
+    example: 'If you used Spline Mon-Wed-Thu-Fri, your streak is 3 (Thu missed reset it, Fri started fresh).',
   },
   splitsCreated: {
     title: 'Splits Created',
-    description: 'The total number of split events you have initiated. This shows how often you organize shared expenses with friends.',
-    howToEarn: 'Create splits when dining out, traveling, or sharing any expense with friends to increase this stat.',
+    description: 'The number of split events you have organized. Each time you initiate a new bill split with friends, this count increases by one.',
+    howToEarn: 'Start a split anytime you share expenses - dinner, groceries, trips, rent. Earn 25-40 XP per split!',
+    example: 'Dinner with 3 friends = 1 split. Movie night tomorrow = 2 splits total.',
   },
   paidOnTime: {
     title: 'Paid On Time',
-    description: 'The number of splits where you paid your share promptly. This is a key trust indicator that other users can see.',
-    howToEarn: 'Pay your share quickly when invited to splits. Faster payments earn more XP!',
+    description: 'How many times you paid your share within 24 hours of receiving a split request. A key trust indicator visible to friends.',
+    howToEarn: 'Pay quickly when friends add you to splits. Paying within 1 hour earns 35 XP (vs 20 XP for slower)!',
+    example: 'Friend splits lunch at 12pm, you pay by 1pm = Paid On Time. Pay next week = not counted.',
   },
   longestStreak: {
     title: 'Longest Streak',
-    description: 'Your personal record for consecutive days of activity on Spline.',
-    howToEarn: 'Stay active daily to beat your record! Weekly and monthly streaks unlock badges.',
+    description: 'Your ALL-TIME BEST streak record. Unlike Day Streak, this number never resets - it is your personal best achievement on Spline.',
+    howToEarn: 'Keep your Day Streak going to beat this record! Unlock special badges at 7 days and 30 days.',
+    example: 'If your Day Streak once hit 15 but is now 3, your Longest Streak stays 15 forever.',
   },
   splitVolume: {
     title: 'Total Split Volume',
-    description: 'The cumulative dollar amount of all splits you have participated in, either as creator or participant.',
-    howToEarn: 'Participate in more splits to increase your volume. Larger splits contribute more!',
+    description: 'The total DOLLAR AMOUNT of all splits you have been part of (as creator or participant). This is about money moved, not count of splits.',
+    howToEarn: 'Participate in more splits or splits with larger amounts. A $200 dinner contributes more than a $10 coffee!',
+    example: '$50 dinner + $30 groceries + $120 trip = $200 Total Volume. Splits Created would be 3.',
   },
   splitsAsLeader: {
     title: 'Splits Completed as Leader',
-    description: 'The number of splits you created that reached 100% payment completion. This shows your effectiveness as an organizer.',
-    howToEarn: 'Create splits and encourage participants to pay. When everyone pays, you get bonus XP!',
+    description: 'How many splits YOU created where everyone paid 100%. Shows your effectiveness at organizing and collecting payments.',
+    howToEarn: 'Create splits and encourage friends to pay. You earn 50 bonus XP each time a split you created is fully paid!',
+    example: 'You split dinner with 4 friends, all 4 pay = +1 completed. If 1 friend never pays = not counted.',
   },
 };
 
@@ -376,19 +382,51 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
           title={STAT_HELP_INFO[helpModal.stat].title}
           description={STAT_HELP_INFO[helpModal.stat].description}
           howToEarn={STAT_HELP_INFO[helpModal.stat].howToEarn}
+          example={STAT_HELP_INFO[helpModal.stat].example}
         />
       ) : null}
     </ThemedView>
   );
 }
 
-export function LevelBadge({ level, size = 'small', showTitle = false }: { level: number; size?: 'small' | 'medium'; showTitle?: boolean }) {
+export function LevelBadge({ level, size = 'small', showTitle = false, variant = 'default' }: { 
+  level: number; 
+  size?: 'small' | 'medium'; 
+  showTitle?: boolean;
+  variant?: 'default' | 'compact' | 'pill';
+}) {
   const { theme: colors } = useTheme();
   const badgeColor = GamificationService.getLevelColor(level);
   const title = GamificationService.getTitleForLevel(level);
 
   const sizeStyles = size === 'small' ? styles.levelBadgeSmall : styles.levelBadgeMedium;
   const textStyle = size === 'small' ? styles.levelBadgeTextSmall : styles.levelBadgeTextMedium;
+
+  // Pill variant - elegant minimal display for participant lists
+  if (variant === 'pill') {
+    return (
+      <View style={[styles.levelBadgePill, { backgroundColor: badgeColor + '20' }]}>
+        <View style={[styles.levelBadgePillDot, { backgroundColor: badgeColor }]} />
+        <ThemedText style={[styles.levelBadgePillText, { color: badgeColor }]}>
+          Lv.{level}
+        </ThemedText>
+      </View>
+    );
+  }
+
+  // Compact variant - just shows the level circle with title below it
+  if (variant === 'compact') {
+    return (
+      <View style={styles.levelBadgeCompact}>
+        <View style={[styles.levelBadgeCompactCircle, { backgroundColor: badgeColor + '25', borderColor: badgeColor }]}>
+          <ThemedText style={[styles.levelBadgeCompactNumber, { color: badgeColor }]}>{level}</ThemedText>
+        </View>
+        <ThemedText style={[styles.levelBadgeCompactTitle, { color: badgeColor }]} numberOfLines={1}>
+          {title}
+        </ThemedText>
+      </View>
+    );
+  }
 
   if (showTitle) {
     return (
@@ -414,9 +452,10 @@ interface StatHelpModalProps {
   title: string;
   description: string;
   howToEarn?: string;
+  example?: string;
 }
 
-export function StatHelpModal({ visible, onClose, title, description, howToEarn }: StatHelpModalProps) {
+export function StatHelpModal({ visible, onClose, title, description, howToEarn, example }: StatHelpModalProps) {
   const { theme: colors } = useTheme();
 
   return (
@@ -429,18 +468,26 @@ export function StatHelpModal({ visible, onClose, title, description, howToEarn 
       <Pressable style={styles.helpModalOverlay} onPress={onClose}>
         <Pressable style={[styles.helpModalContent, { backgroundColor: colors.surface }]} onPress={() => {}}>
           <View style={styles.helpModalHeader}>
-            <ThemedText style={[Typography.h2, { color: colors.text }]}>{title}</ThemedText>
+            <ThemedText style={[styles.helpModalTitle, { color: colors.text }]}>{title}</ThemedText>
             <Pressable onPress={onClose} style={styles.helpCloseBtn}>
-              <Feather name="x" size={20} color={colors.textSecondary} />
+              <Feather name="x" size={22} color={colors.textSecondary} />
             </Pressable>
           </View>
-          <ThemedText style={[Typography.body, { color: colors.textSecondary, marginBottom: Spacing.md }]}>
+          <ThemedText style={[styles.helpModalDescription, { color: colors.textSecondary }]}>
             {description}
           </ThemedText>
+          {example ? (
+            <View style={[styles.helpExampleSection, { backgroundColor: colors.backgroundSecondary }]}>
+              <Feather name="info" size={14} color={colors.textSecondary} />
+              <ThemedText style={[styles.helpExampleText, { color: colors.textSecondary }]}>
+                {example}
+              </ThemedText>
+            </View>
+          ) : null}
           {howToEarn ? (
             <View style={[styles.helpEarnSection, { backgroundColor: colors.primary + '15' }]}>
-              <Feather name="star" size={16} color={colors.primary} />
-              <ThemedText style={[Typography.caption, { color: colors.primary, flex: 1, marginLeft: Spacing.sm }]}>
+              <Feather name="zap" size={16} color={colors.primary} />
+              <ThemedText style={[styles.helpEarnText, { color: colors.primary }]}>
                 {howToEarn}
               </ThemedText>
             </View>
@@ -453,14 +500,29 @@ export function StatHelpModal({ visible, onClose, title, description, howToEarn 
 
 interface HelpIconProps {
   onPress: () => void;
+  size?: 'small' | 'medium';
 }
 
-export function HelpIcon({ onPress }: HelpIconProps) {
+export function HelpIcon({ onPress, size = 'small' }: HelpIconProps) {
   const { theme: colors } = useTheme();
+  const iconSize = size === 'small' ? 12 : 14;
+  const containerSize = size === 'small' ? 16 : 20;
   
   return (
-    <Pressable onPress={onPress} style={styles.helpIconBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <Feather name="help-circle" size={14} color={colors.textSecondary} />
+    <Pressable 
+      onPress={onPress} 
+      style={[
+        styles.helpIconBtn, 
+        { 
+          width: containerSize, 
+          height: containerSize,
+          borderRadius: containerSize / 2,
+          backgroundColor: colors.textSecondary + '15',
+        }
+      ]} 
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <ThemedText style={[styles.helpIconText, { color: colors.textSecondary, fontSize: iconSize - 2 }]}>?</ThemedText>
     </Pressable>
   );
 }
@@ -540,13 +602,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statLabel: {
-    ...Typography.small,
+    fontSize: 11,
     textAlign: 'center',
   },
   statLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
+    marginTop: 2,
   },
   statDivider: {
     width: 1,
@@ -729,6 +792,46 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  levelBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+  },
+  levelBadgePillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  levelBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  levelBadgeCompact: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  levelBadgeCompactCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  levelBadgeCompactNumber: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  levelBadgeCompactTitle: {
+    fontSize: 9,
+    fontWeight: '600',
+    maxWidth: 60,
+    textAlign: 'center',
+  },
   helpModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -748,16 +851,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
+  helpModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+  },
+  helpModalDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: Spacing.md,
+  },
   helpCloseBtn: {
     padding: Spacing.xs,
+    marginLeft: Spacing.sm,
+  },
+  helpExampleSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  helpExampleText: {
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+    fontStyle: 'italic',
   },
   helpEarnSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     padding: Spacing.md,
     borderRadius: BorderRadius.sm,
+    gap: Spacing.sm,
+  },
+  helpEarnText: {
+    fontSize: 14,
+    lineHeight: 20,
+    flex: 1,
+    fontWeight: '500',
   },
   helpIconBtn: {
-    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  helpIconText: {
+    fontWeight: '600',
   },
 });

@@ -581,8 +581,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
                     {participantGamification[participant.user_id]?.level ? (
                       <LevelBadge 
                         level={participantGamification[participant.user_id]!.level} 
-                        size="small" 
-                        showTitle 
+                        variant="pill"
                       />
                     ) : null}
                   </View>

@@ -107,7 +107,20 @@ Preferred communication style: Simple, everyday language.
   - Completion bonuses for creators (50 XP)
   - Streak bonuses (weekly/monthly)
   - Balance Momentum (10-50 XP/day based on tier)
-- **Perks Begin at Level 10**: Priority support, extended limits, fast withdrawal discounts, partner benefits.
+- **Perks**:
+  - Level 10: $50 Dinner Voucher (requires admin approval)
+  - Level 15: Extended withdrawal limits
+  - Level 20: 10% discount on fast withdrawals
+  - Level 25: VIP restaurant partner discounts
+  - Level 30: Hotel partner benefits
+  - Level 40: Airport lounge access (coming soon)
+  - Level 50: Premium concierge service
+- **Anti-Abuse Protection**: Prevents XP farming and perk exploitation
+  - Minimum $5 split amount required for XP
+  - Daily XP cap of 500 from splits
+  - Stats still tracked even when XP not awarded
+  - Voucher perks require manual admin approval
+  - Suspicious activity logged for admin review
 - **Badges**: Bronze → Silver → Gold → Platinum tiers for milestones (creator, payer, streak, social).
 - **Streak System**: Daily activity tracking with bonus XP at 7 and 30 day milestones.
 - **Balance Momentum**: Wallet retention incentive system. Users earn XP for maintaining wallet balances over time.
