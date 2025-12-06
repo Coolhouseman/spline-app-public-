@@ -12,7 +12,9 @@ export interface SocialAuthResult {
   email?: string;
   fullName?: string;
   needsPhoneVerification?: boolean;
+  needsDOB?: boolean;
   needsProfileCompletion?: boolean;
+  existingPhone?: string;
   error?: string;
 }
 
@@ -149,15 +151,18 @@ export const SocialAuthService = {
 
       if (existingUser) {
         const needsPhone = !existingUser.phone;
+        const needsDOB = !existingUser.date_of_birth;
         const needsProfile = !existingUser.name;
         
         return {
           success: true,
           userId,
           email: email || undefined,
-          fullName: fullName || undefined,
+          fullName: existingUser.name || fullName || undefined,
           needsPhoneVerification: needsPhone,
+          needsDOB: needsDOB,
           needsProfileCompletion: needsProfile,
+          existingPhone: existingUser.phone,
         };
       }
 
@@ -186,6 +191,7 @@ export const SocialAuthService = {
         email: email || undefined,
         fullName: fullName || undefined,
         needsPhoneVerification: true,
+        needsDOB: true,
         needsProfileCompletion: !fullName,
       };
     } catch (error: any) {

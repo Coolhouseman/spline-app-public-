@@ -16,6 +16,7 @@ import SignupBioScreen from '@/screens/SignupBioScreen';
 import SignupCompleteScreen from '@/screens/SignupCompleteScreen';
 import SocialSignupPhoneScreen from '@/screens/SocialSignupPhoneScreen';
 import SocialSignupPhoneOTPScreen from '@/screens/SocialSignupPhoneOTPScreen';
+import SocialSignupDOBScreen from '@/screens/SocialSignupDOBScreen';
 import SocialSignupCompleteScreen from '@/screens/SocialSignupCompleteScreen';
 import TermsScreen from '@/screens/TermsScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
@@ -158,6 +159,15 @@ export default function AuthStackNavigator() {
       <Stack.Screen 
         name="SocialSignupPhoneOTP" 
         component={SocialSignupPhoneOTPScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SocialSignupDOB" 
+        component={SocialSignupDOBScreen}
         options={{ 
           headerTransparent: true,
           headerTitle: '',

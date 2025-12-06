@@ -139,8 +139,7 @@ export default function SocialSignupPhoneOTPScreen({ navigation, route }: Props)
         const { error: updateError } = await supabase
           .from('users')
           .update({ 
-            phone: params.phone, 
-            phone_verified: true,
+            phone: params.phone,
             updated_at: new Date().toISOString()
           })
           .eq('id', params.userId);
@@ -150,10 +149,11 @@ export default function SocialSignupPhoneOTPScreen({ navigation, route }: Props)
           return;
         }
 
-        navigation.navigate('SocialSignupComplete', { 
+        navigation.navigate('SocialSignupDOB', { 
           userId: params.userId,
           fullName: params.fullName,
-          provider: params.provider
+          provider: params.provider,
+          phone: params.phone
         });
       } else {
         setError(result.error || 'Invalid verification code. Please try again.');

@@ -197,6 +197,13 @@ export default function WelcomeScreen({ navigation }: Props) {
             fullName: result.fullName,
             provider: 'apple',
           });
+        } else if (result.needsDOB && result.userId) {
+          navigation.navigate('SocialSignupDOB', {
+            userId: result.userId,
+            fullName: result.fullName,
+            provider: 'apple',
+            phone: result.existingPhone,
+          });
         } else {
           await refreshUser();
         }
@@ -221,6 +228,13 @@ export default function WelcomeScreen({ navigation }: Props) {
             email: result.email,
             fullName: result.fullName,
             provider: 'google',
+          });
+        } else if (result.needsDOB && result.userId) {
+          navigation.navigate('SocialSignupDOB', {
+            userId: result.userId,
+            fullName: result.fullName,
+            provider: 'google',
+            phone: result.existingPhone,
           });
         } else {
           await refreshUser();
