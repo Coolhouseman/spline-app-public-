@@ -1,266 +1,342 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, TextInput, Pressable, Keyboard, Alert } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Keyboard, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { TwilioService } from '@/services/twilio.service';
 import { supabase } from '@/services/supabase';
-import { useAuth } from '@/hooks/useAuth';
 
 type Props = NativeStackScreenProps<any, 'SocialSignupPhoneOTP'>;
 
 export default function SocialSignupPhoneOTPScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
-  const { refreshUser } = useAuth();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [isLoading, setIsLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(60);
-  const inputRefs = useRef<(TextInput | null)[]>([]);
+  const params = route.params as { 
+    userId: string;
+    email?: string;
+    fullName?: string;
+    provider: 'apple' | 'google';
+    phone: string;
+  };
+
+  if (!params?.userId || !params?.phone) {
+    return (
+      <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
+        <View style={styles.content}>
+          <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.md }]}>
+            Something went wrong
+          </ThemedText>
+          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+            We could not complete your verification. Please try again.
+          </ThemedText>
+        </View>
+      </ScreenKeyboardAwareScrollView>
+    );
+  }
   
-  const phone = route.params?.phone;
-  const userId = route.params?.userId;
+  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [resendDisabled, setResendDisabled] = useState(true);
+  const [countdown, setCountdown] = useState(60);
+  
+  const inputRefs = useRef<(TextInput | null)[]>([]);
+  const hiddenInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRefs.current[0]?.focus();
-    }, 500);
-    return () => clearTimeout(timer);
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          setResendDisabled(false);
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [resendTimer]);
-
-  const handleOtpChange = (value: string, index: number) => {
+  const handleCodeChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    
     if (value.length > 1) {
       const digits = value.replace(/\D/g, '').slice(0, 6).split('');
-      const newOtp = [...otp];
+      const newCode = ['', '', '', '', '', ''];
       digits.forEach((digit, i) => {
-        if (index + i < 6) {
-          newOtp[index + i] = digit;
-        }
+        newCode[i] = digit;
       });
-      setOtp(newOtp);
+      setCode(newCode);
+      setError('');
       
-      const nextIndex = Math.min(index + digits.length, 5);
-      inputRefs.current[nextIndex]?.focus();
-      
-      if (newOtp.every(d => d !== '')) {
-        verifyOtp(newOtp.join(''));
+      if (digits.length === 6) {
+        Keyboard.dismiss();
+        handleVerify(newCode.join(''));
+      } else if (digits.length > 0) {
+        inputRefs.current[digits.length]?.focus();
       }
       return;
     }
-
-    const newOtp = [...otp];
-    newOtp[index] = value.replace(/\D/g, '');
-    setOtp(newOtp);
+    
+    const newCode = [...code];
+    newCode[index] = value;
+    setCode(newCode);
+    setError('');
 
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
 
-    if (newOtp.every(d => d !== '')) {
-      verifyOtp(newOtp.join(''));
+    if (newCode.every(digit => digit !== '') && newCode.join('').length === 6) {
+      Keyboard.dismiss();
+      handleVerify(newCode.join(''));
+    }
+  };
+  
+  const handleHiddenInputChange = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 6);
+    if (digits.length > 0) {
+      const newCode = ['', '', '', '', '', ''];
+      digits.split('').forEach((digit, i) => {
+        newCode[i] = digit;
+      });
+      setCode(newCode);
+      setError('');
+      
+      if (digits.length === 6) {
+        Keyboard.dismiss();
+        handleVerify(digits);
+      } else {
+        inputRefs.current[digits.length]?.focus();
+      }
     }
   };
 
-  const handleKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+  const handleKeyPress = (index: number, key: string) => {
+    if (key === 'Backspace' && !code[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
-  const verifyOtp = async (code: string) => {
-    Keyboard.dismiss();
-    setIsLoading(true);
+  const handleVerify = async (otp?: string) => {
+    const otpCode = otp || code.join('');
+    
+    if (otpCode.length !== 6) {
+      setError('Please enter the complete 6-digit code');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        phone,
-        token: code,
-        type: 'sms',
-      });
+      const result = await TwilioService.verifyOTP(params.phone, otpCode);
 
-      if (error) {
-        console.error('OTP verification error:', error);
-        Alert.alert('Invalid Code', 'The code you entered is incorrect. Please try again.');
-        setOtp(['', '', '', '', '', '']);
+      if (result.valid) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ 
+            phone: params.phone, 
+            phone_verified: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', params.userId);
+
+        if (updateError) {
+          setError('Failed to update profile. Please try again.');
+          return;
+        }
+
+        navigation.navigate('SocialSignupComplete', { 
+          userId: params.userId,
+          fullName: params.fullName,
+          provider: params.provider
+        });
+      } else {
+        setError(result.error || 'Invalid verification code. Please try again.');
+        setCode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
-        return;
       }
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          phone,
-          phone_verified: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
-
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-      }
-
-      await refreshUser();
-      
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'SocialSignupComplete' }],
-      });
-    } catch (error: any) {
-      console.error('Verification error:', error);
-      Alert.alert('Error', error.message || 'Verification failed');
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+    } catch (err: any) {
+      setError(err.message || 'Verification failed. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const handleResend = async () => {
-    if (resendTimer > 0) return;
+    setResendDisabled(true);
+    setCountdown(60);
+    setError('');
+    setCode(['', '', '', '', '', '']);
 
-    setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone,
+      const result = await TwilioService.sendOTP(params.phone);
+      
+      if (!result.success) {
+        setError(result.error || 'Failed to resend code');
+        setResendDisabled(false);
+        setCountdown(0);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend code');
+      setResendDisabled(false);
+      setCountdown(0);
+    }
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          setResendDisabled(false);
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
       });
-
-      if (error) {
-        Alert.alert('Error', error.message || 'Failed to resend code');
-        return;
-      }
-
-      setResendTimer(60);
-      Alert.alert('Code Sent', 'A new verification code has been sent to your phone');
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to resend code');
-    } finally {
-      setIsLoading(false);
-    }
+    }, 1000);
   };
 
-  const formatPhone = (phoneNumber: string) => {
-    if (phoneNumber.startsWith('+64')) {
-      const numbers = phoneNumber.slice(3);
-      if (numbers.length >= 9) {
-        return '+64 ' + numbers.slice(0, 2) + ' ' + numbers.slice(2, 5) + ' ' + numbers.slice(5);
-      }
-    }
-    return phoneNumber;
-  };
+  const maskedPhone = params.phone.replace(/(\+\d{2})(\d+)(\d{2})$/, '$1 ••••• $3');
 
   return (
     <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.headerContainer}>
-          <ThemedText style={[Typography.h1, styles.title, { color: theme.text }]}>
-            Enter verification code
-          </ThemedText>
-          <ThemedText style={[Typography.body, styles.subtitle, { color: theme.textSecondary }]}>
-            We sent a 6-digit code to{'\n'}
-            <ThemedText style={{ color: theme.text, fontWeight: '600' }}>
-              {formatPhone(phone)}
-            </ThemedText>
-          </ThemedText>
-        </View>
+      <ThemedView style={styles.content}>
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing['2xl'] }]}>
+          Phone Verification
+        </ThemedText>
 
-        <View style={styles.otpContainer}>
-          {otp.map((digit, index) => (
+        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.md }]}>
+          Enter verification code
+        </ThemedText>
+
+        <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing['2xl'] }]}>
+          We sent a 6-digit code to {maskedPhone}
+        </ThemedText>
+
+        {Platform.OS === 'ios' ? (
+          <TextInput
+            ref={hiddenInputRef}
+            style={styles.hiddenInput}
+            textContentType="oneTimeCode"
+            autoComplete="sms-otp"
+            keyboardType="number-pad"
+            onChangeText={handleHiddenInputChange}
+            autoFocus
+          />
+        ) : null}
+        
+        <View style={styles.codeContainer}>
+          {code.map((digit, index) => (
             <TextInput
               key={index}
-              ref={(ref) => (inputRefs.current[index] = ref)}
+              ref={(ref) => { inputRefs.current[index] = ref; }}
               style={[
-                styles.otpInput,
-                {
-                  backgroundColor: theme.surface,
-                  color: theme.text,
-                  borderColor: digit ? Colors.light.primary : theme.border,
-                },
+                styles.codeInput,
+                { 
+                  backgroundColor: theme.surface, 
+                  color: theme.text, 
+                  borderColor: error ? Colors.light.danger : (digit ? theme.primary : theme.border),
+                }
               ]}
               value={digit}
-              onChangeText={(value) => handleOtpChange(value, index)}
-              onKeyPress={(e) => handleKeyPress(e, index)}
+              onChangeText={(value) => handleCodeChange(index, value)}
+              onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
               keyboardType="number-pad"
               maxLength={6}
               selectTextOnFocus
+              autoFocus={Platform.OS !== 'ios' && index === 0}
+              textContentType={index === 0 ? 'oneTimeCode' : 'none'}
+              autoComplete={index === 0 ? 'sms-otp' : 'off'}
             />
           ))}
         </View>
 
-        <Pressable onPress={handleResend} disabled={resendTimer > 0 || isLoading}>
-          <ThemedText
-            style={[
-              Typography.body,
-              styles.resendText,
-              { color: resendTimer > 0 ? theme.textTertiary : Colors.light.primary },
-            ]}
-          >
-            {resendTimer > 0 ? `Resend code in ${resendTimer}s` : 'Resend code'}
+        {error ? (
+          <ThemedText style={[Typography.caption, { color: Colors.light.danger, marginTop: Spacing.md, textAlign: 'center' }]}>
+            {error}
+          </ThemedText>
+        ) : null}
+
+        <View style={styles.resendContainer}>
+          {resendDisabled ? (
+            <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+              Resend code in {countdown}s
+            </ThemedText>
+          ) : (
+            <Pressable onPress={handleResend}>
+              <ThemedText style={[Typography.body, { color: theme.primary, fontWeight: '600' }]}>
+                Resend Code
+              </ThemedText>
+            </Pressable>
+          )}
+        </View>
+      </ThemedView>
+
+      <View style={styles.footer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.button,
+            { 
+              backgroundColor: theme.primary, 
+              opacity: pressed || loading ? 0.7 : (code.every(d => d) ? 1 : 0.4)
+            }
+          ]}
+          onPress={() => handleVerify()}
+          disabled={loading || !code.every(d => d)}
+        >
+          <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
+            {loading ? 'Verifying...' : 'Verify'}
           </ThemedText>
         </Pressable>
       </View>
-
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
-            Verifying...
-          </ThemedText>
-        </View>
-      )}
     </ScreenKeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    paddingHorizontal: Spacing.xl,
+    flexGrow: 1,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
   },
-  headerContainer: {
-    marginBottom: Spacing['2xl'],
-  },
-  title: {
-    marginBottom: Spacing.md,
-  },
-  subtitle: {
-    lineHeight: 24,
-  },
-  otpContainer: {
+  codeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.xl,
+    gap: Spacing.sm,
   },
-  otpInput: {
-    width: 48,
+  codeInput: {
+    flex: 1,
     height: 56,
-    borderRadius: BorderRadius.md,
     borderWidth: 2,
-    textAlign: 'center',
+    borderRadius: BorderRadius.sm,
     fontSize: 24,
     fontWeight: '600',
-  },
-  resendText: {
     textAlign: 'center',
-    fontWeight: '500',
   },
-  loadingOverlay: {
+  hiddenInput: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  resendContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+  },
+  footer: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+  },
+  button: {
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
   },
 });

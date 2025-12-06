@@ -14,6 +14,9 @@ import SignupDOBScreen from '@/screens/SignupDOBScreen';
 import SignupProfilePictureScreen from '@/screens/SignupProfilePictureScreen';
 import SignupBioScreen from '@/screens/SignupBioScreen';
 import SignupCompleteScreen from '@/screens/SignupCompleteScreen';
+import SocialSignupPhoneScreen from '@/screens/SocialSignupPhoneScreen';
+import SocialSignupPhoneOTPScreen from '@/screens/SocialSignupPhoneOTPScreen';
+import SocialSignupCompleteScreen from '@/screens/SocialSignupCompleteScreen';
 import TermsScreen from '@/screens/TermsScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import { useTheme } from '@/hooks/useTheme';
@@ -138,6 +141,32 @@ export default function AuthStackNavigator() {
       <Stack.Screen 
         name="SignupComplete" 
         component={SignupCompleteScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen 
+        name="SocialSignupPhone" 
+        component={SocialSignupPhoneScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SocialSignupPhoneOTP" 
+        component={SocialSignupPhoneOTPScreen}
+        options={{ 
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="SocialSignupComplete" 
+        component={SocialSignupCompleteScreen}
         options={{ 
           headerShown: false,
           gestureEnabled: false,

@@ -1,161 +1,172 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, TextInput, Pressable, Keyboard, Alert, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { supabase } from '@/services/supabase';
+import { TwilioService } from '@/services/twilio.service';
 
 type Props = NativeStackScreenProps<any, 'SocialSignupPhone'>;
 
 export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
-  const [phone, setPhone] = useState('+64 ');
-  const [isLoading, setIsLoading] = useState(false);
-  const inputRef = useRef<TextInput>(null);
-  
-  const userId = route.params?.userId;
-  const email = route.params?.email;
-  const fullName = route.params?.fullName;
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const params = route.params as { 
+    userId: string;
+    email?: string;
+    fullName?: string;
+    provider: 'apple' | 'google';
+  };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+  if (!params?.userId) {
+    return (
+      <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
+        <ThemedView style={styles.content}>
+          <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.md }]}>
+            Something went wrong
+          </ThemedText>
+          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+            We could not complete your sign-in. Please try again.
+          </ThemedText>
+        </ThemedView>
+      </ScreenKeyboardAwareScrollView>
+    );
+  }
 
-  const formatPhoneNumber = (text: string) => {
-    let cleaned = text.replace(/[^\d+]/g, '');
-    
-    if (!cleaned.startsWith('+')) {
-      cleaned = '+64' + cleaned;
-    }
-    
-    if (cleaned.startsWith('+64')) {
-      const numbers = cleaned.slice(3);
-      if (numbers.length <= 2) {
-        return '+64 ' + numbers;
-      } else if (numbers.length <= 5) {
-        return '+64 ' + numbers.slice(0, 2) + ' ' + numbers.slice(2);
-      } else if (numbers.length <= 8) {
-        return '+64 ' + numbers.slice(0, 2) + ' ' + numbers.slice(2, 5) + ' ' + numbers.slice(5);
-      } else {
-        return '+64 ' + numbers.slice(0, 2) + ' ' + numbers.slice(2, 5) + ' ' + numbers.slice(5, 9);
-      }
-    }
-    
-    return cleaned;
+  const formatPhoneDisplay = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits;
   };
 
   const handlePhoneChange = (text: string) => {
-    if (text.length < 4) {
-      setPhone('+64 ');
-      return;
-    }
-    setPhone(formatPhoneNumber(text));
+    const formatted = formatPhoneDisplay(text);
+    setPhone(formatted);
+    if (error) setError('');
   };
 
-  const getCleanPhoneNumber = () => {
-    return phone.replace(/\s/g, '');
+  const getFullPhoneNumber = () => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+      return '+64' + cleaned.substring(1);
+    }
+    return '+64' + cleaned;
   };
 
   const isValidPhone = () => {
-    const cleaned = getCleanPhoneNumber();
-    return cleaned.length >= 12 && cleaned.startsWith('+64');
+    const cleaned = phone.replace(/\D/g, '');
+    return cleaned.length >= 8 && cleaned.length <= 11;
   };
 
   const handleContinue = async () => {
     if (!isValidPhone()) {
-      Alert.alert('Invalid Phone', 'Please enter a valid NZ phone number');
+      setError('Please enter a valid phone number');
       return;
     }
 
-    Keyboard.dismiss();
-    setIsLoading(true);
+    const fullPhone = getFullPhoneNumber();
+    setLoading(true);
+    setError('');
 
     try {
-      const cleanedPhone = getCleanPhoneNumber();
-      
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: cleanedPhone,
-      });
+      const result = await TwilioService.sendOTP(fullPhone);
 
-      if (error) {
-        console.error('OTP send error:', error);
-        Alert.alert('Error', error.message || 'Failed to send verification code');
-        return;
+      if (result.success) {
+        navigation.navigate('SocialSignupPhoneOTP', { 
+          ...params, 
+          phone: fullPhone 
+        });
+      } else {
+        setError(result.error || 'Failed to send verification code');
       }
-
-      navigation.navigate('SocialSignupPhoneOTP', {
-        phone: cleanedPhone,
-        userId,
-        email,
-        fullName,
-      });
-    } catch (error: any) {
-      console.error('Phone verification error:', error);
-      Alert.alert('Error', error.message || 'Something went wrong');
+    } catch (err: any) {
+      setError(err.message || 'Failed to send verification code');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
+  };
+
+  const getWelcomeText = () => {
+    if (params.fullName) {
+      const firstName = params.fullName.split(' ')[0];
+      return `Welcome, ${firstName}!`;
+    }
+    return 'Almost there!';
   };
 
   return (
     <ScreenKeyboardAwareScrollView contentContainerStyle={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.headerContainer}>
-          <ThemedText style={[Typography.h1, styles.title, { color: theme.text }]}>
-            Verify your phone
-          </ThemedText>
-          <ThemedText style={[Typography.body, styles.subtitle, { color: theme.textSecondary }]}>
-            We need to verify your phone number to secure your account and enable payment features.
-          </ThemedText>
-        </View>
+      <ThemedView style={styles.content}>
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginBottom: Spacing['2xl'] }]}>
+          Phone Verification
+        </ThemedText>
 
-        <View style={styles.inputContainer}>
+        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.md }]}>
+          {getWelcomeText()}
+        </ThemedText>
+
+        <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.xl }]}>
+          To complete your account, we need to verify your phone number via SMS
+        </ThemedText>
+
+        <View style={styles.phoneInputContainer}>
+          <View style={[styles.prefixContainer, { 
+            backgroundColor: theme.surface, 
+            borderColor: error ? Colors.light.danger : theme.border 
+          }]}>
+            <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+              +64
+            </ThemedText>
+          </View>
           <TextInput
-            ref={inputRef}
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.surface,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
+            style={[styles.phoneInput, { 
+              backgroundColor: theme.surface, 
+              color: theme.text, 
+              borderColor: error ? Colors.light.danger : theme.border 
+            }]}
+            placeholder="21 123 4567"
+            placeholderTextColor={theme.textSecondary}
             value={phone}
             onChangeText={handlePhoneChange}
-            placeholder="+64 21 123 4567"
-            placeholderTextColor={theme.textTertiary}
             keyboardType="phone-pad"
-            autoComplete="tel"
-            textContentType="telephoneNumber"
-            maxLength={16}
+            autoFocus
+            maxLength={11}
           />
         </View>
 
-        <ThemedText style={[Typography.caption, styles.hint, { color: theme.textSecondary }]}>
-          We'll send you a 6-digit code to verify your number
+        {error ? (
+          <ThemedText style={[Typography.caption, { color: Colors.light.danger, marginTop: Spacing.sm }]}>
+            {error}
+          </ThemedText>
+        ) : null}
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.md }]}>
+          Standard SMS rates may apply
         </ThemedText>
-      </View>
+      </ThemedView>
 
       <View style={styles.footer}>
         <Pressable
           style={({ pressed }) => [
             styles.button,
-            {
-              backgroundColor: isValidPhone() ? Colors.light.primary : theme.border,
-              opacity: pressed ? 0.8 : 1,
-            },
+            { 
+              backgroundColor: theme.primary, 
+              opacity: pressed || loading ? 0.7 : (isValidPhone() ? 1 : 0.4)
+            }
           ]}
           onPress={handleContinue}
-          disabled={!isValidPhone() || isLoading}
+          disabled={!isValidPhone() || loading}
         >
-          <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-            {isLoading ? 'Sending...' : 'Send Code'}
-          </ThemedText>
+          {loading ? (
+            <ActivityIndicator color={Colors.light.buttonText} />
+          ) : (
+            <ThemedText style={[Typography.body, { color: Colors.light.buttonText, fontWeight: '600' }]}>
+              Send Verification Code
+            </ThemedText>
+          )}
         </Pressable>
       </View>
     </ScreenKeyboardAwareScrollView>
@@ -164,41 +175,40 @@ export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    paddingHorizontal: Spacing.xl,
+    flexGrow: 1,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
   },
-  headerContainer: {
-    marginBottom: Spacing['2xl'],
+  phoneInputContainer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
-  title: {
-    marginBottom: Spacing.md,
-  },
-  subtitle: {
-    lineHeight: 24,
-  },
-  inputContainer: {
-    marginBottom: Spacing.md,
-  },
-  input: {
-    height: 56,
-    borderRadius: BorderRadius.md,
+  prefixContainer: {
+    height: Spacing.inputHeight,
     paddingHorizontal: Spacing.lg,
-    fontSize: 18,
     borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  hint: {
-    textAlign: 'center',
+  phoneInput: {
+    flex: 1,
+    height: Spacing.inputHeight,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    fontSize: 16,
   },
   footer: {
-    paddingBottom: Spacing['2xl'],
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
   },
   button: {
-    height: Spacing.buttonHeight + 4,
-    borderRadius: BorderRadius.sm,
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
     justifyContent: 'center',
     alignItems: 'center',
   },

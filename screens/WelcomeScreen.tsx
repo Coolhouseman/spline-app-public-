@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Pressable, useWindowDimensions, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Pressable, useWindowDimensions, Platform, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -13,9 +13,12 @@ import Animated, {
   interpolate,
   useDerivedValue,
 } from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { SocialAuthService } from '@/services/socialAuth.service';
 
 type Props = NativeStackScreenProps<any, 'Welcome'>;
 
@@ -29,9 +32,13 @@ function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, 
 
 export default function WelcomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
+  const { refreshUser } = useAuth();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showAppleButton, setShowAppleButton] = useState(false);
+
   const progress = useSharedValue(0);
   const fadeIn = useSharedValue(0);
   const floatAnim1 = useSharedValue(0);
@@ -49,6 +56,8 @@ export default function WelcomeScreen({ navigation }: Props) {
   const endPoint = { x: curveEndX, y: curveY };
 
   useEffect(() => {
+    SocialAuthService.isAppleSignInAvailable().then(setShowAppleButton);
+    
     fadeIn.value = withTiming(1, { duration: 1000 });
     
     progress.value = withRepeat(
@@ -176,6 +185,56 @@ export default function WelcomeScreen({ navigation }: Props) {
     opacity: interpolate(fadeIn.value, [0, 1], [0, 0.05]),
   }));
 
+  const handleAppleSignIn = async () => {
+    setAppleLoading(true);
+    try {
+      const result = await SocialAuthService.signInWithApple();
+      if (result.success) {
+        if (result.needsPhoneVerification && result.userId) {
+          navigation.navigate('SocialSignupPhone', {
+            userId: result.userId,
+            email: result.email,
+            fullName: result.fullName,
+            provider: 'apple',
+          });
+        } else {
+          await refreshUser();
+        }
+      } else if (result.error && result.error !== 'Sign-in was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Apple Sign-In failed');
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const result = await SocialAuthService.signInWithGoogle();
+      if (result.success) {
+        if (result.needsPhoneVerification && result.userId) {
+          navigation.navigate('SocialSignupPhone', {
+            userId: result.userId,
+            email: result.email,
+            fullName: result.fullName,
+            provider: 'google',
+          });
+        } else {
+          await refreshUser();
+        }
+      } else if (result.error && result.error !== 'Google Sign-In was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Google Sign-In failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   const generateCurvePoints = () => {
     const points = [];
     for (let i = 0; i <= 40; i++) {
@@ -241,31 +300,79 @@ export default function WelcomeScreen({ navigation }: Props) {
       </Animated.View>
 
       <Animated.View style={[styles.buttonContainer, { paddingBottom: insets.bottom + Spacing['2xl'] }, fadeStyle]}>
+        {showAppleButton ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.socialButton,
+              { backgroundColor: '#000000', opacity: pressed || appleLoading ? 0.8 : 1 }
+            ]}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading || googleLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <>
+                <Feather name="smartphone" size={20} color="#FFFFFF" style={styles.buttonIcon} />
+                <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                  Continue with Apple
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
+        ) : null}
+
         <Pressable
           style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: Colors.light.primary, opacity: pressed ? 0.8 : 1 }
+            styles.socialButton,
+            { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: theme.border, opacity: pressed || googleLoading ? 0.8 : 1 }
           ]}
-          onPress={() => navigation.navigate('Login')}
+          onPress={handleGoogleSignIn}
+          disabled={appleLoading || googleLoading}
         >
-          <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
-            Login
-          </ThemedText>
+          {googleLoading ? (
+            <ActivityIndicator color="#4285F4" size="small" />
+          ) : (
+            <>
+              <View style={styles.googleIconContainer}>
+                <ThemedText style={{ color: '#4285F4', fontWeight: '700', fontSize: 16 }}>G</ThemedText>
+              </View>
+              <ThemedText style={[Typography.body, { color: '#333333', fontWeight: '600' }]}>
+                Continue with Google
+              </ThemedText>
+            </>
+          )}
         </Pressable>
 
         <Pressable
           style={({ pressed }) => [
-            styles.secondaryButton,
+            styles.socialButton,
             { 
               backgroundColor: theme.surface, 
-              borderColor: Colors.light.primary,
+              borderWidth: 1,
+              borderColor: theme.border,
               opacity: pressed ? 0.8 : 1 
             }
           ]}
           onPress={() => navigation.navigate('SignupFirstName')}
+          disabled={appleLoading || googleLoading}
         >
+          <Feather name="mail" size={20} color={theme.text} style={styles.buttonIcon} />
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+            Continue with Email
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          style={styles.loginLink}
+          onPress={() => navigation.navigate('Login')}
+          disabled={appleLoading || googleLoading}
+        >
+          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+            Already have an account?{' '}
+          </ThemedText>
           <ThemedText style={[Typography.body, { color: Colors.light.primary, fontWeight: '600' }]}>
-            Create Account
+            Login
           </ThemedText>
         </Pressable>
       </Animated.View>
@@ -394,17 +501,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     gap: Spacing.md,
   },
-  primaryButton: {
+  socialButton: {
     height: Spacing.buttonHeight + 4,
     borderRadius: BorderRadius.sm,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  secondaryButton: {
-    height: Spacing.buttonHeight + 4,
-    borderRadius: BorderRadius.sm,
+  buttonIcon: {
+    marginRight: Spacing.sm,
+  },
+  googleIconContainer: {
+    width: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    marginRight: Spacing.sm,
+  },
+  loginLink: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.xs,
   },
 });
