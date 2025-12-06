@@ -148,8 +148,8 @@ export const SocialAuthService = {
       }
 
       if (existingUser) {
-        const needsPhone = !existingUser.phone || !existingUser.phone_verified;
-        const needsProfile = !existingUser.first_name || !existingUser.last_name;
+        const needsPhone = !existingUser.phone;
+        const needsProfile = !existingUser.name;
         
         return {
           success: true,
@@ -161,22 +161,18 @@ export const SocialAuthService = {
         };
       }
 
-      const nameParts = fullName?.split(' ') || [];
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
+      // Generate a unique 5-10 digit ID for the user
+      const uniqueId = Math.floor(10000 + Math.random() * 9000000000).toString();
+      
       const { error: insertError } = await supabase.from('users').insert({
         id: userId,
+        unique_id: uniqueId,
+        name: fullName || 'User',
         email: email || '',
-        first_name: firstName,
-        last_name: lastName,
-        phone: '',
-        phone_verified: false,
+        phone: null,
         date_of_birth: null,
         profile_picture: null,
         bio: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       });
 
       if (insertError) {
@@ -190,7 +186,7 @@ export const SocialAuthService = {
         email: email || undefined,
         fullName: fullName || undefined,
         needsPhoneVerification: true,
-        needsProfileCompletion: !firstName,
+        needsProfileCompletion: !fullName,
       };
     } catch (error: any) {
       console.error('Error handling social auth user:', error);
