@@ -1,238 +1,461 @@
 <!DOCTYPE html>
-<html lang="en-NZ">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
-  <!-- Primary Meta Tags -->
-  <title>Terms and Conditions - Spline Payment App | KNH Group NZ</title>
-  <meta name="title" content="Terms and Conditions - Spline Payment App | KNH Group NZ">
-  <meta name="description" content="Read the Terms and Conditions for Spline Payment App by KNH Group. Understand your rights and responsibilities when using our bill splitting and payment services in New Zealand.">
-  <meta name="keywords" content="Spline terms, payment app terms NZ, bill splitting terms, KNH Group terms, user agreement New Zealand">
-  <meta name="author" content="KNH Group">
-  <meta name="robots" content="index, follow">
-  
-  <!-- Canonical URL -->
-  <link rel="canonical" href="https://splinepay.replit.app/terms">
-  
-  <!-- Language and Region -->
-  <link rel="alternate" hreflang="en-NZ" href="https://splinepay.replit.app/terms">
-  <link rel="alternate" hreflang="en" href="https://splinepay.replit.app/terms">
-  <meta name="geo.region" content="NZ">
-  <meta name="geo.placename" content="New Zealand">
-  
-  <!-- Open Graph / Facebook -->
-  <meta property="og:type" content="article">
-  <meta property="og:url" content="https://splinepay.replit.app/terms">
-  <meta property="og:title" content="Terms and Conditions - Spline Payment App">
-  <meta property="og:description" content="Read the Terms and Conditions for Spline Payment App. Understand your rights and responsibilities when using our bill splitting services.">
-  <meta property="og:image" content="https://splinepay.replit.app/images/favicon.png">
-  <meta property="og:site_name" content="Spline">
-  <meta property="og:locale" content="en_NZ">
-  <meta property="article:published_time" content="2024-11-01T00:00:00+13:00">
-  <meta property="article:modified_time" content="2024-11-30T00:00:00+13:00">
-  
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:url" content="https://splinepay.replit.app/terms">
-  <meta name="twitter:title" content="Terms and Conditions - Spline Payment App">
-  <meta name="twitter:description" content="Read the Terms and Conditions for Spline Payment App by KNH Group New Zealand.">
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/images/favicon.png">
-  <link rel="apple-touch-icon" href="/images/favicon.png">
-  
-  <!-- Theme Color -->
-  <meta name="theme-color" content="#3B82F6">
-  
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: '#3B82F6',
-            'primary-dark': '#2563EB',
-          }
-        }
+  <meta name="description" content="Spline Terms and Conditions - Read our terms of service for using the Spline bill splitting app.">
+  <title>Terms and Conditions - Spline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #2563EB;
+      --primary-dark: #1e40af;
+      --text: #1f2937;
+      --text-secondary: #6b7280;
+      --background: #ffffff;
+      --surface: #f9fafb;
+      --border: #e5e7eb;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      line-height: 1.6;
+      background: var(--background);
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 72px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: white;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .legal-page {
+      padding: 120px 0 60px;
+      min-height: 100vh;
+    }
+
+    .legal-page h1 {
+      font-size: 40px;
+      margin-bottom: 16px;
+    }
+
+    .legal-page .updated {
+      color: var(--text-secondary);
+      margin-bottom: 48px;
+    }
+
+    .legal-page h2 {
+      font-size: 20px;
+      margin-top: 40px;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .legal-page h3 {
+      font-size: 16px;
+      margin-top: 24px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .legal-page p {
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .legal-page ul {
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      padding-left: 24px;
+    }
+
+    .legal-page li {
+      margin-bottom: 8px;
+    }
+
+    .contact-highlight {
+      color: var(--primary);
+      font-weight: 500;
+    }
+
+    .highlight-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .highlight-box p {
+      margin-bottom: 8px;
+    }
+
+    .highlight-box p:last-child {
+      margin-bottom: 0;
+    }
+
+    .warning-box {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p {
+      color: #92400e;
+      margin-bottom: 0;
+    }
+
+    footer {
+      padding: 40px 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    footer p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      .legal-page h1 {
+        font-size: 32px;
+      }
+
+      .nav-links {
+        display: none;
       }
     }
-  </script>
-  
-  <!-- Structured Data - BreadcrumbList -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": [
-      {
-        "@type": "ListItem",
-        "position": 1,
-        "name": "Home",
-        "item": "https://splinepay.replit.app/"
-      },
-      {
-        "@type": "ListItem",
-        "position": 2,
-        "name": "Terms and Conditions",
-        "item": "https://splinepay.replit.app/terms"
-      }
-    ]
-  }
-  </script>
-  
-  <!-- Structured Data - WebPage -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
-    "@id": "https://splinepay.replit.app/terms#webpage",
-    "url": "https://splinepay.replit.app/terms",
-    "name": "Terms and Conditions - Spline Payment App",
-    "description": "Terms and Conditions for using Spline Payment App operated by KNH Group in New Zealand.",
-    "isPartOf": {
-      "@id": "https://splinepay.replit.app/#website"
-    },
-    "about": {
-      "@id": "https://splinepay.replit.app/#organization"
-    },
-    "datePublished": "2024-11-01",
-    "dateModified": "2024-11-30",
-    "inLanguage": "en-NZ"
-  }
-  </script>
+  </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
-  <!-- Navigation -->
+<body>
   <header>
-    <nav class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100" aria-label="Main navigation">
-      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
-          <a href="/" class="flex items-center gap-3" aria-label="Spline Home">
-            <img src="/images/favicon.png" alt="Spline Logo" class="w-8 h-8 rounded-lg" width="32" height="32">
-            <span class="text-xl font-bold text-gray-900">Spline</span>
-          </a>
-          <a href="/" class="text-gray-600 hover:text-primary transition flex items-center gap-1">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-            Back to Home
-          </a>
+    <nav>
+      <a href="/" class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-      </div>
+        Spline
+      </a>
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="terms.html">Terms</a></li>
+      </ul>
     </nav>
   </header>
 
-  <!-- Content -->
-  <main class="pt-24 pb-16">
-    <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 md:p-12">
-        <header class="mb-8">
-          <h1 class="text-3xl md:text-4xl font-bold mb-2">Terms and Conditions</h1>
-          <p class="text-gray-500"><time datetime="2024-11-30">Last updated: November 2024</time></p>
-        </header>
+  <main class="legal-page">
+    <div class="container">
+      <h1>Terms and Conditions</h1>
+      <p class="updated">Last updated: December 2024</p>
 
-        <div class="prose prose-gray max-w-none">
-          <section class="mb-8" aria-labelledby="section-1">
-            <h2 id="section-1" class="text-xl font-semibold text-gray-900 mb-3">1. Agreement to Terms</h2>
-            <p class="text-gray-600 leading-relaxed">
-              By accessing or using Spline Payment ("the App"), operated by KNH Group, you agree to be bound by these Terms and Conditions. If you do not agree to these terms, please do not use the App.
-            </p>
-          </section>
+      <h2>1. Agreement to Terms</h2>
+      <p>By accessing, downloading, or using Spline ("the App"), operated by KNH Group ("we", "us", or "our"), you agree to be bound by these Terms and Conditions ("Terms"). If you do not agree to these Terms, please do not use the App.</p>
+      <p>These Terms constitute a legally binding agreement between you and KNH Group. Please read them carefully before using our services.</p>
 
-          <section class="mb-8" aria-labelledby="section-2">
-            <h2 id="section-2" class="text-xl font-semibold text-gray-900 mb-3">2. Description of Service</h2>
-            <p class="text-gray-600 leading-relaxed">
-              Spline Payment is a mobile application that enables users to split bills, manage shared expenses, and facilitate payments between friends. The App provides tools for creating split events, tracking payments, and managing a digital wallet for seamless transactions.
-            </p>
-          </section>
+      <h2>2. Description of Service</h2>
+      <p>Spline is a mobile application that enables users to:</p>
+      <ul>
+        <li>Split bills and shared expenses with friends</li>
+        <li>Create and manage group expense events</li>
+        <li>Track who owes what within your social circle</li>
+        <li>Maintain a digital wallet for seamless transactions</li>
+        <li>Send and receive payments between users</li>
+        <li>Connect bank accounts and payment methods for deposits and withdrawals</li>
+      </ul>
+      <p>Spline is designed to simplify expense sharing and is not a bank, financial institution, or money transmitter. We facilitate the tracking and settlement of debts between users through our integrated payment processing partners.</p>
 
-          <section class="mb-8" aria-labelledby="section-3">
-            <h2 id="section-3" class="text-xl font-semibold text-gray-900 mb-3">3. User Accounts</h2>
-            <p class="text-gray-600 leading-relaxed">
-              To use the App, you must create an account by providing accurate and complete information. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must be at least 18 years old to use this service.
-            </p>
-          </section>
+      <h2>3. Eligibility and Account Registration</h2>
+      
+      <h3>3.1 Age Requirement</h3>
+      <p>You must be at least 18 years of age to create an account and use Spline. By registering, you confirm that you meet this age requirement.</p>
 
-          <section class="mb-8" aria-labelledby="section-4">
-            <h2 id="section-4" class="text-xl font-semibold text-gray-900 mb-3">4. Payment Services</h2>
-            <p class="text-gray-600 leading-relaxed">
-              The App integrates with BlinkPay for payment processing. By using payment features, you authorize KNH Group to initiate transactions on your behalf. All payment transactions are subject to the terms and conditions of our payment partners. Funds deposited into your Spline wallet are held in a business bank account, and in-app transfers between users are recorded as ledger entries until withdrawn.
-            </p>
-          </section>
+      <h3>3.2 Account Information</h3>
+      <p>When creating an account, you agree to:</p>
+      <ul>
+        <li>Provide accurate, current, and complete information</li>
+        <li>Maintain and promptly update your account information</li>
+        <li>Keep your login credentials confidential and secure</li>
+        <li>Notify us immediately of any unauthorized access to your account</li>
+        <li>Accept responsibility for all activities that occur under your account</li>
+      </ul>
 
-          <section class="mb-8" aria-labelledby="section-5">
-            <h2 id="section-5" class="text-xl font-semibold text-gray-900 mb-3">5. User Conduct</h2>
-            <p class="text-gray-600 leading-relaxed">
-              You agree not to use the App for any unlawful purpose, to harass or abuse other users, to attempt to gain unauthorized access to other accounts, to engage in fraudulent transactions, or to violate any applicable laws or regulations.
-            </p>
-          </section>
+      <h3>3.3 Identity Verification</h3>
+      <p>To comply with Anti-Money Laundering (AML) regulations and financial services requirements, we may require you to verify your identity before accessing certain features, particularly those involving monetary transactions. This may include providing government-issued identification or other verification documentation.</p>
 
-          <section class="mb-8" aria-labelledby="section-6">
-            <h2 id="section-6" class="text-xl font-semibold text-gray-900 mb-3">6. Fees and Charges</h2>
-            <p class="text-gray-600 leading-relaxed">
-              While the basic features of the App are free to use, certain transactions may incur fees. Any applicable fees will be clearly disclosed before you complete a transaction. KNH Group reserves the right to modify fee structures with reasonable notice to users.
-            </p>
-          </section>
+      <h2>4. Payment Services</h2>
 
-          <section class="mb-8" aria-labelledby="section-7">
-            <h2 id="section-7" class="text-xl font-semibold text-gray-900 mb-3">7. Intellectual Property</h2>
-            <p class="text-gray-600 leading-relaxed">
-              All content, features, and functionality of the App, including but not limited to text, graphics, logos, and software, are the exclusive property of KNH Group and are protected by copyright, trademark, and other intellectual property laws.
-            </p>
-          </section>
+      <h3>4.1 Payment Processing</h3>
+      <p>The App integrates with Stripe, a PCI DSS Level 1 certified payment processor, to facilitate financial transactions. By using payment features, you:</p>
+      <ul>
+        <li>Authorize KNH Group to initiate transactions on your behalf through Stripe</li>
+        <li>Agree to comply with Stripe's terms of service and acceptable use policies</li>
+        <li>Acknowledge that payment processing is subject to Stripe's security and compliance standards</li>
+      </ul>
 
-          <section class="mb-8" aria-labelledby="section-8">
-            <h2 id="section-8" class="text-xl font-semibold text-gray-900 mb-3">8. Limitation of Liability</h2>
-            <p class="text-gray-600 leading-relaxed">
-              To the maximum extent permitted by law, KNH Group shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the App. Our total liability shall not exceed the amount of fees paid by you in the twelve months preceding the claim.
-            </p>
-          </section>
-
-          <section class="mb-8" aria-labelledby="section-9">
-            <h2 id="section-9" class="text-xl font-semibold text-gray-900 mb-3">9. Dispute Resolution</h2>
-            <p class="text-gray-600 leading-relaxed">
-              Any disputes arising from these terms or your use of the App shall be resolved through good faith negotiation. If a resolution cannot be reached, disputes shall be submitted to binding arbitration in New Zealand under the Arbitration Act 1996.
-            </p>
-          </section>
-
-          <section class="mb-8" aria-labelledby="section-10">
-            <h2 id="section-10" class="text-xl font-semibold text-gray-900 mb-3">10. Termination</h2>
-            <p class="text-gray-600 leading-relaxed">
-              KNH Group reserves the right to suspend or terminate your account at any time for violation of these terms or for any other reason at our sole discretion. Upon termination, you must cease all use of the App and any outstanding wallet balance will be returned to you within a reasonable timeframe.
-            </p>
-          </section>
-
-          <section class="mb-8" aria-labelledby="section-11">
-            <h2 id="section-11" class="text-xl font-semibold text-gray-900 mb-3">11. Changes to Terms</h2>
-            <p class="text-gray-600 leading-relaxed">
-              We may update these Terms and Conditions from time to time. We will notify you of any material changes through the App or via email. Your continued use of the App after such changes constitutes acceptance of the updated terms.
-            </p>
-          </section>
-
-          <section class="mb-8" aria-labelledby="section-12">
-            <h2 id="section-12" class="text-xl font-semibold text-gray-900 mb-3">12. Contact Information</h2>
-            <p class="text-gray-600 leading-relaxed mb-4">
-              If you have any questions about these Terms and Conditions, please contact us at:
-            </p>
-            <address class="bg-gray-50 rounded-xl p-6 not-italic">
-              <p class="text-primary font-medium"><a href="mailto:admin@spline.nz">admin@spline.nz</a></p>
-              <p class="text-gray-600 mt-2">KNH Group<br/>New Zealand</p>
-            </address>
-          </section>
-        </div>
+      <h3>4.2 Spline Wallet</h3>
+      <div class="highlight-box">
+        <p><strong>Important:</strong> Funds in your Spline wallet represent a balance held in our operational accounts. Your wallet balance:</p>
+        <p>- Is not a deposit account and is not insured by any government deposit insurance scheme</p>
+        <p>- May be used for in-app transactions and transfers to other Spline users</p>
+        <p>- Can be withdrawn to your linked bank account, subject to processing times</p>
       </div>
-    </article>
+
+      <h3>4.3 Transaction Records</h3>
+      <p>In-app transfers between users are recorded as ledger entries. These entries reflect debts and credits between users and are settled when funds are transferred through our payment systems.</p>
+
+      <h3>4.4 Fees and Charges</h3>
+      <p>Basic features of the App are free to use. However:</p>
+      <ul>
+        <li>Certain transactions may incur processing fees as disclosed at the time of transaction</li>
+        <li>Your bank or card issuer may charge additional fees for transactions</li>
+        <li>We reserve the right to modify our fee structure with at least 30 days' notice</li>
+      </ul>
+      <p>All applicable fees will be clearly displayed before you confirm any transaction.</p>
+
+      <h2>5. User Conduct and Prohibited Activities</h2>
+      <p>You agree not to use the App to:</p>
+      <ul>
+        <li>Violate any applicable laws, regulations, or these Terms</li>
+        <li>Engage in fraudulent, deceptive, or misleading activities</li>
+        <li>Launder money or finance illegal activities</li>
+        <li>Harass, abuse, threaten, or intimidate other users</li>
+        <li>Attempt to gain unauthorized access to other accounts or our systems</li>
+        <li>Transmit viruses, malware, or other harmful code</li>
+        <li>Interfere with the proper operation of the App</li>
+        <li>Create multiple accounts or false identities</li>
+        <li>Use the App for commercial purposes without our written consent</li>
+        <li>Reverse engineer, decompile, or attempt to extract source code</li>
+      </ul>
+
+      <div class="warning-box">
+        <p><strong>Warning:</strong> Violation of these terms, particularly those related to fraud or illegal activities, will result in immediate account termination and may be reported to relevant authorities.</p>
+      </div>
+
+      <h2>6. Anti-Money Laundering (AML) Compliance</h2>
+      <p>As a financial services application, we are committed to preventing money laundering and terrorist financing. We:</p>
+      <ul>
+        <li>Monitor transactions for suspicious activities</li>
+        <li>May require additional verification for certain transactions</li>
+        <li>Reserve the right to delay, freeze, or refuse transactions that appear suspicious</li>
+        <li>Report suspicious activities to relevant authorities as required by law</li>
+        <li>Comply with all applicable AML laws and regulations in New Zealand</li>
+      </ul>
+      <p>By using the App, you agree to cooperate with any AML-related requests and understand that failure to do so may result in account restrictions or termination.</p>
+
+      <h2>7. Disputes Between Users</h2>
+      
+      <h3>7.1 User-to-User Disputes</h3>
+      <p>Spline facilitates expense tracking and payment between users. Disputes arising from underlying transactions (e.g., disagreements about expense amounts, services rendered, or goods purchased) are between the users involved. KNH Group is not responsible for resolving such disputes but may provide transaction records upon request.</p>
+
+      <h3>7.2 Transaction Disputes</h3>
+      <p>If you believe a transaction was made in error or without your authorization:</p>
+      <ul>
+        <li>Contact us immediately at <a href="mailto:admin@spline.nz" class="contact-highlight">admin@spline.nz</a></li>
+        <li>Provide details of the disputed transaction</li>
+        <li>We will investigate and respond within 10 business days</li>
+      </ul>
+
+      <h3>7.3 Refund Policy</h3>
+      <p>Transfers between Spline users are generally final and non-refundable. Refunds may be considered in cases of:</p>
+      <ul>
+        <li>Technical errors resulting in incorrect transactions</li>
+        <li>Unauthorized transactions (subject to investigation)</li>
+        <li>Duplicate charges</li>
+      </ul>
+      <p>Refund requests must be submitted within 60 days of the transaction date.</p>
+
+      <h2>8. Intellectual Property</h2>
+      <p>All content, features, and functionality of the App, including but not limited to:</p>
+      <ul>
+        <li>Text, graphics, logos, and icons</li>
+        <li>Software, code, and algorithms</li>
+        <li>User interface design and layout</li>
+        <li>Trademarks and service marks</li>
+      </ul>
+      <p>are the exclusive property of KNH Group and are protected by copyright, trademark, patent, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works without our express written permission.</p>
+
+      <h2>9. Limitation of Liability</h2>
+      <p>To the maximum extent permitted by New Zealand law:</p>
+      <ul>
+        <li>KNH Group provides the App on an "as is" and "as available" basis without warranties of any kind</li>
+        <li>We do not guarantee uninterrupted, secure, or error-free operation</li>
+        <li>We are not liable for any indirect, incidental, special, consequential, or punitive damages</li>
+        <li>We are not liable for loss of profits, data, goodwill, or other intangible losses</li>
+        <li>We are not responsible for actions of third-party payment processors</li>
+        <li>Our total liability shall not exceed the fees paid by you in the twelve months preceding the claim, or NZD $500, whichever is greater</li>
+      </ul>
+      <p>Some jurisdictions do not allow limitations on implied warranties or liability, so some of the above limitations may not apply to you.</p>
+
+      <h2>10. Indemnification</h2>
+      <p>You agree to indemnify, defend, and hold harmless KNH Group, its officers, directors, employees, agents, and affiliates from any claims, damages, losses, liabilities, costs, and expenses (including legal fees) arising from:</p>
+      <ul>
+        <li>Your use or misuse of the App</li>
+        <li>Your violation of these Terms</li>
+        <li>Your violation of any rights of third parties</li>
+        <li>Your violation of any applicable laws or regulations</li>
+      </ul>
+
+      <h2>11. Account Termination</h2>
+      
+      <h3>11.1 Termination by You</h3>
+      <p>You may close your account at any time by contacting us at <a href="mailto:admin@spline.nz" class="contact-highlight">admin@spline.nz</a>. Before closing your account, you must:</p>
+      <ul>
+        <li>Settle any outstanding debts with other users</li>
+        <li>Withdraw any remaining wallet balance</li>
+      </ul>
+
+      <h3>11.2 Termination by Us</h3>
+      <p>KNH Group reserves the right to suspend or terminate your account at any time for:</p>
+      <ul>
+        <li>Violation of these Terms</li>
+        <li>Fraudulent, suspicious, or illegal activity</li>
+        <li>Failure to complete required identity verification</li>
+        <li>Extended period of inactivity (12 months or more)</li>
+        <li>Request by law enforcement or regulatory authorities</li>
+        <li>Any other reason at our reasonable discretion</li>
+      </ul>
+
+      <h3>11.3 Effect of Termination</h3>
+      <p>Upon termination:</p>
+      <ul>
+        <li>Your access to the App will be immediately revoked</li>
+        <li>Any outstanding wallet balance will be returned within 30 business days</li>
+        <li>Transaction records will be retained as required by law</li>
+        <li>Provisions that should survive termination (including liability, indemnification, and dispute resolution) will remain in effect</li>
+      </ul>
+
+      <h2>12. Dispute Resolution</h2>
+      
+      <h3>12.1 Informal Resolution</h3>
+      <p>Before initiating formal proceedings, you agree to first contact us at <a href="mailto:admin@spline.nz" class="contact-highlight">admin@spline.nz</a> to attempt to resolve the dispute informally. We will make good faith efforts to resolve any dispute within 30 days.</p>
+
+      <h3>12.2 Arbitration</h3>
+      <p>If a dispute cannot be resolved informally, it shall be submitted to binding arbitration in New Zealand under the Arbitration Act 1996. The arbitration shall be conducted by a single arbitrator mutually agreed upon by the parties.</p>
+
+      <h3>12.3 Class Action Waiver</h3>
+      <p>You agree that any dispute resolution proceedings will be conducted only on an individual basis and not in a class, consolidated, or representative action.</p>
+
+      <h2>13. Changes to Terms</h2>
+      <p>We may update these Terms from time to time. When we make changes:</p>
+      <ul>
+        <li>We will update the "Last updated" date at the top of this page</li>
+        <li>For material changes, we will notify you through the App or via email</li>
+        <li>Your continued use of the App after changes are posted constitutes acceptance</li>
+        <li>If you disagree with the changes, you must stop using the App and close your account</li>
+      </ul>
+
+      <h2>14. General Provisions</h2>
+
+      <h3>14.1 Governing Law</h3>
+      <p>These Terms shall be governed by and construed in accordance with the laws of New Zealand, without regard to its conflict of law provisions.</p>
+
+      <h3>14.2 Severability</h3>
+      <p>If any provision of these Terms is found to be unenforceable or invalid, that provision shall be limited or eliminated to the minimum extent necessary, and the remaining provisions shall remain in full force and effect.</p>
+
+      <h3>14.3 Entire Agreement</h3>
+      <p>These Terms, together with our Privacy Policy, constitute the entire agreement between you and KNH Group regarding the use of the App.</p>
+
+      <h3>14.4 Waiver</h3>
+      <p>Our failure to enforce any right or provision of these Terms will not be considered a waiver of such right or provision.</p>
+
+      <h3>14.5 Assignment</h3>
+      <p>You may not assign or transfer these Terms or your rights under them without our prior written consent. We may assign our rights and obligations without restriction.</p>
+
+      <h2>15. Contact Information</h2>
+      <p>If you have any questions about these Terms and Conditions, please contact us:</p>
+      <div class="highlight-box">
+        <p><strong>Email:</strong> <a href="mailto:admin@spline.nz" class="contact-highlight">admin@spline.nz</a></p>
+        <p><strong>Company:</strong> KNH Group</p>
+        <p><strong>Location:</strong> New Zealand</p>
+      </div>
+    </div>
   </main>
 
-  <!-- Footer -->
-  <footer class="bg-gray-900 text-gray-400 py-8">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <p class="text-sm">&copy; 2024 KNH Group. All rights reserved.</p>
-        <nav class="flex items-center gap-6" aria-label="Footer navigation">
-          <a href="/terms" class="text-sm text-white transition" aria-current="page">Terms</a>
-          <a href="/privacy" class="text-sm hover:text-white transition">Privacy</a>
-        </nav>
-      </div>
+  <footer>
+    <div class="container">
+      <p>&copy; 2024 KNH Group. All rights reserved. | <a href="/">Back to Home</a></p>
     </div>
   </footer>
 </body>
