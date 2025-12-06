@@ -43,31 +43,44 @@ export default function LoginScreen({ navigation }: Props) {
     }
   };
 
+  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
+    if (result.success && result.userId) {
+      if (result.needsName) {
+        navigation.navigate('SocialSignupName', {
+          userId: result.userId,
+          email: result.email,
+          provider,
+          needsPhone: result.needsPhoneVerification,
+          needsDOB: result.needsDOB,
+          existingPhone: result.existingPhone,
+        });
+      } else if (result.needsPhoneVerification) {
+        navigation.navigate('SocialSignupPhone', {
+          userId: result.userId,
+          email: result.email,
+          fullName: result.fullName,
+          provider,
+        });
+      } else if (result.needsDOB) {
+        navigation.navigate('SocialSignupDOB', {
+          userId: result.userId,
+          fullName: result.fullName,
+          provider,
+          phone: result.existingPhone,
+        });
+      } else {
+        await refreshUser();
+      }
+    } else if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+      Alert.alert('Sign-In Failed', result.error);
+    }
+  };
+
   const handleAppleSignIn = async () => {
     setAppleLoading(true);
     try {
       const result = await SocialAuthService.signInWithApple();
-      if (result.success) {
-        if (result.needsPhoneVerification && result.userId) {
-          navigation.navigate('SocialSignupPhone', {
-            userId: result.userId,
-            email: result.email,
-            fullName: result.fullName,
-            provider: 'apple',
-          });
-        } else if (result.needsDOB && result.userId) {
-          navigation.navigate('SocialSignupDOB', {
-            userId: result.userId,
-            fullName: result.fullName,
-            provider: 'apple',
-            phone: result.existingPhone,
-          });
-        } else {
-          await refreshUser();
-        }
-      } else if (result.error && result.error !== 'Sign-in was cancelled') {
-        Alert.alert('Sign-In Failed', result.error);
-      }
+      await handleSocialAuthResult(result, 'apple');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
@@ -79,27 +92,7 @@ export default function LoginScreen({ navigation }: Props) {
     setGoogleLoading(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
-      if (result.success) {
-        if (result.needsPhoneVerification && result.userId) {
-          navigation.navigate('SocialSignupPhone', {
-            userId: result.userId,
-            email: result.email,
-            fullName: result.fullName,
-            provider: 'google',
-          });
-        } else if (result.needsDOB && result.userId) {
-          navigation.navigate('SocialSignupDOB', {
-            userId: result.userId,
-            fullName: result.fullName,
-            provider: 'google',
-            phone: result.existingPhone,
-          });
-        } else {
-          await refreshUser();
-        }
-      } else if (result.error && result.error !== 'Google Sign-In was cancelled') {
-        Alert.alert('Sign-In Failed', result.error);
-      }
+      await handleSocialAuthResult(result, 'google');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
