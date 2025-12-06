@@ -33,12 +33,12 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    return age >= 18;
+    return age >= 16;
   };
 
   const handleContinue = async () => {
     if (!isValidAge()) {
-      setError('You must be at least 18 years old to use Spline');
+      setError('You must be at least 16 years old to use Spline');
       return;
     }
 
@@ -99,7 +99,7 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
         </ThemedText>
 
         <ThemedText style={[Typography.body, { color: theme.textSecondary, marginBottom: Spacing.xl }]}>
-          You must be at least 18 years old to use Spline
+          You must be at least 16 years old to use Spline
         </ThemedText>
 
         <View style={styles.pickerContainer}>
