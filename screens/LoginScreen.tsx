@@ -1,21 +1,30 @@
-import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, TextInput, StyleSheet, Pressable, Alert, Platform, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
-import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { SocialAuthService } from '@/services/socialAuth.service';
 
 type Props = NativeStackScreenProps<any, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { login } = useAuth();
+  const { login, refreshUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showAppleButton, setShowAppleButton] = useState(false);
+
+  useEffect(() => {
+    SocialAuthService.isAppleSignInAvailable().then(setShowAppleButton);
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -31,6 +40,56 @@ export default function LoginScreen({ navigation }: Props) {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setAppleLoading(true);
+    try {
+      const result = await SocialAuthService.signInWithApple();
+      if (result.success) {
+        if (result.needsPhoneVerification && result.userId) {
+          navigation.navigate('SocialSignupPhone', {
+            userId: result.userId,
+            email: result.email,
+            fullName: result.fullName,
+            provider: 'apple',
+          });
+        } else {
+          await refreshUser();
+        }
+      } else if (result.error && result.error !== 'Sign-in was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Apple Sign-In failed');
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const result = await SocialAuthService.signInWithGoogle();
+      if (result.success) {
+        if (result.needsPhoneVerification && result.userId) {
+          navigation.navigate('SocialSignupPhone', {
+            userId: result.userId,
+            email: result.email,
+            fullName: result.fullName,
+            provider: 'google',
+          });
+        } else {
+          await refreshUser();
+        }
+      } else if (result.error && result.error !== 'Google Sign-In was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Google Sign-In failed');
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -103,6 +162,56 @@ export default function LoginScreen({ navigation }: Props) {
             Don't have an account? Sign up
           </ThemedText>
         </Pressable>
+
+        <View style={styles.dividerContainer}>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginHorizontal: Spacing.md }]}>
+            or continue with
+          </ThemedText>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        </View>
+
+        {showAppleButton && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.socialButton,
+              { backgroundColor: '#000', opacity: pressed ? 0.8 : 1 }
+            ]}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Feather name="smartphone" size={20} color="#fff" style={styles.socialIcon} />
+                <ThemedText style={[Typography.body, { color: '#fff', fontWeight: '600' }]}>
+                  Continue with Apple
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
+        )}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.socialButton,
+            { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }
+          ]}
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading}
+        >
+          {googleLoading ? (
+            <ActivityIndicator color={theme.text} size="small" />
+          ) : (
+            <>
+              <ThemedText style={[styles.googleIcon, { marginRight: Spacing.sm }]}>G</ThemedText>
+              <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                Continue with Google
+              </ThemedText>
+            </>
+          )}
+        </Pressable>
       </ThemedView>
     </ScreenKeyboardAwareScrollView>
   );
@@ -139,5 +248,31 @@ const styles = StyleSheet.create({
   linkButton: {
     marginTop: Spacing.xl,
     alignItems: 'center',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+  },
+  socialButton: {
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  socialIcon: {
+    marginRight: Spacing.sm,
+  },
+  googleIcon: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#4285F4',
   },
 });
