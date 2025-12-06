@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -86,7 +87,8 @@ export const SocialAuthService = {
 
   async signInWithGoogle(): Promise<SocialAuthResult> {
     try {
-      // Use AuthSession.makeRedirectUri to get the proper app scheme redirect URL
+      // Use Supabase's PKCE-based OAuth flow for secure Google Sign-In
+      // This works properly on native iOS/Android and is more secure than implicit flow
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: 'splitpaymentapp',
         path: 'auth/callback',
@@ -94,66 +96,139 @@ export const SocialAuthService = {
       
       console.log('[Google Sign-In] Starting with redirect URL:', redirectUrl);
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Generate a cryptographically secure random state parameter for CSRF protection
+      const randomBytes = await Crypto.getRandomBytesAsync(32);
+      const stateParam = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      // Start Supabase OAuth flow with PKCE (authorization code flow)
+      const { data: oauthData, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: true,
+          queryParams: {
+            prompt: 'select_account',
+            state: stateParam,
+          },
         },
       });
 
-      if (error) {
-        console.error('Supabase Google auth error:', error);
-        return { success: false, error: error.message };
+      if (oauthError || !oauthData?.url) {
+        console.error('[Google Sign-In] OAuth init error:', oauthError);
+        return { success: false, error: oauthError?.message || 'Failed to start Google Sign-In' };
       }
 
-      if (!data.url) {
-        return { success: false, error: 'No authentication URL received' };
-      }
-
-      console.log('[Google Sign-In] Opening auth session...');
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      console.log('[Google Sign-In] Opening auth session with Supabase OAuth URL...');
+      const result = await WebBrowser.openAuthSessionAsync(oauthData.url, redirectUrl);
 
       if (result.type !== 'success') {
         console.log('[Google Sign-In] Auth session result:', result.type);
         return { success: false, error: 'Google Sign-In was cancelled' };
       }
 
-      console.log('[Google Sign-In] Auth session successful, URL:', result.url);
+      console.log('[Google Sign-In] Auth session successful, processing callback...');
       const url = result.url;
       
-      // Parse tokens from URL - handle both hash and query params
+      // Parse the URL to extract the auth code or tokens
+      // Supabase PKCE flow returns code in query params
       const hashParams = url.includes('#') ? new URLSearchParams(url.split('#')[1]) : null;
       const queryParams = url.includes('?') ? new URLSearchParams(url.split('?')[1]?.split('#')[0]) : null;
       
-      const accessToken = hashParams?.get('access_token') || queryParams?.get('access_token');
-      const refreshToken = hashParams?.get('refresh_token') || queryParams?.get('refresh_token');
+      // Check for error in redirect
+      const errorCode = hashParams?.get('error') || queryParams?.get('error');
+      const errorDescription = hashParams?.get('error_description') || queryParams?.get('error_description');
+      
+      if (errorCode) {
+        console.error('[Google Sign-In] OAuth error:', errorCode, errorDescription);
+        return { success: false, error: errorDescription || errorCode };
+      }
+      
+      // Validate state parameter to prevent CSRF attacks (mandatory check)
+      const returnedState = queryParams?.get('state');
+      if (!returnedState) {
+        console.error('[Google Sign-In] Missing state parameter in callback');
+        return { success: false, error: 'Authentication security check failed. Please try again.' };
+      }
+      if (returnedState !== stateParam) {
+        console.error('[Google Sign-In] State mismatch - possible CSRF attack');
+        return { success: false, error: 'Authentication security check failed. Please try again.' };
+      }
+      
+      // PKCE flow: Check for authorization code first (Supabase returns code in query params)
+      const code = queryParams?.get('code');
+      
+      if (code) {
+        console.log('[Google Sign-In] Got authorization code, exchanging for session...');
+        const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        
+        if (exchangeError) {
+          console.error('[Google Sign-In] Code exchange error:', exchangeError);
+          return { success: false, error: exchangeError.message };
+        }
+        
+        if (!sessionData?.user) {
+          return { success: false, error: 'No user returned from authentication' };
+        }
+        
+        console.log('[Google Sign-In] User authenticated via code exchange:', sessionData.user.id);
+        const authResult = await this.handleSocialAuthUser(
+          sessionData.user.id,
+          sessionData.user.email,
+          sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name
+        );
+        console.log('[Google Sign-In] Result:', authResult);
+        return authResult;
+      }
+      
+      // Fallback: Check for tokens in hash fragment (implicit flow fallback)
+      const accessToken = hashParams?.get('access_token');
+      const refreshToken = hashParams?.get('refresh_token');
+      
+      if (accessToken && refreshToken) {
+        console.log('[Google Sign-In] Got tokens from redirect, setting session...');
+        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
 
-      if (!accessToken) {
-        console.error('[Google Sign-In] No access token in URL:', url);
-        return { success: false, error: 'No access token received' };
+        if (sessionError) {
+          console.error('[Google Sign-In] Session error:', sessionError);
+          return { success: false, error: sessionError.message };
+        }
+
+        if (!sessionData?.user) {
+          return { success: false, error: 'No user returned from authentication' };
+        }
+
+        console.log('[Google Sign-In] User authenticated via tokens:', sessionData.user.id);
+        const authResult = await this.handleSocialAuthUser(
+          sessionData.user.id,
+          sessionData.user.email,
+          sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name
+        );
+        console.log('[Google Sign-In] Result:', authResult);
+        return authResult;
+      }
+      
+      // If no code or tokens, check current session
+      console.log('[Google Sign-In] No code or tokens in URL, checking current session...');
+      const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
+      
+      if (getSessionError) {
+        console.error('[Google Sign-In] Get session error:', getSessionError);
+        return { success: false, error: getSessionError.message };
+      }
+      
+      if (!session?.user) {
+        console.error('[Google Sign-In] No session found after auth. URL was:', url);
+        return { success: false, error: 'Authentication failed. Please try again.' };
       }
 
-      console.log('[Google Sign-In] Setting session with tokens...');
-      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken || '',
-      });
-
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        return { success: false, error: sessionError.message };
-      }
-
-      if (!sessionData.user) {
-        return { success: false, error: 'No user returned from authentication' };
-      }
-
-      console.log('[Google Sign-In] User authenticated:', sessionData.user.id);
+      console.log('[Google Sign-In] User authenticated from session:', session.user.id);
       const authResult = await this.handleSocialAuthUser(
-        sessionData.user.id,
-        sessionData.user.email,
-        sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name
+        session.user.id,
+        session.user.email,
+        session.user.user_metadata?.full_name || session.user.user_metadata?.name
       );
       console.log('[Google Sign-In] Result:', authResult);
       return authResult;
