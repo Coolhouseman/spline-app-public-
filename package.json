@@ -38,6 +38,7 @@
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
+    "eas-cli": "^16.28.0",
     "expo": "^54.0.23",
     "expo-blur": "^15.0.7",
     "expo-clipboard": "^8.0.7",
