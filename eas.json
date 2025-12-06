@@ -15,18 +15,14 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "buildNumber": "1"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "hzeng1217@gmail.com",
+        "appleTeamId": "YOUR_TEAM_ID"
       }
     }
   }
