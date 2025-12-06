@@ -12,6 +12,8 @@ import * as Constants from 'expo-constants';
  * Note: Expo tunnel mode cannot reach local backends.
  * Set EXPO_PUBLIC_BACKEND_URL to your Replit domain for tunnel testing.
  */
+const PRODUCTION_BACKEND_URL = 'https://splinepay.replit.app';
+
 export const resolveBackendOrigin = (): string => {
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
     const url = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -20,15 +22,22 @@ export const resolveBackendOrigin = (): string => {
   }
   
   const isDev = __DEV__;
+  
+  // In production builds (TestFlight, App Store), use the production backend
+  if (!isDev) {
+    console.log('Using production backend URL:', PRODUCTION_BACKEND_URL);
+    return PRODUCTION_BACKEND_URL;
+  }
+  
   const replitDevDomain = process.env.EXPO_PUBLIC_REPLIT_DEV_DOMAIN;
   
-  if (isDev && replitDevDomain) {
+  if (replitDevDomain) {
     const url = `https://${replitDevDomain}:8082`;
     console.log('Using REPLIT_DEV_DOMAIN:', url);
     return url;
   }
   
-  if (isDev && Constants.default.expoConfig?.hostUri) {
+  if (Constants.default.expoConfig?.hostUri) {
     const fullHostUri = Constants.default.expoConfig.hostUri;
     const hostWithoutScheme = fullHostUri.replace(/^[a-z]+:\/\//, '');
     const hostWithoutPath = hostWithoutScheme.split('/')[0];
