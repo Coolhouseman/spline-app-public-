@@ -87,14 +87,22 @@ export const SocialAuthService = {
 
   async signInWithGoogle(): Promise<SocialAuthResult> {
     try {
-      // Use Supabase's PKCE-based OAuth flow for secure Google Sign-In
-      // This works properly on native iOS/Android and is more secure than implicit flow
-      const redirectUrl = AuthSession.makeRedirectUri({
-        scheme: 'splitpaymentapp',
-        path: 'auth/callback',
-      });
+      // Use explicit deep link scheme for native iOS/Android
+      // This ensures the OAuth redirect comes back to the app, not the marketing page
+      let redirectUrl: string;
       
-      console.log('[Google Sign-In] Starting with redirect URL:', redirectUrl);
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        // For native apps, use the explicit deep link scheme
+        redirectUrl = 'splitpaymentapp://auth/callback';
+      } else {
+        // For web, use the standard redirect URI
+        redirectUrl = AuthSession.makeRedirectUri({
+          scheme: 'splitpaymentapp',
+          path: 'auth/callback',
+        });
+      }
+      
+      console.log('[Google Sign-In] Starting with redirect URL:', redirectUrl, 'Platform:', Platform.OS);
       
       // Generate a cryptographically secure random state parameter for CSRF protection
       const randomBytes = await Crypto.getRandomBytesAsync(32);
