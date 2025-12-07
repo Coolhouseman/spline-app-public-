@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
   refreshUser: () => Promise<void>;
+  setSocialSignupInProgress: (inProgress: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -191,6 +192,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (profile) {
           userSetBySignup.current = true;
+          globalIsSigningUp = false;
+          setIsSigningUp(false);
           setUser(profile as User);
         }
       }
@@ -199,8 +202,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setSocialSignupInProgress = (inProgress: boolean) => {
+    console.log('[Auth] setSocialSignupInProgress:', inProgress);
+    globalIsSigningUp = inProgress;
+    setIsSigningUp(inProgress);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isSigningUp, login, signup, logout, updateUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoading, isSigningUp, login, signup, logout, updateUser, refreshUser, setSocialSignupInProgress }}>
       {children}
     </AuthContext.Provider>
   );

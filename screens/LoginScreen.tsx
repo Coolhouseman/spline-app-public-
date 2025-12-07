@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<any, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { login, refreshUser } = useAuth();
+  const { login, refreshUser, setSocialSignupInProgress } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -71,17 +71,22 @@ export default function LoginScreen({ navigation }: Props) {
       } else {
         await refreshUser();
       }
-    } else if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
-      Alert.alert('Sign-In Failed', result.error);
+    } else {
+      setSocialSignupInProgress(false);
+      if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
     }
   };
 
   const handleAppleSignIn = async () => {
     setAppleLoading(true);
+    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithApple();
       await handleSocialAuthResult(result, 'apple');
     } catch (error: any) {
+      setSocialSignupInProgress(false);
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
       setAppleLoading(false);
@@ -90,10 +95,12 @@ export default function LoginScreen({ navigation }: Props) {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
       await handleSocialAuthResult(result, 'google');
     } catch (error: any) {
+      setSocialSignupInProgress(false);
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
       setGoogleLoading(false);

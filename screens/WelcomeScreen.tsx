@@ -32,7 +32,7 @@ function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, 
 
 export default function WelcomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { refreshUser } = useAuth();
+  const { refreshUser, setSocialSignupInProgress } = useAuth();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [appleLoading, setAppleLoading] = useState(false);
@@ -213,17 +213,22 @@ export default function WelcomeScreen({ navigation }: Props) {
       } else {
         await refreshUser();
       }
-    } else if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
-      Alert.alert('Sign-In Failed', result.error);
+    } else {
+      setSocialSignupInProgress(false);
+      if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
     }
   };
 
   const handleAppleSignIn = async () => {
     setAppleLoading(true);
+    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithApple();
       await handleSocialAuthResult(result, 'apple');
     } catch (error: any) {
+      setSocialSignupInProgress(false);
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
       setAppleLoading(false);
@@ -232,10 +237,12 @@ export default function WelcomeScreen({ navigation }: Props) {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
       await handleSocialAuthResult(result, 'google');
     } catch (error: any) {
+      setSocialSignupInProgress(false);
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
       setGoogleLoading(false);
