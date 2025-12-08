@@ -100,6 +100,12 @@ export class PushNotificationsService {
         .eq('id', userId);
 
       if (error) {
+        // Gracefully handle missing column - push notifications will still work
+        // but tokens won't persist across sessions until the column is added
+        if (error.code === 'PGRST204' || error.message?.includes('push_token')) {
+          console.log('Push token column not found in database. Push notifications require the push_token column in users table.');
+          return;
+        }
         console.error('Failed to save push token:', error);
       } else {
         console.log('Push token saved successfully');
@@ -111,10 +117,15 @@ export class PushNotificationsService {
 
   static async removePushToken(userId: string): Promise<void> {
     try {
-      await supabase
+      const { error } = await supabase
         .from('users')
         .update({ push_token: null })
         .eq('id', userId);
+      
+      // Silently ignore if column doesn't exist
+      if (error && (error.code === 'PGRST204' || error.message?.includes('push_token'))) {
+        return;
+      }
     } catch (error) {
       console.error('Error removing push token:', error);
     }
@@ -128,8 +139,14 @@ export class PushNotificationsService {
         .eq('id', userId)
         .single();
 
-      if (error || !data) return null;
-      return data.push_token;
+      // Return null if column doesn't exist or other error
+      if (error) {
+        if (error.code === 'PGRST204' || error.message?.includes('push_token')) {
+          return null;
+        }
+        return null;
+      }
+      return data?.push_token ?? null;
     } catch (error) {
       console.error('Error getting push token:', error);
       return null;
