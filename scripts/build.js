@@ -427,10 +427,46 @@ function createLandingPage(baseUrl) {
   console.log("Complete");
 }
 
+function buildServer() {
+  console.log("Building server TypeScript...");
+  
+  const serverDistPath = path.join("server", "dist");
+  
+  // Clean previous build
+  if (fs.existsSync(serverDistPath)) {
+    fs.rmSync(serverDistPath, { recursive: true });
+  }
+  
+  // Compile TypeScript
+  const result = require("child_process").spawnSync(
+    "npx", 
+    ["tsc", "--project", "server/tsconfig.json"],
+    { stdio: "inherit", shell: true }
+  );
+  
+  if (result.status !== 0) {
+    exitWithError("Server TypeScript compilation failed");
+  }
+  
+  // Copy public folder to dist (server uses __dirname for static files)
+  const srcPublic = path.join("server", "public");
+  const destPublic = path.join(serverDistPath, "public");
+  
+  if (fs.existsSync(srcPublic)) {
+    fs.cpSync(srcPublic, destPublic, { recursive: true });
+    console.log("Copied server public folder to dist");
+  }
+  
+  console.log("Server build complete");
+}
+
 async function main() {
   console.log("Building static Expo Go deployment...");
 
   setupSignalHandlers();
+  
+  // Build server first
+  buildServer();
 
   const baseUrl = getDeploymentUrl();
   const timestamp = `${Date.now()}-${process.pid}`;
