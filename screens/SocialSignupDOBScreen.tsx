@@ -66,7 +66,7 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
         return;
       }
 
-      navigation.navigate('SocialSignupComplete', { 
+      navigation.navigate('SocialSignupProfilePicture', { 
         userId: params.userId,
         fullName: params.fullName,
         provider: params.provider
