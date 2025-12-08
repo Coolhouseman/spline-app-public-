@@ -12,6 +12,7 @@ import { TwilioService } from '@/services/twilio.service';
 type Props = NativeStackScreenProps<any, 'SocialSignupPhone'>;
 
 export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
+  console.log('[SocialSignupPhoneScreen] Component function called - SCREEN IS RENDERING');
   const { theme } = useTheme();
   const { clearSignupOverlay } = useAuth();
   const [phone, setPhone] = useState('');

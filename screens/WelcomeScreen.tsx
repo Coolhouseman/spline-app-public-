@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Pressable, useWindowDimensions, Platform, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -32,7 +33,7 @@ function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, 
 
 export default function WelcomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { refreshUser, setSocialSignupInProgress, clearSignupOverlay } = useAuth();
+  const { refreshUser, setSocialSignupInProgress } = useAuth();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [appleLoading, setAppleLoading] = useState(false);
@@ -190,42 +191,50 @@ export default function WelcomeScreen({ navigation }: Props) {
     if (result.success && result.userId) {
       console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       
-      // IMPORTANT: Navigate FIRST (synchronously), THEN clear the overlay.
-      // If we clear the overlay first, the re-render can unmount this component
-      // before the navigation executes, causing the user to stay on Welcome.
+      // Use CommonActions.navigate with dispatch for more reliable navigation after OAuth browser return
+      // The destination screens will clear the overlay when they mount
       
       if (result.needsName) {
-        console.log('[WelcomeScreen] Navigating to SocialSignupName');
-        navigation.navigate('SocialSignupName' as never, {
-          userId: result.userId,
-          email: result.email,
-          provider,
-          needsPhone: result.needsPhoneVerification,
-          needsDOB: result.needsDOB,
-          existingPhone: result.existingPhone,
-        } as never);
-        // Clear overlay after navigation is dispatched
-        clearSignupOverlay();
+        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupName');
+        navigation.dispatch(
+          CommonActions.navigate({
+            name: 'SocialSignupName',
+            params: {
+              userId: result.userId,
+              email: result.email,
+              provider,
+              needsPhone: result.needsPhoneVerification,
+              needsDOB: result.needsDOB,
+              existingPhone: result.existingPhone,
+            },
+          })
+        );
       } else if (result.needsPhoneVerification) {
-        console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
-        navigation.navigate('SocialSignupPhone' as never, {
-          userId: result.userId,
-          email: result.email,
-          fullName: result.fullName,
-          provider,
-        } as never);
-        // Clear overlay after navigation is dispatched
-        clearSignupOverlay();
+        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupPhone');
+        navigation.dispatch(
+          CommonActions.navigate({
+            name: 'SocialSignupPhone',
+            params: {
+              userId: result.userId,
+              email: result.email,
+              fullName: result.fullName,
+              provider,
+            },
+          })
+        );
       } else if (result.needsDOB) {
-        console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
-        navigation.navigate('SocialSignupDOB' as never, {
-          userId: result.userId,
-          fullName: result.fullName,
-          provider,
-          phone: result.existingPhone,
-        } as never);
-        // Clear overlay after navigation is dispatched
-        clearSignupOverlay();
+        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupDOB');
+        navigation.dispatch(
+          CommonActions.navigate({
+            name: 'SocialSignupDOB',
+            params: {
+              userId: result.userId,
+              fullName: result.fullName,
+              provider,
+              phone: result.existingPhone,
+            },
+          })
+        );
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
