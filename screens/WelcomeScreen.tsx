@@ -190,42 +190,42 @@ export default function WelcomeScreen({ navigation }: Props) {
     if (result.success && result.userId) {
       console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       
-      // Clear the overlay FIRST, then navigate with a slight delay
-      // This ensures the navigation happens after the re-render from clearing the overlay
-      clearSignupOverlay();
+      // IMPORTANT: Navigate FIRST (synchronously), THEN clear the overlay.
+      // If we clear the overlay first, the re-render can unmount this component
+      // before the navigation executes, causing the user to stay on Welcome.
       
       if (result.needsName) {
         console.log('[WelcomeScreen] Navigating to SocialSignupName');
-        setTimeout(() => {
-          navigation.navigate('SocialSignupName' as never, {
-            userId: result.userId,
-            email: result.email,
-            provider,
-            needsPhone: result.needsPhoneVerification,
-            needsDOB: result.needsDOB,
-            existingPhone: result.existingPhone,
-          } as never);
-        }, 100);
+        navigation.navigate('SocialSignupName' as never, {
+          userId: result.userId,
+          email: result.email,
+          provider,
+          needsPhone: result.needsPhoneVerification,
+          needsDOB: result.needsDOB,
+          existingPhone: result.existingPhone,
+        } as never);
+        // Clear overlay after navigation is dispatched
+        clearSignupOverlay();
       } else if (result.needsPhoneVerification) {
         console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
-        setTimeout(() => {
-          navigation.navigate('SocialSignupPhone' as never, {
-            userId: result.userId,
-            email: result.email,
-            fullName: result.fullName,
-            provider,
-          } as never);
-        }, 100);
+        navigation.navigate('SocialSignupPhone' as never, {
+          userId: result.userId,
+          email: result.email,
+          fullName: result.fullName,
+          provider,
+        } as never);
+        // Clear overlay after navigation is dispatched
+        clearSignupOverlay();
       } else if (result.needsDOB) {
         console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
-        setTimeout(() => {
-          navigation.navigate('SocialSignupDOB' as never, {
-            userId: result.userId,
-            fullName: result.fullName,
-            provider,
-            phone: result.existingPhone,
-          } as never);
-        }, 100);
+        navigation.navigate('SocialSignupDOB' as never, {
+          userId: result.userId,
+          fullName: result.fullName,
+          provider,
+          phone: result.existingPhone,
+        } as never);
+        // Clear overlay after navigation is dispatched
+        clearSignupOverlay();
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
