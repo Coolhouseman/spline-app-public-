@@ -190,68 +190,42 @@ export default function WelcomeScreen({ navigation }: Props) {
     if (result.success && result.userId) {
       console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       
-      // Navigate first, THEN clear the overlay to avoid race conditions
-      // The navigation.reset must happen before any state changes that trigger re-renders
+      // Clear the overlay FIRST, then navigate with a slight delay
+      // This ensures the navigation happens after the re-render from clearing the overlay
+      clearSignupOverlay();
+      
       if (result.needsName) {
         console.log('[WelcomeScreen] Navigating to SocialSignupName');
-        navigation.reset({
-          index: 1,
-          routes: [
-            { name: 'Welcome' },
-            { 
-              name: 'SocialSignupName', 
-              params: {
-                userId: result.userId,
-                email: result.email,
-                provider,
-                needsPhone: result.needsPhoneVerification,
-                needsDOB: result.needsDOB,
-                existingPhone: result.existingPhone,
-              }
-            },
-          ],
-        });
-        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
-        // RootNavigator re-render from resetting navigation. The overlay is hidden
-        // naturally because user navigates away from Welcome screen.
+        setTimeout(() => {
+          navigation.navigate('SocialSignupName' as never, {
+            userId: result.userId,
+            email: result.email,
+            provider,
+            needsPhone: result.needsPhoneVerification,
+            needsDOB: result.needsDOB,
+            existingPhone: result.existingPhone,
+          } as never);
+        }, 100);
       } else if (result.needsPhoneVerification) {
         console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
-        navigation.reset({
-          index: 1,
-          routes: [
-            { name: 'Welcome' },
-            { 
-              name: 'SocialSignupPhone', 
-              params: {
-                userId: result.userId,
-                email: result.email,
-                fullName: result.fullName,
-                provider,
-              }
-            },
-          ],
-        });
-        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
-        // RootNavigator re-render from resetting navigation.
+        setTimeout(() => {
+          navigation.navigate('SocialSignupPhone' as never, {
+            userId: result.userId,
+            email: result.email,
+            fullName: result.fullName,
+            provider,
+          } as never);
+        }, 100);
       } else if (result.needsDOB) {
         console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
-        navigation.reset({
-          index: 1,
-          routes: [
-            { name: 'Welcome' },
-            { 
-              name: 'SocialSignupDOB', 
-              params: {
-                userId: result.userId,
-                fullName: result.fullName,
-                provider,
-                phone: result.existingPhone,
-              }
-            },
-          ],
-        });
-        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
-        // RootNavigator re-render from resetting navigation.
+        setTimeout(() => {
+          navigation.navigate('SocialSignupDOB' as never, {
+            userId: result.userId,
+            fullName: result.fullName,
+            provider,
+            phone: result.existingPhone,
+          } as never);
+        }, 100);
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
