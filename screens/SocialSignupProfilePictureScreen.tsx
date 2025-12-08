@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, ActivityIndicator, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -80,28 +81,48 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
 
   const uploadProfilePicture = async (uri: string): Promise<string | null> => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      let fileExt = 'jpg';
+      const uriParts = uri.split('.');
+      if (uriParts.length > 1) {
+        const lastPart = uriParts[uriParts.length - 1].split('?')[0].toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(lastPart)) {
+          fileExt = lastPart;
+        }
+      }
       
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const base64data = reader.result as string;
-          const base64 = base64data.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(blob);
-      
-      const base64 = await base64Promise;
-      const fileName = `${params.userId}_${Date.now()}.jpg`;
-      const filePath = `avatars/${fileName}`;
-      
+      const fileName = `${params.userId}-${Date.now()}.${fileExt}`;
+      const filePath = `profile-pictures/${fileName}`;
+      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+      let uploadData: ArrayBuffer | Blob;
+
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+        uploadData = await response.blob();
+      } else {
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        if (!fileInfo.exists) {
+          throw new Error('File does not exist at URI');
+        }
+        
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: 'base64',
+        });
+        
+        if (!base64 || base64.length === 0) {
+          throw new Error('Failed to read file as base64');
+        }
+        
+        uploadData = decode(base64);
+      }
+
       const { error: uploadError } = await supabase.storage
-        .from('profile-pictures')
-        .upload(filePath, decode(base64), {
-          contentType: 'image/jpeg',
+        .from('user-uploads')
+        .upload(filePath, uploadData, {
+          contentType,
           upsert: true,
         });
 
@@ -111,7 +132,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
       }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('profile-pictures')
+        .from('user-uploads')
         .getPublicUrl(filePath);
 
       return publicUrl;
@@ -193,7 +214,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
           Almost Done
         </ThemedText>
 
-        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.xl }]}>
+        <ThemedText style={[Typography.hero, { color: theme.text, marginBottom: Spacing.xl, textAlign: 'center' }]}>
           {getFirstName() ? `${getFirstName()}, add a profile picture` : 'Add a profile picture'}
         </ThemedText>
 
