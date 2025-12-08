@@ -33,7 +33,7 @@ function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, 
 
 export default function WelcomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { refreshUser, setSocialSignupInProgress } = useAuth();
+  const { refreshUser, setSocialSignupInProgress, clearSignupOverlay } = useAuth();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [appleLoading, setAppleLoading] = useState(false);
@@ -209,6 +209,8 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           })
         );
+        // Clear overlay after a short delay to allow navigation to process
+        setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsPhoneVerification) {
         console.log('[WelcomeScreen] Dispatching navigation to SocialSignupPhone');
         navigation.dispatch(
@@ -222,6 +224,8 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           })
         );
+        // Clear overlay after a short delay to allow navigation to process
+        setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsDOB) {
         console.log('[WelcomeScreen] Dispatching navigation to SocialSignupDOB');
         navigation.dispatch(
@@ -235,6 +239,8 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           })
         );
+        // Clear overlay after a short delay to allow navigation to process
+        setTimeout(() => clearSignupOverlay(), 100);
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
