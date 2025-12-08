@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Pressable, useWindowDimensions, Platform, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as RootNavigation from '@/utils/RootNavigation';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -191,55 +191,40 @@ export default function WelcomeScreen({ navigation }: Props) {
     if (result.success && result.userId) {
       console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       
-      // Use CommonActions.navigate with dispatch for more reliable navigation after OAuth browser return
-      // The destination screens will clear the overlay when they mount
+      // Use RootNavigation (app-level navigation ref) for reliable navigation after OAuth browser return
+      // This is the standard pattern for navigating from OAuth callbacks
       
       if (result.needsName) {
-        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupName');
-        navigation.dispatch(
-          CommonActions.navigate({
-            name: 'SocialSignupName',
-            params: {
-              userId: result.userId,
-              email: result.email,
-              provider,
-              needsPhone: result.needsPhoneVerification,
-              needsDOB: result.needsDOB,
-              existingPhone: result.existingPhone,
-            },
-          })
-        );
-        // Clear overlay after a short delay to allow navigation to process
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupName');
+        RootNavigation.navigate('SocialSignupName', {
+          userId: result.userId,
+          email: result.email,
+          provider,
+          needsPhone: result.needsPhoneVerification,
+          needsDOB: result.needsDOB,
+          existingPhone: result.existingPhone,
+        });
+        // Clear overlay after navigation
         setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsPhoneVerification) {
-        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupPhone');
-        navigation.dispatch(
-          CommonActions.navigate({
-            name: 'SocialSignupPhone',
-            params: {
-              userId: result.userId,
-              email: result.email,
-              fullName: result.fullName,
-              provider,
-            },
-          })
-        );
-        // Clear overlay after a short delay to allow navigation to process
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupPhone');
+        RootNavigation.navigate('SocialSignupPhone', {
+          userId: result.userId,
+          email: result.email,
+          fullName: result.fullName,
+          provider,
+        });
+        // Clear overlay after navigation
         setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsDOB) {
-        console.log('[WelcomeScreen] Dispatching navigation to SocialSignupDOB');
-        navigation.dispatch(
-          CommonActions.navigate({
-            name: 'SocialSignupDOB',
-            params: {
-              userId: result.userId,
-              fullName: result.fullName,
-              provider,
-              phone: result.existingPhone,
-            },
-          })
-        );
-        // Clear overlay after a short delay to allow navigation to process
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupDOB');
+        RootNavigation.navigate('SocialSignupDOB', {
+          userId: result.userId,
+          fullName: result.fullName,
+          provider,
+          phone: result.existingPhone,
+        });
+        // Clear overlay after navigation
         setTimeout(() => clearSignupOverlay(), 100);
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');

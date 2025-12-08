@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View, useColorScheme, Platform } from "react-native";
-import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -18,6 +18,7 @@ import { LevelUpProvider } from "@/contexts/LevelUpContext";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
 import { supabase } from "@/services/supabase";
+import { navigationRef } from "@/utils/RootNavigation";
 
 const Stack = createNativeStackNavigator();
 
@@ -157,7 +158,6 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
   const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
-  const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
   useEffect(() => {
     const handleUrl = async (event: { url: string }) => {
