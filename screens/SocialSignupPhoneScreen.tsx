@@ -26,6 +26,7 @@ export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
 
   // Clear the loading overlay once this screen mounts (navigation is complete)
   useEffect(() => {
+    console.log('[SocialSignupPhoneScreen] Screen mounted, clearing overlay');
     clearSignupOverlay();
   }, []);
 
