@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<any, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { login, refreshUser, setSocialSignupInProgress } = useAuth();
+  const { login, refreshUser, setSocialSignupInProgress, clearSignupOverlay } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,6 +46,7 @@ export default function LoginScreen({ navigation }: Props) {
   const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
     if (result.success && result.userId) {
       if (result.needsName) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupName', {
           userId: result.userId,
           email: result.email,
@@ -55,6 +56,7 @@ export default function LoginScreen({ navigation }: Props) {
           existingPhone: result.existingPhone,
         });
       } else if (result.needsPhoneVerification) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupPhone', {
           userId: result.userId,
           email: result.email,
@@ -62,6 +64,7 @@ export default function LoginScreen({ navigation }: Props) {
           provider,
         });
       } else if (result.needsDOB) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupDOB', {
           userId: result.userId,
           fullName: result.fullName,

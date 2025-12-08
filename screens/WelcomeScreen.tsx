@@ -32,7 +32,7 @@ function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, 
 
 export default function WelcomeScreen({ navigation }: Props) {
   const { theme } = useTheme();
-  const { refreshUser, setSocialSignupInProgress } = useAuth();
+  const { refreshUser, setSocialSignupInProgress, clearSignupOverlay } = useAuth();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [appleLoading, setAppleLoading] = useState(false);
@@ -188,6 +188,7 @@ export default function WelcomeScreen({ navigation }: Props) {
   const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
     if (result.success && result.userId) {
       if (result.needsName) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupName', {
           userId: result.userId,
           email: result.email,
@@ -197,6 +198,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           existingPhone: result.existingPhone,
         });
       } else if (result.needsPhoneVerification) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupPhone', {
           userId: result.userId,
           email: result.email,
@@ -204,6 +206,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           provider,
         });
       } else if (result.needsDOB) {
+        clearSignupOverlay();
         navigation.navigate('SocialSignupDOB', {
           userId: result.userId,
           fullName: result.fullName,

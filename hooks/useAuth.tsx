@@ -14,6 +14,7 @@ interface AuthContextType {
   updateUser: (updates: Partial<User>) => Promise<void>;
   refreshUser: () => Promise<void>;
   setSocialSignupInProgress: (inProgress: boolean) => void;
+  clearSignupOverlay: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -208,8 +209,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsSigningUp(inProgress);
   };
 
+  const clearSignupOverlay = () => {
+    console.log('[Auth] clearSignupOverlay - hiding loading but keeping auth listener blocked');
+    setIsSigningUp(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isSigningUp, login, signup, logout, updateUser, refreshUser, setSocialSignupInProgress }}>
+    <AuthContext.Provider value={{ user, isLoading, isSigningUp, login, signup, logout, updateUser, refreshUser, setSocialSignupInProgress, clearSignupOverlay }}>
       {children}
     </AuthContext.Provider>
   );
