@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { TwilioService } from '@/services/twilio.service';
 
@@ -12,6 +13,7 @@ type Props = NativeStackScreenProps<any, 'SocialSignupPhone'>;
 
 export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
+  const { clearSignupOverlay } = useAuth();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,6 +23,11 @@ export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
     fullName?: string;
     provider: 'apple' | 'google';
   };
+
+  // Clear the loading overlay once this screen mounts (navigation is complete)
+  useEffect(() => {
+    clearSignupOverlay();
+  }, []);
 
   if (!params?.userId) {
     return (

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { supabase } from '@/services/supabase';
 
@@ -12,6 +13,7 @@ type Props = NativeStackScreenProps<any, 'SocialSignupName'>;
 
 export default function SocialSignupNameScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
+  const { clearSignupOverlay } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,6 +27,11 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
     needsDOB?: boolean;
     existingPhone?: string;
   };
+
+  // Clear the loading overlay once this screen mounts (navigation is complete)
+  useEffect(() => {
+    clearSignupOverlay();
+  }, []);
 
   if (!params?.userId) {
     return (

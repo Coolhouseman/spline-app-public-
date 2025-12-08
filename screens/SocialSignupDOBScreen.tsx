@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Pressable, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { supabase } from '@/services/supabase';
 
@@ -13,6 +14,7 @@ type Props = NativeStackScreenProps<any, 'SocialSignupDOB'>;
 
 export default function SocialSignupDOBScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
+  const { clearSignupOverlay } = useAuth();
   const [date, setDate] = useState(new Date(2000, 0, 1));
   const [dateText, setDateText] = useState('2000-01-01');
   const [loading, setLoading] = useState(false);
@@ -24,6 +26,11 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
     provider: 'apple' | 'google';
     phone: string;
   };
+
+  // Clear the loading overlay once this screen mounts (navigation is complete)
+  useEffect(() => {
+    clearSignupOverlay();
+  }, []);
 
   const isValidAge = () => {
     const today = new Date();
