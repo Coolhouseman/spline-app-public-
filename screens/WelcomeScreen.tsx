@@ -186,8 +186,11 @@ export default function WelcomeScreen({ navigation }: Props) {
   }));
 
   const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
+    console.log('[WelcomeScreen] handleSocialAuthResult called with:', JSON.stringify(result, null, 2));
     if (result.success && result.userId) {
+      console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       if (result.needsName) {
+        console.log('[WelcomeScreen] Navigating to SocialSignupName');
         clearSignupOverlay();
         navigation.navigate('SocialSignupName', {
           userId: result.userId,
@@ -198,6 +201,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           existingPhone: result.existingPhone,
         });
       } else if (result.needsPhoneVerification) {
+        console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
         clearSignupOverlay();
         navigation.navigate('SocialSignupPhone', {
           userId: result.userId,
@@ -206,6 +210,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           provider,
         });
       } else if (result.needsDOB) {
+        console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
         clearSignupOverlay();
         navigation.navigate('SocialSignupDOB', {
           userId: result.userId,
@@ -214,9 +219,11 @@ export default function WelcomeScreen({ navigation }: Props) {
           phone: result.existingPhone,
         });
       } else {
+        console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
       }
     } else {
+      console.log('[WelcomeScreen] Auth failed or no userId:', result.error);
       setSocialSignupInProgress(false);
       if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
         Alert.alert('Sign-In Failed', result.error);
