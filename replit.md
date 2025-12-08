@@ -35,6 +35,7 @@ Preferred communication style: Simple, everyday language.
 - **Storage**: AsyncStorage for local data persistence.
 - **User Model**: Comprehensive user profiles (password column is nullable - auth handled by Supabase).
 - **Onboarding**: 8-step wizard for user information collection and terms acceptance.
+- **Apple Sign-In**: Only works in TestFlight/production builds. Expo Go returns error "Unacceptable audience in id_token: [host.exp.Exponent]" - this is expected behavior per Apple's security requirements.
 
 ### Data Management
 - **Service Layer**: Centralized services for Auth, Splits, Wallet, and Stripe interactions.
