@@ -217,6 +217,14 @@ export class AuthService {
 
       if (!profile) return null;
 
+      // Check if profile is complete (has phone and DOB)
+      // Incomplete profiles from social auth need to complete signup flow
+      const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
+      if (!isProfileComplete) {
+        console.log('[AuthService] Profile incomplete (missing phone/DOB), not restoring session');
+        return null;
+      }
+
       return { user: profile as User, session };
     } catch (error: any) {
       if (error?.message?.includes('Refresh Token') || error?.message?.includes('Invalid')) {
@@ -448,8 +456,15 @@ export class AuthService {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to delete account');
+      let errorMessage = 'Failed to delete account';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        // Response was not JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     await supabase.auth.signOut();

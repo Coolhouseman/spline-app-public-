@@ -67,6 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .single();
         
         if (profile) {
+          // Check if profile is complete (has phone and DOB)
+          const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
+          if (!isProfileComplete) {
+            console.log('[Auth] Profile incomplete (missing phone/DOB), not setting user - needs profile completion');
+            return;
+          }
           setUser(profile as User);
         }
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
@@ -77,6 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .single();
         
         if (profile) {
+          // Check if profile is complete (has phone and DOB)
+          const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
+          if (!isProfileComplete) {
+            console.log('[Auth] Profile incomplete on token refresh, not updating user');
+            return;
+          }
           setUser(profile as User);
         }
       }
