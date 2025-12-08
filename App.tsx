@@ -61,29 +61,27 @@ function RootNavigator() {
     );
   }
 
-  // Show loading overlay during signup transition
-  if (isSigningUp) {
-    const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
-    return (
-      <View style={[styles.loading, { backgroundColor: splashBg }]}>
-        <LoadingOverlay visible={true} message="Creating your account..." />
-      </View>
-    );
-  }
-
   console.log('RootNavigator rendering: user is', user ? 'authenticated' : 'null');
 
   return (
-    <Stack.Navigator 
-      key={user ? 'authenticated' : 'unauthenticated'}
-      screenOptions={{ headerShown: false }}
-    >
-      {user ? (
-        <Stack.Screen name="Main" component={MainTabNavigator} />
-      ) : (
-        <Stack.Screen name="Auth" component={AuthStackNavigator} />
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator 
+        key={user ? 'authenticated' : 'unauthenticated'}
+        screenOptions={{ headerShown: false }}
+      >
+        {user ? (
+          <Stack.Screen name="Main" component={MainTabNavigator} />
+        ) : (
+          <Stack.Screen name="Auth" component={AuthStackNavigator} />
+        )}
+      </Stack.Navigator>
+      {/* Overlay loading on top of navigator during signup - keeps navigator mounted */}
+      {isSigningUp && (
+        <View style={[styles.loading, styles.overlay, { backgroundColor: colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light }]}>
+          <LoadingOverlay visible={true} message="Creating your account..." />
+        </View>
       )}
-    </Stack.Navigator>
+    </View>
   );
 }
 
@@ -227,5 +225,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
   },
 });
