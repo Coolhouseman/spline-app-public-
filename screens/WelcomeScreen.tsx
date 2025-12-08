@@ -190,71 +190,67 @@ export default function WelcomeScreen({ navigation }: Props) {
     if (result.success && result.userId) {
       console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
       
-      // Clear overlay first, then navigate after a brief delay to ensure state is settled
-      clearSignupOverlay();
-      
+      // Navigate first, THEN clear the overlay to avoid race conditions
+      // The navigation.reset must happen before any state changes that trigger re-renders
       if (result.needsName) {
-        console.log('[WelcomeScreen] Will navigate to SocialSignupName');
-        setTimeout(() => {
-          console.log('[WelcomeScreen] Executing navigation to SocialSignupName');
-          navigation.reset({
-            index: 1,
-            routes: [
-              { name: 'Welcome' },
-              { 
-                name: 'SocialSignupName', 
-                params: {
-                  userId: result.userId,
-                  email: result.email,
-                  provider,
-                  needsPhone: result.needsPhoneVerification,
-                  needsDOB: result.needsDOB,
-                  existingPhone: result.existingPhone,
-                }
-              },
-            ],
-          });
-        }, 50);
+        console.log('[WelcomeScreen] Navigating to SocialSignupName');
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Welcome' },
+            { 
+              name: 'SocialSignupName', 
+              params: {
+                userId: result.userId,
+                email: result.email,
+                provider,
+                needsPhone: result.needsPhoneVerification,
+                needsDOB: result.needsDOB,
+                existingPhone: result.existingPhone,
+              }
+            },
+          ],
+        });
+        // Clear overlay after navigation is initiated
+        setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsPhoneVerification) {
-        console.log('[WelcomeScreen] Will navigate to SocialSignupPhone');
-        setTimeout(() => {
-          console.log('[WelcomeScreen] Executing navigation to SocialSignupPhone');
-          navigation.reset({
-            index: 1,
-            routes: [
-              { name: 'Welcome' },
-              { 
-                name: 'SocialSignupPhone', 
-                params: {
-                  userId: result.userId,
-                  email: result.email,
-                  fullName: result.fullName,
-                  provider,
-                }
-              },
-            ],
-          });
-        }, 50);
+        console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Welcome' },
+            { 
+              name: 'SocialSignupPhone', 
+              params: {
+                userId: result.userId,
+                email: result.email,
+                fullName: result.fullName,
+                provider,
+              }
+            },
+          ],
+        });
+        // Clear overlay after navigation is initiated
+        setTimeout(() => clearSignupOverlay(), 100);
       } else if (result.needsDOB) {
-        console.log('[WelcomeScreen] Will navigate to SocialSignupDOB');
-        setTimeout(() => {
-          console.log('[WelcomeScreen] Executing navigation to SocialSignupDOB');
-          navigation.reset({
-            index: 1,
-            routes: [
-              { name: 'Welcome' },
-              { 
-                name: 'SocialSignupDOB', 
-                params: {
-                  userId: result.userId,
-                  fullName: result.fullName,
-                  provider,
-                  phone: result.existingPhone,
-                }
-              },
-            ],
-          });
-        }, 50);
+        console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Welcome' },
+            { 
+              name: 'SocialSignupDOB', 
+              params: {
+                userId: result.userId,
+                fullName: result.fullName,
+                provider,
+                phone: result.existingPhone,
+              }
+            },
+          ],
+        });
+        // Clear overlay after navigation is initiated
+        setTimeout(() => clearSignupOverlay(), 100);
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
