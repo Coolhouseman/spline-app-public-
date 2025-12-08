@@ -211,8 +211,9 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           ],
         });
-        // Clear overlay after navigation is initiated
-        setTimeout(() => clearSignupOverlay(), 100);
+        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
+        // RootNavigator re-render from resetting navigation. The overlay is hidden
+        // naturally because user navigates away from Welcome screen.
       } else if (result.needsPhoneVerification) {
         console.log('[WelcomeScreen] Navigating to SocialSignupPhone');
         navigation.reset({
@@ -230,8 +231,8 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           ],
         });
-        // Clear overlay after navigation is initiated
-        setTimeout(() => clearSignupOverlay(), 100);
+        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
+        // RootNavigator re-render from resetting navigation.
       } else if (result.needsDOB) {
         console.log('[WelcomeScreen] Navigating to SocialSignupDOB');
         navigation.reset({
@@ -249,8 +250,8 @@ export default function WelcomeScreen({ navigation }: Props) {
             },
           ],
         });
-        // Clear overlay after navigation is initiated
-        setTimeout(() => clearSignupOverlay(), 100);
+        // Don't call clearSignupOverlay here - keep isSigningUp true to prevent
+        // RootNavigator re-render from resetting navigation.
       } else {
         console.log('[WelcomeScreen] Profile complete, refreshing user');
         await refreshUser();
