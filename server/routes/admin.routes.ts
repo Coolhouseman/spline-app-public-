@@ -118,6 +118,15 @@ async function adminAuthMiddleware(
 
 router.post('/setup-admin', async (req, res) => {
   try {
+    // Require ADMIN_SETUP_SECRET to prevent unauthorized admin creation
+    const setupSecret = process.env.ADMIN_SETUP_SECRET;
+    const providedSecret = req.body.setup_secret || req.headers['x-setup-secret'];
+    
+    if (!setupSecret || setupSecret !== providedSecret) {
+      console.log('Admin setup attempted without valid secret');
+      return res.status(403).json({ error: 'Admin setup not authorized' });
+    }
+    
     // Accept custom credentials from request body, or use defaults
     const adminEmail = req.body.email || 'admin@spline.nz';
     const adminPassword = req.body.password || 'SplineAdmin2024!';

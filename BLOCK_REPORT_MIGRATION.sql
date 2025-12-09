@@ -91,21 +91,22 @@ CREATE OR REPLACE FUNCTION block_user(
 ) RETURNS VOID AS $$
 BEGIN
   -- Insert block record
-  INSERT INTO blocked_users (user_id, blocked_user_id)
+  INSERT INTO public.blocked_users (user_id, blocked_user_id)
   VALUES (p_user_id, p_blocked_user_id)
   ON CONFLICT (user_id, blocked_user_id) DO NOTHING;
   
   -- Remove any existing friendship (both directions)
-  DELETE FROM friends 
+  DELETE FROM public.friends 
   WHERE (user_id = p_user_id AND friend_id = p_blocked_user_id)
      OR (user_id = p_blocked_user_id AND friend_id = p_user_id);
   
   -- Remove any pending friend requests (both directions)
-  DELETE FROM friend_requests 
+  DELETE FROM public.friend_requests 
   WHERE (sender_id = p_user_id AND receiver_id = p_blocked_user_id)
      OR (sender_id = p_blocked_user_id AND receiver_id = p_user_id);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 -- =============================================
 -- 4. FUNCTION TO CHECK IF USER IS BLOCKED
@@ -116,12 +117,13 @@ CREATE OR REPLACE FUNCTION is_user_blocked(
 ) RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
-    SELECT 1 FROM blocked_users 
+    SELECT 1 FROM public.blocked_users 
     WHERE (user_id = p_user_id AND blocked_user_id = p_other_user_id)
        OR (user_id = p_other_user_id AND blocked_user_id = p_user_id)
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 -- =============================================
 -- 5. FUNCTION TO CREATE REPORT
@@ -134,13 +136,14 @@ CREATE OR REPLACE FUNCTION create_user_report(
 DECLARE
   v_report_id UUID;
 BEGIN
-  INSERT INTO user_reports (reporter_id, reported_user_id, reason)
+  INSERT INTO public.user_reports (reporter_id, reported_user_id, reason)
   VALUES (p_reporter_id, p_reported_user_id, p_reason)
   RETURNING id INTO v_report_id;
   
   RETURN v_report_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 -- =============================================
 -- 6. VERIFY TABLES CREATED
