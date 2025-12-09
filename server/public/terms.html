@@ -61,28 +61,43 @@
 
     .logo {
       display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 24px;
-      font-weight: 700;
-      color: var(--primary);
+      flex-direction: column;
       text-decoration: none;
     }
 
-    .logo-icon {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
     }
 
-    .logo-icon svg {
-      width: 24px;
-      height: 24px;
-      fill: white;
+    .logo-text-blue {
+      color: var(--primary);
+    }
+
+    .logo-text-dark {
+      color: #1f2937;
+    }
+
+    .logo-underline {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+    }
+
+    .logo-underline-bar {
+      width: 28px;
+      height: 2px;
+      background: var(--primary);
+      border-radius: 1px;
+    }
+
+    .logo-underline-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--primary);
+      border-radius: 50%;
     }
 
     .nav-links {
@@ -212,10 +227,14 @@
   <header>
     <nav>
       <a href="/" class="logo">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div style="display: flex; align-items: baseline;">
+          <span class="logo-text logo-text-blue">Sp</span>
+          <span class="logo-text logo-text-dark">line</span>
         </div>
-        Spline
+        <div class="logo-underline">
+          <div class="logo-underline-bar"></div>
+          <div class="logo-underline-dot"></div>
+        </div>
       </a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
