@@ -10,7 +10,7 @@ import adminRouter from './routes/admin.routes';
 import stripeRouter from './routes/stripe.routes';
 import gamificationRouter from './routes/gamification.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
-import { sendWithdrawalNotification } from './services/email.service';
+import { sendWithdrawalNotification, sendUserReportNotification } from './services/email.service';
 
 // Email transporter for admin notifications
 const emailTransporter = process.env.EMAIL_HOST ? nodemailer.createTransport({
@@ -875,6 +875,210 @@ app.delete('/api/delete-account', async (req, res) => {
   } catch (error: any) {
     console.error('Account deletion error:', error);
     res.status(500).json({ error: 'An error occurred during account deletion' });
+  }
+});
+
+// =============================================
+// BLOCK/UNBLOCK USER ENDPOINTS
+// =============================================
+
+// Block a user
+app.post('/api/friends/block', async (req, res) => {
+  try {
+    const { userId, blockedUserId } = req.body;
+    
+    if (!userId || !blockedUserId) {
+      return res.status(400).json({ error: 'Missing required fields: userId and blockedUserId' });
+    }
+    
+    if (userId === blockedUserId) {
+      return res.status(400).json({ error: 'Cannot block yourself' });
+    }
+    
+    // Use RPC function to block user (handles friendship removal atomically)
+    const { data, error } = await supabaseServer.rpc('block_user', {
+      p_user_id: userId,
+      p_blocked_user_id: blockedUserId
+    });
+    
+    if (error) {
+      console.error('Error blocking user:', error);
+      return res.status(500).json({ error: 'Failed to block user', details: error.message });
+    }
+    
+    console.log(`User ${userId} blocked user ${blockedUserId}`);
+    res.json({ success: true, message: 'User blocked successfully' });
+    
+  } catch (error: any) {
+    console.error('Block user error:', error);
+    res.status(500).json({ error: 'An error occurred while blocking user' });
+  }
+});
+
+// Unblock a user
+app.delete('/api/friends/block/:blockedUserId', async (req, res) => {
+  try {
+    const { blockedUserId } = req.params;
+    const userId = req.query.userId as string;
+    
+    if (!userId || !blockedUserId) {
+      return res.status(400).json({ error: 'Missing required fields: userId and blockedUserId' });
+    }
+    
+    const { error } = await supabaseServer
+      .from('blocked_users')
+      .delete()
+      .eq('user_id', userId)
+      .eq('blocked_user_id', blockedUserId);
+    
+    if (error) {
+      console.error('Error unblocking user:', error);
+      return res.status(500).json({ error: 'Failed to unblock user', details: error.message });
+    }
+    
+    console.log(`User ${userId} unblocked user ${blockedUserId}`);
+    res.json({ success: true, message: 'User unblocked successfully' });
+    
+  } catch (error: any) {
+    console.error('Unblock user error:', error);
+    res.status(500).json({ error: 'An error occurred while unblocking user' });
+  }
+});
+
+// Get blocked users list
+app.get('/api/friends/blocked', async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing required field: userId' });
+    }
+    
+    const { data, error } = await supabaseServer
+      .from('blocked_users')
+      .select(`
+        id,
+        user_id,
+        blocked_user_id,
+        created_at,
+        blocked_user:users!blocked_users_blocked_user_id_fkey (
+          id,
+          unique_id,
+          name,
+          email,
+          profile_picture
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching blocked users:', error);
+      return res.status(500).json({ error: 'Failed to fetch blocked users', details: error.message });
+    }
+    
+    res.json({ blockedUsers: data || [] });
+    
+  } catch (error: any) {
+    console.error('Get blocked users error:', error);
+    res.status(500).json({ error: 'An error occurred while fetching blocked users' });
+  }
+});
+
+// Check if a user is blocked
+app.get('/api/friends/is-blocked', async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    const otherUserId = req.query.otherUserId as string;
+    
+    if (!userId || !otherUserId) {
+      return res.status(400).json({ error: 'Missing required fields: userId and otherUserId' });
+    }
+    
+    const { data, error } = await supabaseServer.rpc('is_user_blocked', {
+      p_user_id: userId,
+      p_other_user_id: otherUserId
+    });
+    
+    if (error) {
+      console.error('Error checking block status:', error);
+      return res.status(500).json({ error: 'Failed to check block status', details: error.message });
+    }
+    
+    res.json({ isBlocked: data || false });
+    
+  } catch (error: any) {
+    console.error('Check block status error:', error);
+    res.status(500).json({ error: 'An error occurred while checking block status' });
+  }
+});
+
+// =============================================
+// USER REPORT ENDPOINTS
+// =============================================
+
+// Create a user report
+app.post('/api/reports', async (req, res) => {
+  try {
+    const { reporterId, reportedUserId, reason } = req.body;
+    
+    if (!reporterId || !reportedUserId || !reason) {
+      return res.status(400).json({ error: 'Missing required fields: reporterId, reportedUserId, and reason' });
+    }
+    
+    if (reporterId === reportedUserId) {
+      return res.status(400).json({ error: 'Cannot report yourself' });
+    }
+    
+    if (reason.length < 10) {
+      return res.status(400).json({ error: 'Reason must be at least 10 characters' });
+    }
+    
+    // Use RPC function to create report
+    const { data, error } = await supabaseServer.rpc('create_user_report', {
+      p_reporter_id: reporterId,
+      p_reported_user_id: reportedUserId,
+      p_reason: reason
+    });
+    
+    if (error) {
+      console.error('Error creating report:', error);
+      return res.status(500).json({ error: 'Failed to create report', details: error.message });
+    }
+    
+    // Only send email notification if report was created successfully
+    if (data) {
+      // Get user details for email notification
+      const { data: users } = await supabaseServer
+        .from('users')
+        .select('id, name, email')
+        .in('id', [reporterId, reportedUserId]);
+      
+      const reporter = users?.find(u => u.id === reporterId);
+      const reportedUser = users?.find(u => u.id === reportedUserId);
+      
+      // Send email notification to admin
+      if (reporter && reportedUser) {
+        await sendUserReportNotification({
+          reportId: data,
+          reporterId,
+          reporterName: reporter.name || 'Unknown',
+          reporterEmail: reporter.email || 'Unknown',
+          reportedUserId,
+          reportedUserName: reportedUser.name || 'Unknown',
+          reportedUserEmail: reportedUser.email || 'Unknown',
+          reason,
+          timestamp: new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland' })
+        });
+      }
+    }
+    
+    console.log(`Report created: ${reporterId} reported ${reportedUserId}`);
+    res.json({ success: true, reportId: data, message: 'Report submitted successfully' });
+    
+  } catch (error: any) {
+    console.error('Create report error:', error);
+    res.status(500).json({ error: 'An error occurred while creating report' });
   }
 });
 

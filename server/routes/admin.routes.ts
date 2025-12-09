@@ -1803,4 +1803,108 @@ router.get('/gamification/balance-momentum/stats', adminAuthMiddleware, async (r
   }
 });
 
+// =============================================
+// USER REPORTS MANAGEMENT (with admin auth)
+// =============================================
+
+// Get all user reports
+router.get('/reports', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { status } = req.query;
+    
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    
+    let query = freshClient
+      .from('user_reports')
+      .select(`
+        id,
+        reporter_id,
+        reported_user_id,
+        reason,
+        status,
+        admin_notes,
+        created_at,
+        updated_at,
+        reporter:users!user_reports_reporter_id_fkey (
+          id,
+          unique_id,
+          name,
+          email
+        ),
+        reported_user:users!user_reports_reported_user_id_fkey (
+          id,
+          unique_id,
+          name,
+          email
+        )
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (status && status !== 'all') {
+      query = query.eq('status', status as string);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching reports:', error);
+      return res.status(500).json({ error: 'Failed to fetch reports', details: error.message });
+    }
+    
+    res.json({ reports: data || [] });
+    
+  } catch (error: any) {
+    console.error('Get reports error:', error);
+    res.status(500).json({ error: 'An error occurred while fetching reports' });
+  }
+});
+
+// Update report status
+router.patch('/reports/:reportId', adminAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { reportId } = req.params;
+    const { status, adminNotes } = req.body;
+    
+    if (!reportId) {
+      return res.status(400).json({ error: 'Missing report ID' });
+    }
+    
+    const validStatuses = ['open', 'reviewed', 'resolved', 'dismissed'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {
+      db: { schema: 'public' },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (status) updateData.status = status;
+    if (adminNotes !== undefined) updateData.admin_notes = adminNotes;
+    
+    const { data, error } = await freshClient
+      .from('user_reports')
+      .update(updateData)
+      .eq('id', reportId)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating report:', error);
+      return res.status(500).json({ error: 'Failed to update report', details: error.message });
+    }
+    
+    console.log(`Report ${reportId} updated by admin ${req.adminUser?.email}: status=${status}`);
+    res.json({ success: true, report: data });
+    
+  } catch (error: any) {
+    console.error('Update report error:', error);
+    res.status(500).json({ error: 'An error occurred while updating report' });
+  }
+});
+
 export default router;
