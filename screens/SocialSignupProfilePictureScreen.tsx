@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Pressable, Image, Alert, ActivityIndicator, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -10,8 +9,7 @@ import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
-import { supabase } from '@/services/supabase';
-import { decode } from 'base64-arraybuffer';
+import { AuthService } from '@/services/auth.service';
 
 type Props = NativeStackScreenProps<any, 'SocialSignupProfilePicture'>;
 
@@ -71,96 +69,10 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-      base64: true,
     });
 
     if (!result.canceled && result.assets[0]) {
       setProfilePicture(result.assets[0].uri);
-    }
-  };
-
-  const uploadProfilePicture = async (uri: string): Promise<string | null> => {
-    try {
-      console.log('[ProfilePicture] Starting upload for user:', params.userId);
-      
-      // Verify session is valid before attempting upload
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('[ProfilePicture] Session error:', sessionError);
-        throw new Error('Session error - please try signing in again');
-      }
-      if (!session) {
-        console.error('[ProfilePicture] No active session found');
-        throw new Error('No active session - please try signing in again');
-      }
-      console.log('[ProfilePicture] Session verified for user:', session.user.id);
-      
-      let fileExt = 'jpg';
-      const uriParts = uri.split('.');
-      if (uriParts.length > 1) {
-        const lastPart = uriParts[uriParts.length - 1].split('?')[0].toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(lastPart)) {
-          fileExt = lastPart;
-        }
-      }
-      
-      const fileName = `${params.userId}-${Date.now()}.${fileExt}`;
-      const filePath = `profile-pictures/${fileName}`;
-      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
-
-      let uploadData: ArrayBuffer | Blob;
-
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image: ${response.status}`);
-        }
-        uploadData = await response.blob();
-      } else {
-        const fileInfo = await FileSystem.getInfoAsync(uri);
-        if (!fileInfo.exists) {
-          throw new Error('File does not exist at URI');
-        }
-        
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64',
-        });
-        
-        if (!base64 || base64.length === 0) {
-          throw new Error('Failed to read file as base64');
-        }
-        
-        uploadData = decode(base64);
-        console.log('[ProfilePicture] File read successfully, size:', (uploadData as ArrayBuffer).byteLength);
-      }
-
-      console.log('[ProfilePicture] Uploading to Supabase storage...');
-      const { error: uploadError } = await supabase.storage
-        .from('user-uploads')
-        .upload(filePath, uploadData, {
-          contentType,
-          upsert: true,
-        });
-
-      if (uploadError) {
-        console.error('[ProfilePicture] Upload error:', uploadError);
-        console.error('[ProfilePicture] Error details:', JSON.stringify(uploadError));
-        // Provide more helpful error message
-        if (uploadError.message?.includes('policy') || uploadError.message?.includes('RLS') || uploadError.message?.includes('permission')) {
-          throw new Error('Storage permission denied. Please contact support.');
-        }
-        throw new Error(uploadError.message || 'Upload failed');
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('user-uploads')
-        .getPublicUrl(filePath);
-
-      console.log('[ProfilePicture] Upload successful, URL:', publicUrl);
-      return publicUrl;
-    } catch (error: any) {
-      console.error('[ProfilePicture] Error uploading:', error);
-      throw error; // Re-throw to allow caller to handle
     }
   };
 
@@ -172,9 +84,11 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
       
       if (profilePicture) {
         try {
-          avatarUrl = await uploadProfilePicture(profilePicture);
+          console.log('[SocialSignupProfilePicture] Uploading profile picture using AuthService...');
+          avatarUrl = await AuthService.uploadProfilePicture(params.userId, profilePicture);
+          console.log('[SocialSignupProfilePicture] Profile picture uploaded successfully:', avatarUrl);
         } catch (uploadError: any) {
-          console.error('[ProfilePicture] Upload caught error:', uploadError);
+          console.error('[SocialSignupProfilePicture] Upload error:', uploadError);
           const errorMessage = uploadError.message || 'Failed to upload your profile picture';
           Alert.alert('Upload Failed', `${errorMessage}. Would you like to try again or skip?`, [
             {
@@ -196,45 +110,6 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
           ]);
           return;
         }
-        
-        if (!avatarUrl) {
-          Alert.alert('Upload Failed', 'Failed to upload your profile picture. Would you like to try again or skip?', [
-            {
-              text: 'Try Again',
-              onPress: () => setLoading(false),
-            },
-            {
-              text: 'Skip',
-              onPress: () => {
-                setLoading(false);
-                navigation.navigate('SocialSignupBio', { 
-                  userId: params.userId,
-                  fullName: params.fullName,
-                  provider: params.provider,
-                  avatarUrl: null,
-                });
-              },
-            },
-          ]);
-          return;
-        }
-        
-        console.log('[ProfilePicture] Updating user profile with avatar URL...');
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({ 
-            avatar_url: avatarUrl,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', params.userId);
-          
-        if (updateError) {
-          console.error('[ProfilePicture] Error updating avatar in database:', updateError);
-          Alert.alert('Error', 'Failed to save profile picture. Please try again.');
-          setLoading(false);
-          return;
-        }
-        console.log('[ProfilePicture] User profile updated successfully');
       }
 
       setLoading(false);
@@ -245,7 +120,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
         avatarUrl: avatarUrl,
       });
     } catch (error: any) {
-      console.error('[ProfilePicture] handleContinue error:', error);
+      console.error('[SocialSignupProfilePicture] handleContinue error:', error);
       Alert.alert('Error', error.message || 'Failed to save profile picture. Please try again.');
       setLoading(false);
     }
