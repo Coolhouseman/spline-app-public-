@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, Image, ActivityIndicator, Platform, Dimensions } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, Image, ActivityIndicator, Platform, Dimensions, Alert, TextInput } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -13,6 +13,7 @@ import { ThemedText } from './ThemedText';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { GamificationService, GamificationProfile, LEVEL_INFO } from '@/services/gamification.service';
+import { FriendsService } from '@/services/friends.service';
 import { LevelBadge } from './ProfileStatsCard';
 
 interface FriendProfileModalProps {
@@ -24,6 +25,8 @@ interface FriendProfileModalProps {
     unique_id?: string;
     profile_picture_url?: string;
   } | null;
+  userId?: string;
+  onBlock?: () => void;
 }
 
 const TIER_COLORS = {
@@ -33,14 +36,26 @@ const TIER_COLORS = {
   platinum: '#E5E4E2',
 };
 
+const REPORT_REASONS = [
+  { id: 'spam', label: 'Spam or scam' },
+  { id: 'harassment', label: 'Harassment or bullying' },
+  { id: 'inappropriate', label: 'Inappropriate content' },
+  { id: 'fraud', label: 'Fraud or financial abuse' },
+  { id: 'other', label: 'Other' },
+];
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MODAL_WIDTH = Math.min(SCREEN_WIDTH - 48, 380);
 
-export function FriendProfileModal({ visible, onClose, friend }: FriendProfileModalProps) {
+export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }: FriendProfileModalProps) {
   const { theme: colors, isDark } = useTheme();
   const [profile, setProfile] = useState<GamificationProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [customReason, setCustomReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
@@ -57,6 +72,8 @@ export function FriendProfileModal({ visible, onClose, friend }: FriendProfileMo
       scale.value = withTiming(0.85, { duration: 150 });
       opacity.value = withTiming(0, { duration: 150 });
       setProfile(null);
+      setSelectedReason(null);
+      setCustomReason('');
     }
   }, [visible, friend?.id]);
 
@@ -87,6 +104,68 @@ export function FriendProfileModal({ visible, onClose, friend }: FriendProfileMo
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleBlock = () => {
+    if (!userId || !friend) return;
+    
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${friend.name}? They won't be able to send you friend requests or include you in splits.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSubmitting(true);
+              await FriendsService.blockUser(userId, friend.id);
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              Alert.alert('User Blocked', `${friend.name} has been blocked`);
+              onClose();
+              onBlock?.();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to block user');
+            } finally {
+              setSubmitting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReportPress = () => {
+    setReportModalVisible(true);
+  };
+
+  const handleSubmitReport = async () => {
+    if (!userId || !friend || !selectedReason) return;
+    
+    const reason = selectedReason === 'other' 
+      ? (customReason.trim() || 'Other')
+      : REPORT_REASONS.find(r => r.id === selectedReason)?.label || selectedReason;
+    
+    try {
+      setSubmitting(true);
+      await FriendsService.reportUser(userId, friend.id, reason);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setReportModalVisible(false);
+      Alert.alert(
+        'Report Submitted',
+        'Thank you for your report. Our team will review it shortly.',
+        [{ text: 'OK', onPress: onClose }]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to submit report');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const containerStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
@@ -102,164 +181,300 @@ export function FriendProfileModal({ visible, onClose, friend }: FriendProfileMo
   const levelInfo = profile ? LEVEL_INFO[profile.current_level] || LEVEL_INFO[1] : LEVEL_INFO[1];
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Animated.View style={[styles.overlayBg, overlayStyle]} />
-        
-        <Animated.View style={containerStyle}>
-          <Pressable 
-            style={[styles.content, { backgroundColor: colors.surface, width: MODAL_WIDTH }]} 
-            onPress={() => {}}
-          >
-            <Pressable style={[styles.closeButton, { backgroundColor: colors.backgroundSecondary }]} onPress={onClose}>
-              <Feather name="x" size={20} color={colors.textSecondary} />
-            </Pressable>
+    <>
+      <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+        <Pressable style={styles.overlay} onPress={onClose}>
+          <Animated.View style={[styles.overlayBg, overlayStyle]} />
+          
+          <Animated.View style={containerStyle}>
+            <Pressable 
+              style={[styles.content, { backgroundColor: colors.surface, width: MODAL_WIDTH }]} 
+              onPress={() => {}}
+            >
+              <Pressable style={[styles.closeButton, { backgroundColor: colors.backgroundSecondary }]} onPress={onClose}>
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
 
-            <View style={styles.profileHeader}>
-              <View style={[styles.avatarContainer, { borderColor: levelColor }]}>
-                {friend.profile_picture_url ? (
-                  <Image source={{ uri: friend.profile_picture_url }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatarPlaceholder, { backgroundColor: levelColor + '20' }]}>
-                    <ThemedText style={[styles.avatarInitial, { color: levelColor }]}>
-                      {friend.name?.charAt(0)?.toUpperCase() || '?'}
+              <View style={styles.profileHeader}>
+                <View style={[styles.avatarContainer, { borderColor: levelColor }]}>
+                  {friend.profile_picture_url ? (
+                    <Image source={{ uri: friend.profile_picture_url }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatarPlaceholder, { backgroundColor: levelColor + '20' }]}>
+                      <ThemedText style={[styles.avatarInitial, { color: levelColor }]}>
+                        {friend.name?.charAt(0)?.toUpperCase() || '?'}
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+
+                <ThemedText style={[styles.name, { color: colors.text }]} numberOfLines={2}>
+                  {friend.name}
+                </ThemedText>
+                
+                {loading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <ThemedText style={[styles.loadingText, { color: colors.textSecondary }]}>
+                      Loading profile...
                     </ThemedText>
                   </View>
-                )}
+                ) : profile ? (
+                  <>
+                    <View style={styles.levelContainer}>
+                      <LevelBadge level={profile.current_level} size="medium" showTitle />
+                      <ThemedText style={[styles.levelSubtext, { color: colors.textSecondary }]}>
+                        {profile.total_xp.toLocaleString()} XP earned
+                      </ThemedText>
+                    </View>
+                  </>
+                ) : null}
               </View>
 
-              <ThemedText style={[styles.name, { color: colors.text }]} numberOfLines={2}>
-                {friend.name}
-              </ThemedText>
-              
-              {loading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <ThemedText style={[styles.loadingText, { color: colors.textSecondary }]}>
-                    Loading profile...
-                  </ThemedText>
-                </View>
-              ) : profile ? (
+              {!loading && profile ? (
                 <>
-                  <View style={styles.levelContainer}>
-                    <LevelBadge level={profile.current_level} size="medium" showTitle />
-                    <ThemedText style={[styles.levelSubtext, { color: colors.textSecondary }]}>
-                      {profile.total_xp.toLocaleString()} XP earned
-                    </ThemedText>
+                  <View style={[styles.statsContainer, { backgroundColor: colors.backgroundSecondary }]}>
+                    <View style={styles.statItem}>
+                      <View style={[styles.statIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                        <Feather name="layers" size={18} color={colors.primary} />
+                      </View>
+                      <View style={styles.statTextContainer}>
+                        <ThemedText style={[styles.statValue, { color: colors.text }]}>
+                          {profile.splits_created}
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
+                          Splits Created
+                        </ThemedText>
+                      </View>
+                    </View>
+
+                    <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+
+                    <View style={styles.statItem}>
+                      <View style={[styles.statIconContainer, { backgroundColor: colors.success + '15' }]}>
+                        <Feather name="check-circle" size={18} color={colors.success} />
+                      </View>
+                      <View style={styles.statTextContainer}>
+                        <ThemedText style={[styles.statValue, { color: colors.text }]}>
+                          {profile.splits_paid_on_time || 0}
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
+                          Splits Paid
+                        </ThemedText>
+                      </View>
+                    </View>
+
+                    <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+
+                    <View style={styles.statItem}>
+                      <View style={[styles.statIconContainer, { backgroundColor: colors.warning + '15' }]}>
+                        <Feather name="zap" size={18} color={colors.warning} />
+                      </View>
+                      <View style={styles.statTextContainer}>
+                        <ThemedText style={[styles.statValue, { color: colors.text }]}>
+                          {profile.current_streak}
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
+                          Day Streak
+                        </ThemedText>
+                      </View>
+                    </View>
                   </View>
+
+                  {profile.badges.length > 0 ? (
+                    <View style={styles.badgesSection}>
+                      <ThemedText style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                        Badges Earned
+                      </ThemedText>
+                      <View style={styles.badgesRow}>
+                        {profile.badges.slice(0, 4).map((badge) => (
+                          <View
+                            key={badge.badge_id}
+                            style={[
+                              styles.badgeItem,
+                              { backgroundColor: TIER_COLORS[badge.badge_tier] + '20' },
+                            ]}
+                          >
+                            <Feather
+                              name={badge.badge_icon as any}
+                              size={20}
+                              color={TIER_COLORS[badge.badge_tier]}
+                            />
+                            <ThemedText 
+                              style={[styles.badgeName, { color: TIER_COLORS[badge.badge_tier] }]}
+                              numberOfLines={1}
+                            >
+                              {badge.badge_id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).split(' ').slice(0, 2).join(' ')}
+                            </ThemedText>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                 </>
               ) : null}
+
+              {friend.unique_id ? (
+                <Pressable 
+                  style={[styles.idSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+                  onPress={handleCopyId}
+                >
+                  <View style={styles.idContent}>
+                    <ThemedText style={[styles.idLabel, { color: colors.textSecondary }]}>
+                      Spline ID
+                    </ThemedText>
+                    <ThemedText style={[styles.idValue, { color: colors.text }]}>
+                      {friend.unique_id}
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.copyButton, { backgroundColor: copied ? colors.success + '20' : colors.primary + '15' }]}>
+                    <Feather 
+                      name={copied ? 'check' : 'copy'} 
+                      size={18} 
+                      color={copied ? colors.success : colors.primary} 
+                    />
+                  </View>
+                </Pressable>
+              ) : null}
+
+              {userId ? (
+                <View style={styles.actionButtons}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      { backgroundColor: colors.backgroundSecondary, opacity: pressed ? 0.7 : 1 }
+                    ]}
+                    onPress={handleReportPress}
+                    disabled={submitting}
+                  >
+                    <Feather name="flag" size={18} color={colors.warning} />
+                    <ThemedText style={[styles.actionButtonText, { color: colors.warning }]}>
+                      Report
+                    </ThemedText>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      { backgroundColor: colors.danger + '15', opacity: pressed ? 0.7 : 1 }
+                    ]}
+                    onPress={handleBlock}
+                    disabled={submitting}
+                  >
+                    <Feather name="slash" size={18} color={colors.danger} />
+                    <ThemedText style={[styles.actionButtonText, { color: colors.danger }]}>
+                      Block
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : null}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      <Modal 
+        visible={reportModalVisible} 
+        transparent 
+        animationType="fade" 
+        statusBarTranslucent 
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setReportModalVisible(false)}>
+          <Pressable 
+            style={[styles.reportContent, { backgroundColor: colors.surface, width: MODAL_WIDTH }]} 
+            onPress={() => {}}
+          >
+            <View style={styles.reportHeader}>
+              <ThemedText style={[styles.reportTitle, { color: colors.text }]}>
+                Report {friend.name}
+              </ThemedText>
+              <Pressable 
+                style={[styles.closeButton, { backgroundColor: colors.backgroundSecondary }]} 
+                onPress={() => setReportModalVisible(false)}
+              >
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
             </View>
 
-            {!loading && profile ? (
-              <>
-                <View style={[styles.statsContainer, { backgroundColor: colors.backgroundSecondary }]}>
-                  <View style={styles.statItem}>
-                    <View style={[styles.statIconContainer, { backgroundColor: colors.primary + '15' }]}>
-                      <Feather name="layers" size={18} color={colors.primary} />
-                    </View>
-                    <View style={styles.statTextContainer}>
-                      <ThemedText style={[styles.statValue, { color: colors.text }]}>
-                        {profile.splits_created}
-                      </ThemedText>
-                      <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
-                        Splits Created
-                      </ThemedText>
-                    </View>
+            <ThemedText style={[styles.reportSubtitle, { color: colors.textSecondary }]}>
+              Why are you reporting this user?
+            </ThemedText>
+
+            <View style={styles.reasonsList}>
+              {REPORT_REASONS.map((reason) => (
+                <Pressable
+                  key={reason.id}
+                  style={[
+                    styles.reasonItem,
+                    { 
+                      backgroundColor: selectedReason === reason.id ? colors.primary + '15' : colors.backgroundSecondary,
+                      borderColor: selectedReason === reason.id ? colors.primary : colors.border,
+                    }
+                  ]}
+                  onPress={() => setSelectedReason(reason.id)}
+                >
+                  <View style={[
+                    styles.radioButton,
+                    { borderColor: selectedReason === reason.id ? colors.primary : colors.textSecondary }
+                  ]}>
+                    {selectedReason === reason.id ? (
+                      <View style={[styles.radioButtonInner, { backgroundColor: colors.primary }]} />
+                    ) : null}
                   </View>
+                  <ThemedText style={[styles.reasonText, { color: colors.text }]}>
+                    {reason.label}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
 
-                  <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-
-                  <View style={styles.statItem}>
-                    <View style={[styles.statIconContainer, { backgroundColor: colors.success + '15' }]}>
-                      <Feather name="check-circle" size={18} color={colors.success} />
-                    </View>
-                    <View style={styles.statTextContainer}>
-                      <ThemedText style={[styles.statValue, { color: colors.text }]}>
-                        {profile.splits_paid_on_time || 0}
-                      </ThemedText>
-                      <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
-                        Splits Paid
-                      </ThemedText>
-                    </View>
-                  </View>
-
-                  <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-
-                  <View style={styles.statItem}>
-                    <View style={[styles.statIconContainer, { backgroundColor: colors.warning + '15' }]}>
-                      <Feather name="zap" size={18} color={colors.warning} />
-                    </View>
-                    <View style={styles.statTextContainer}>
-                      <ThemedText style={[styles.statValue, { color: colors.text }]}>
-                        {profile.current_streak}
-                      </ThemedText>
-                      <ThemedText style={[styles.statLabel, { color: colors.textSecondary }]}>
-                        Day Streak
-                      </ThemedText>
-                    </View>
-                  </View>
-                </View>
-
-                {profile.badges.length > 0 ? (
-                  <View style={styles.badgesSection}>
-                    <ThemedText style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-                      Badges Earned
-                    </ThemedText>
-                    <View style={styles.badgesRow}>
-                      {profile.badges.slice(0, 4).map((badge) => (
-                        <View
-                          key={badge.badge_id}
-                          style={[
-                            styles.badgeItem,
-                            { backgroundColor: TIER_COLORS[badge.badge_tier] + '20' },
-                          ]}
-                        >
-                          <Feather
-                            name={badge.badge_icon as any}
-                            size={20}
-                            color={TIER_COLORS[badge.badge_tier]}
-                          />
-                          <ThemedText 
-                            style={[styles.badgeName, { color: TIER_COLORS[badge.badge_tier] }]}
-                            numberOfLines={1}
-                          >
-                            {badge.badge_id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).split(' ').slice(0, 2).join(' ')}
-                          </ThemedText>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-              </>
+            {selectedReason === 'other' ? (
+              <TextInput
+                style={[
+                  styles.customReasonInput,
+                  { 
+                    backgroundColor: colors.backgroundSecondary, 
+                    color: colors.text,
+                    borderColor: colors.border,
+                  }
+                ]}
+                placeholder="Please describe the issue..."
+                placeholderTextColor={colors.textSecondary}
+                value={customReason}
+                onChangeText={setCustomReason}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
             ) : null}
 
-            {friend.unique_id ? (
-              <Pressable 
-                style={[styles.idSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
-                onPress={handleCopyId}
-              >
-                <View style={styles.idContent}>
-                  <ThemedText style={[styles.idLabel, { color: colors.textSecondary }]}>
-                    Spline ID
-                  </ThemedText>
-                  <ThemedText style={[styles.idValue, { color: colors.text }]}>
-                    {friend.unique_id}
-                  </ThemedText>
-                </View>
-                <View style={[styles.copyButton, { backgroundColor: copied ? colors.success + '20' : colors.primary + '15' }]}>
-                  <Feather 
-                    name={copied ? 'check' : 'copy'} 
-                    size={18} 
-                    color={copied ? colors.success : colors.primary} 
-                  />
-                </View>
-              </Pressable>
-            ) : null}
+            <Pressable
+              style={({ pressed }) => [
+                styles.submitButton,
+                { 
+                  backgroundColor: selectedReason ? colors.primary : colors.backgroundSecondary,
+                  opacity: pressed && selectedReason ? 0.7 : 1 
+                }
+              ]}
+              onPress={handleSubmitReport}
+              disabled={!selectedReason || submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <ThemedText style={[
+                  styles.submitButtonText, 
+                  { color: selectedReason ? '#FFFFFF' : colors.textSecondary }
+                ]}>
+                  Submit Report
+                </ThemedText>
+              )}
+            </Pressable>
           </Pressable>
-        </Animated.View>
-      </Pressable>
-    </Modal>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -443,5 +658,96 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: Spacing.md,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  reportContent: {
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+    maxHeight: '80%',
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  reportTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  reportSubtitle: {
+    fontSize: 14,
+    marginBottom: Spacing.lg,
+  },
+  reasonsList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  reasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    gap: Spacing.md,
+  },
+  radioButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioButtonInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  reasonText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  customReasonInput: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    fontSize: 15,
+    minHeight: 100,
+    marginBottom: Spacing.lg,
+  },
+  submitButton: {
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

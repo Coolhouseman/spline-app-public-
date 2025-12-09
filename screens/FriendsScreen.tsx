@@ -554,6 +554,11 @@ export default function FriendsScreen({ navigation }: Props) {
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
         friend={selectedFriend}
+        userId={user?.id}
+        onBlock={() => {
+          setProfileModalVisible(false);
+          loadData();
+        }}
       />
     </ThemedView>
   );
