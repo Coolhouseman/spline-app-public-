@@ -305,6 +305,134 @@ This is an automated security notification from Spline Pay.
   }
 }
 
+interface UserReportData {
+  reportId: string;
+  reporterId: string;
+  reporterName: string;
+  reporterEmail: string;
+  reportedUserId: string;
+  reportedUserName: string;
+  reportedUserEmail: string;
+  reason: string;
+  timestamp: string;
+}
+
+export async function sendUserReportNotification(data: UserReportData): Promise<boolean> {
+  const transporter = createTransporter();
+
+  const emailContent = `
+NEW USER REPORT - SPLINE PAY
+============================
+
+Report ID: ${data.reportId}
+Time: ${data.timestamp}
+
+REPORTER DETAILS
+----------------
+Name: ${data.reporterName}
+Email: ${data.reporterEmail}
+User ID: ${data.reporterId}
+
+REPORTED USER
+-------------
+Name: ${data.reportedUserName}
+Email: ${data.reportedUserEmail}
+User ID: ${data.reportedUserId}
+
+REPORT REASON
+-------------
+${data.reason}
+
+ACTION REQUIRED
+---------------
+Review this report in the Admin Dashboard under the Reports tab.
+
+============================
+This is an automated notification from Spline Pay.
+`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+    .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 12px 12px; }
+    .section { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section-title { font-weight: 600; color: #f59e0b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+    .label { color: #666; font-size: 12px; }
+    .value { font-weight: 500; color: #333; }
+    .reason-box { background: #fef3c7; border: 1px solid #f59e0b; padding: 15px; border-radius: 8px; margin-top: 10px; }
+    .action-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin-top: 15px; border-radius: 0 8px 8px 0; }
+    .btn { display: inline-block; background: #f59e0b; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 20px;">User Report Submitted</h1>
+      <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">Report ID: ${data.reportId}</p>
+    </div>
+    <div class="content">
+      <div class="section">
+        <div class="section-title">Reporter</div>
+        <p><span class="label">Name:</span> <span class="value">${data.reporterName}</span></p>
+        <p><span class="label">Email:</span> <span class="value">${data.reporterEmail}</span></p>
+        <p><span class="label">User ID:</span> <span class="value" style="font-family: monospace; font-size: 11px;">${data.reporterId}</span></p>
+      </div>
+      
+      <div class="section" style="border: 1px solid #fecaca;">
+        <div class="section-title" style="color: #dc2626;">Reported User</div>
+        <p><span class="label">Name:</span> <span class="value" style="font-weight: 700;">${data.reportedUserName}</span></p>
+        <p><span class="label">Email:</span> <span class="value">${data.reportedUserEmail}</span></p>
+        <p><span class="label">User ID:</span> <span class="value" style="font-family: monospace; font-size: 11px;">${data.reportedUserId}</span></p>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">Report Reason</div>
+        <div class="reason-box">
+          ${data.reason}
+        </div>
+      </div>
+      
+      <div class="action-box">
+        <strong>Action Required</strong>
+        <p style="margin: 5px 0 0; font-size: 14px;">
+          Review this report in the Admin Dashboard.
+        </p>
+        <a href="https://splinepay.replit.app/admin" class="btn">Open Admin Dashboard</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  if (!transporter) {
+    console.log(`[Email] User report notification - SMTP not configured`);
+    console.log(`[Email] Report ID: ${data.reportId}, Reporter: ${data.reporterId}, Reported: ${data.reportedUserId}`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: ADMIN_EMAIL,
+      subject: `[Spline REPORT] User Reported: ${data.reportedUserName} by ${data.reporterName}`,
+      text: emailContent,
+      html: htmlContent
+    });
+
+    console.log(`User report notification sent for report ${data.reportId}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send user report notification:', error);
+    return false;
+  }
+}
+
 interface VoucherClaimData {
   userId: string;
   userName: string;

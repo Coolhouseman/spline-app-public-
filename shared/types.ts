@@ -104,3 +104,24 @@ export interface Notification {
   read: boolean;
   created_at: string;
 }
+
+export interface BlockedUser {
+  id: string;
+  user_id: string;
+  blocked_user_id: string;
+  created_at: string;
+  blocked_user?: User;
+}
+
+export interface UserReport {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  reason: string;
+  status: 'open' | 'reviewed' | 'resolved' | 'dismissed';
+  admin_notes?: string;
+  created_at: string;
+  updated_at: string;
+  reporter?: User;
+  reported_user?: User;
+}
