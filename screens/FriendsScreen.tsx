@@ -13,6 +13,7 @@ import { FriendsService } from '@/services/friends.service';
 import { GamificationService } from '@/services/gamification.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
+import type { BlockedUser } from '@/shared/types';
 
 type Props = NativeStackScreenProps<any, 'Friends'>;
 
@@ -94,6 +95,8 @@ export default function FriendsScreen({ navigation }: Props) {
   const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,11 +125,16 @@ export default function FriendsScreen({ navigation }: Props) {
     
     try {
       setLoading(true);
-      const [friendsData, requestsData, sentData] = await Promise.all([
+      const [friendsData, requestsData, sentData, blockedData] = await Promise.all([
         FriendsService.getFriends(user.id),
         FriendsService.getPendingRequests(user.id),
         FriendsService.getSentPendingRequests(user.id),
+        FriendsService.getBlockedUsers(user.id).catch(() => []),
       ]);
+      
+      const blockedIds = new Set(blockedData.map(b => b.blocked_user_id));
+      setBlockedUsers(blockedData);
+      setBlockedUserIds(blockedIds);
       
       const friendsWithGamification = await Promise.all(
         (friendsData as FriendWithDetails[]).map(async (friend) => {
@@ -193,11 +201,45 @@ export default function FriendsScreen({ navigation }: Props) {
     }
   };
 
+  const handleUnblock = async (blockedUserId: string, userName: string) => {
+    if (!user?.id) return;
+    
+    Alert.alert(
+      'Unblock User',
+      `Are you sure you want to unblock ${userName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unblock',
+          onPress: async () => {
+            try {
+              await FriendsService.unblockUser(user.id, blockedUserId);
+              Alert.alert('Success', `${userName} has been unblocked`);
+              loadData();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to unblock user');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const filteredFriends = friends.filter(f => {
+    const friendId = f.friend_details?.id || '';
+    if (blockedUserIds.has(friendId)) return false;
     const name = f.friend_details?.name || '';
     const uniqueId = f.friend_details?.unique_id || '';
     return name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       uniqueId.includes(searchQuery);
+  });
+
+  const filteredPendingRequests = pendingRequests.filter(r => {
+    return !blockedUserIds.has(r.requester?.id || '');
+  });
+
+  const filteredSentRequests = sentRequests.filter(r => {
+    return !blockedUserIds.has(r.recipient?.id || '');
   });
 
   const renderFriend = ({ item }: { item: FriendWithDetails }) => {
@@ -374,27 +416,27 @@ export default function FriendsScreen({ navigation }: Props) {
           { paddingBottom: tabBarHeight + Spacing.xl + Spacing.fabSize }
         ]}
       >
-        {pendingRequests.length > 0 ? (
+        {filteredPendingRequests.length > 0 ? (
           <View style={styles.section}>
             <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
-              Friend Requests ({pendingRequests.length})
+              Friend Requests ({filteredPendingRequests.length})
             </ThemedText>
-            {pendingRequests.map(renderPendingRequest)}
+            {filteredPendingRequests.map(renderPendingRequest)}
           </View>
         ) : null}
 
-        {sentRequests.length > 0 ? (
+        {filteredSentRequests.length > 0 ? (
           <View style={styles.section}>
             <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
-              Sent Requests ({sentRequests.length})
+              Sent Requests ({filteredSentRequests.length})
             </ThemedText>
-            {sentRequests.map(renderSentRequest)}
+            {filteredSentRequests.map(renderSentRequest)}
           </View>
         ) : null}
 
         {filteredFriends.length > 0 ? (
           <View style={styles.section}>
-            {(pendingRequests.length > 0 || sentRequests.length > 0) ? (
+            {(filteredPendingRequests.length > 0 || filteredSentRequests.length > 0) ? (
               <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
                 Your Friends ({filteredFriends.length})
               </ThemedText>
@@ -439,7 +481,53 @@ export default function FriendsScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        {filteredFriends.length === 0 && pendingRequests.length === 0 && sentRequests.length === 0 ? (
+        {blockedUsers.length > 0 ? (
+          <View style={styles.section}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Blocked Users ({blockedUsers.length})
+            </ThemedText>
+            {blockedUsers.map((blockedUser) => {
+              const details = blockedUser.blocked_user;
+              if (!details) return null;
+              
+              return (
+                <View 
+                  key={blockedUser.id} 
+                  style={[styles.requestCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                >
+                  <View style={[styles.avatar, { backgroundColor: theme.backgroundSecondary }]}>
+                    {details.profile_picture ? (
+                      <Image source={{ uri: details.profile_picture }} style={styles.avatarImage} />
+                    ) : (
+                      <Feather name="user" size={24} color={theme.textSecondary} />
+                    )}
+                  </View>
+                  <View style={styles.friendInfo}>
+                    <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+                      {details.name}
+                    </ThemedText>
+                    <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                      ID: {details.unique_id}
+                    </ThemedText>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.unblockBtn,
+                      { borderColor: theme.primary, opacity: pressed ? 0.7 : 1 }
+                    ]}
+                    onPress={() => handleUnblock(blockedUser.blocked_user_id, details.name)}
+                  >
+                    <ThemedText style={[Typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+                      Unblock
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {filteredFriends.length === 0 && filteredPendingRequests.length === 0 && filteredSentRequests.length === 0 && blockedUsers.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color={theme.textSecondary} />
             <ThemedText style={[Typography.body, { color: theme.textSecondary, marginTop: Spacing.lg, textAlign: 'center' }]}>
@@ -589,5 +677,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.xs,
+  },
+  unblockBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
   },
 });

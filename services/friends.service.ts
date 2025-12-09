@@ -1,7 +1,18 @@
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { BackendNotificationsService } from './backendNotifications.service';
 import { PushNotificationsService } from './pushNotifications.service';
-import type { Friend, User } from '@/shared/types';
+import type { Friend, User, BlockedUser } from '@/shared/types';
+
+const getBackendUrl = (): string => {
+  const extra = Constants.expoConfig?.extra || {};
+  return extra.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8082';
+};
+
+const isBackendAccessible = (): boolean => {
+  return Platform.OS === 'web';
+};
 
 export class FriendsService {
   static async sendFriendRequest(userId: string, friendUniqueId: string): Promise<Friend> {
@@ -478,5 +489,154 @@ export class FriendsService {
       .delete()
       .eq('user_id', friendship.friend_id)
       .eq('friend_id', userId);
+  }
+
+  static async getBlockedUsers(userId: string): Promise<BlockedUser[]> {
+    if (isBackendAccessible()) {
+      try {
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/friends/blocked?userId=${userId}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data.blockedUsers || [];
+        }
+      } catch (error) {
+        console.warn('Backend blocked users fetch failed, using Supabase fallback');
+      }
+    }
+    
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select(`
+        *,
+        blocked_user:blocked_user_id (
+          id,
+          unique_id,
+          name,
+          email,
+          profile_picture
+        )
+      `)
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Failed to get blocked users:', error);
+      return [];
+    }
+    
+    return (data || []) as BlockedUser[];
+  }
+
+  static async blockUser(userId: string, blockedUserId: string): Promise<void> {
+    if (isBackendAccessible()) {
+      try {
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/friends/block`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, blockedUserId }),
+        });
+        
+        if (response.ok) return;
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.error) throw new Error(errorData.error);
+      } catch (error: any) {
+        if (error.message && !error.message.includes('fetch')) {
+          throw error;
+        }
+        console.warn('Backend block failed, using Supabase fallback');
+      }
+    }
+    
+    const { data, error } = await supabase.rpc('block_user', {
+      p_user_id: userId,
+      p_blocked_user_id: blockedUserId,
+    });
+    
+    if (error) throw new Error(error.message || 'Failed to block user');
+    if (data && !data.success) throw new Error(data.error || 'Failed to block user');
+  }
+
+  static async unblockUser(userId: string, blockedUserId: string): Promise<void> {
+    if (isBackendAccessible()) {
+      try {
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/friends/block/${blockedUserId}?userId=${userId}`, {
+          method: 'DELETE',
+        });
+        
+        if (response.ok) return;
+      } catch (error) {
+        console.warn('Backend unblock failed, using Supabase fallback');
+      }
+    }
+    
+    const { error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('user_id', userId)
+      .eq('blocked_user_id', blockedUserId);
+    
+    if (error) throw new Error(error.message || 'Failed to unblock user');
+  }
+
+  static async isUserBlocked(userId: string, otherUserId: string): Promise<boolean> {
+    if (isBackendAccessible()) {
+      try {
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/friends/is-blocked?userId=${userId}&otherUserId=${otherUserId}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data.isBlocked || false;
+        }
+      } catch (error) {
+        console.warn('Backend is-blocked check failed, using Supabase fallback');
+      }
+    }
+    
+    const { data, error } = await supabase.rpc('is_user_blocked', {
+      p_user_id: userId,
+      p_other_user_id: otherUserId,
+    });
+    
+    if (error) {
+      console.error('Failed to check blocked status:', error);
+      return false;
+    }
+    
+    return data || false;
+  }
+
+  static async reportUser(reporterId: string, reportedUserId: string, reason: string): Promise<void> {
+    if (isBackendAccessible()) {
+      try {
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/reports`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reporterId, reportedUserId, reason }),
+        });
+        
+        if (response.ok) return;
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.error) throw new Error(errorData.error);
+      } catch (error: any) {
+        if (error.message && !error.message.includes('fetch')) {
+          throw error;
+        }
+        console.warn('Backend report failed, using Supabase fallback');
+      }
+    }
+    
+    const { data, error } = await supabase.rpc('create_user_report', {
+      p_reporter_id: reporterId,
+      p_reported_user_id: reportedUserId,
+      p_reason: reason,
+    });
+    
+    if (error) throw new Error(error.message || 'Failed to submit report');
+    if (data && !data.success) throw new Error(data.error || 'Failed to submit report');
   }
 }
