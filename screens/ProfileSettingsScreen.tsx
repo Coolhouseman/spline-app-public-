@@ -125,37 +125,17 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
   };
 
   const handleLogout = async () => {
-    const performLogout = async () => {
+    const performLogout = () => {
       setLoggingOut(true);
-      try {
-        console.log('[Logout] Starting logout...');
-        // Add timeout to prevent hanging - reduced to 5 seconds for faster UX
-        // Attach .catch() to prevent unhandled rejection if promise rejects after timeout
-        const logoutPromise = logout().catch((err) => {
-          console.log('[Logout] Logout promise rejected (handled):', err);
-        });
-        const timeoutPromise = new Promise<void>((resolve) => 
-          setTimeout(() => {
-            console.log('[Logout] Timeout reached, proceeding with force logout');
-            resolve();
-          }, 5000)
-        );
-        await Promise.race([logoutPromise, timeoutPromise]);
-        console.log('[Logout] Logout completed or timed out');
-      } catch (error) {
-        console.error('[Logout] Error during logout:', error);
-      }
+      console.log('[Logout] Starting logout...');
       
-      // Always try to force signOut as a fallback, regardless of success/failure
-      try {
-        await supabase.auth.signOut();
-        console.log('[Logout] Fallback signOut completed');
-      } catch (e) {
-        console.error('[Logout] Fallback signOut error (non-blocking):', e);
-      }
+      // Fire-and-forget logout - don't await to avoid UI hang
+      // logout() internally clears user state and signs out from Supabase
+      logout().catch(e => console.log('[Logout] Background logout error:', e));
       
-      // Always clear loading state
+      // Clear loading state immediately - user will see they're logged out
       setLoggingOut(false);
+      console.log('[Logout] UI cleared, logout running in background');
     };
 
     if (Platform.OS === 'web') {
@@ -244,28 +224,8 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
     console.log('[DeleteAccount] Starting account deletion...');
     
     try {
-      // Add timeout to prevent hanging on slow network - reduced to 15 seconds
-      // Use settled promise pattern to avoid unhandled rejections
-      let deleteError: Error | null = null;
-      let deleteSuccess = false;
-      
-      const deletePromise = AuthService.deleteAccount()
-        .then(() => { deleteSuccess = true; })
-        .catch((err) => { deleteError = err; });
-      
-      const timeoutPromise = new Promise<void>((resolve) => 
-        setTimeout(() => resolve(), 15000)
-      );
-      
-      await Promise.race([deletePromise, timeoutPromise]);
-      
-      // Check results after race
-      if (deleteError) {
-        throw deleteError;
-      }
-      if (!deleteSuccess) {
-        throw new Error('Request timed out. Please check your connection and try again.');
-      }
+      // The AuthService.deleteAccount now has its own 30 second timeout
+      await AuthService.deleteAccount();
       
       console.log('[DeleteAccount] Account deletion successful');
       setShowDeleteModal(false);
@@ -276,13 +236,6 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
         await logout();
       } catch (logoutError) {
         console.log('[DeleteAccount] Post-delete logout cleanup:', logoutError);
-      }
-      
-      // Force signOut as final cleanup
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.log('[DeleteAccount] Final signOut cleanup:', e);
       }
     } catch (error: any) {
       console.error('[DeleteAccount] Error:', error);

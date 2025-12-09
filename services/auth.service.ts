@@ -447,26 +447,47 @@ export class AuthService {
 
     const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
     
-    const response = await fetch(`${backendUrl}/api/delete-account`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    // Create AbortController for fetch timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
+    try {
+      const response = await fetch(`${backendUrl}/api/delete-account`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      let errorMessage = 'Failed to delete account';
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
-      } catch (parseError) {
-        // Response was not JSON, use status text
-        errorMessage = response.statusText || errorMessage;
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to delete account';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          // Response was not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('The request timed out. Please check your internet connection and try again.');
+      }
+      throw error;
     }
 
-    await supabase.auth.signOut();
+    // Sign out locally after successful deletion
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      // Ignore signout errors since account is already deleted
+      console.log('Sign out after deletion (non-blocking):', signOutError);
+    }
   }
 }

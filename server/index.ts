@@ -817,6 +817,16 @@ app.delete('/api/delete-account', async (req, res) => {
       deletionErrors.push(`transactions: ${txError.message}`);
     }
     
+    // 5.5. Delete gamification profiles
+    const { error: gamificationError } = await supabaseServer
+      .from('gamification_profiles')
+      .delete()
+      .eq('user_id', userId);
+    if (gamificationError && gamificationError.code !== 'PGRST116') {
+      console.error('Gamification profile delete error:', gamificationError.message);
+      deletionErrors.push(`gamification: ${gamificationError.message}`);
+    }
+    
     // 6. Delete wallet
     const { error: walletError } = await supabaseServer
       .from('wallets')
