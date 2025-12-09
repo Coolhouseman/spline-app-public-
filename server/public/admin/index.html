@@ -100,6 +100,10 @@
         <button onclick="showTab('gamification')" id="tab-gamification" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
           <span>Users & Levels</span>
         </button>
+        <button onclick="showTab('reports')" id="tab-reports" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
+          <span>Reports</span>
+          <span id="reports-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">0</span>
+        </button>
         <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Settings</button>
       </div>
 
@@ -527,6 +531,69 @@
         </div>
       </div>
 
+      <div id="content-reports" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">User Reports</h3>
+              <p class="text-sm text-gray-500 mt-1">Review and manage user-submitted reports</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <select id="report-filter" onchange="loadReports()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="all">All Status</option>
+                <option value="open">Open</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="resolved">Resolved</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+              <button onclick="loadReports()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+              <p class="text-xs text-red-700">Open Reports</p>
+              <p id="reports-open-count" class="text-2xl font-bold text-red-800">0</p>
+              <p class="text-xs text-red-600">Need review</p>
+            </div>
+            <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+              <p class="text-xs text-yellow-700">Under Review</p>
+              <p id="reports-reviewed-count" class="text-2xl font-bold text-yellow-800">0</p>
+              <p class="text-xs text-yellow-600">Being investigated</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+              <p class="text-xs text-green-700">Resolved</p>
+              <p id="reports-resolved-count" class="text-2xl font-bold text-green-800">0</p>
+              <p class="text-xs text-green-600">Action taken</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <p class="text-xs text-gray-700">Dismissed</p>
+              <p id="reports-dismissed-count" class="text-2xl font-bold text-gray-800">0</p>
+              <p class="text-xs text-gray-600">No action needed</p>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">Report Review Guidelines</h4>
+            <ul class="text-sm text-yellow-700 space-y-1 list-disc list-inside">
+              <li><strong>Open:</strong> New reports that need to be reviewed</li>
+              <li><strong>Reviewed:</strong> Reports that are being investigated</li>
+              <li><strong>Resolved:</strong> Reports where action has been taken (user warned, banned, etc.)</li>
+              <li><strong>Dismissed:</strong> Reports that were found to be invalid or unsubstantiated</li>
+            </ul>
+          </div>
+
+          <div id="reports-list" class="space-y-4">
+            <p class="text-center text-gray-400 py-8">Loading reports...</p>
+          </div>
+        </div>
+      </div>
+
       <div id="content-settings" class="hidden">
         <div class="glass-card rounded-xl p-6 mb-6">
           <h3 class="font-semibold text-gray-800 mb-4">Admin Users</h3>
@@ -735,7 +802,8 @@
           loadTrends(),
           loadTransactions(),
           loadAdmins(),
-          loadWithdrawals()
+          loadWithdrawals(),
+          loadReports()
         ]);
         document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
       } catch (err) {
@@ -1349,7 +1417,7 @@
     }
 
     function showTab(tab) {
-      ['overview', 'buffer', 'transactions', 'withdrawals', 'gamification', 'settings'].forEach(t => {
+      ['overview', 'buffer', 'transactions', 'withdrawals', 'gamification', 'reports', 'settings'].forEach(t => {
         document.getElementById(`content-${t}`).classList.add('hidden');
         document.getElementById(`tab-${t}`).classList.remove('tab-active');
         document.getElementById(`tab-${t}`).classList.add('bg-white/80');
@@ -1366,6 +1434,10 @@
       // Load gamification data when tab is clicked
       if (tab === 'gamification') {
         loadGamificationData();
+      }
+      // Load reports when tab is clicked
+      if (tab === 'reports') {
+        loadReports();
       }
     }
 
@@ -1471,6 +1543,220 @@
       } catch (err) {
         console.error('Balance Momentum error:', err);
         alert('Error processing Balance Momentum. Make sure the gamification tables are set up by running GAMIFICATION_MIGRATION.sql in Supabase.');
+      }
+    }
+
+    // ========== REPORTS MANAGEMENT ==========
+    async function loadReports() {
+      try {
+        const status = document.getElementById('report-filter').value;
+        const data = await fetchWithAuth(`/reports?status=${status}`);
+        
+        const reports = data.reports || [];
+        
+        // Count by status
+        const openCount = reports.filter(r => r.status === 'open').length;
+        const reviewedCount = reports.filter(r => r.status === 'reviewed').length;
+        const resolvedCount = reports.filter(r => r.status === 'resolved').length;
+        const dismissedCount = reports.filter(r => r.status === 'dismissed').length;
+        
+        // Update counts
+        document.getElementById('reports-open-count').textContent = openCount;
+        document.getElementById('reports-reviewed-count').textContent = reviewedCount;
+        document.getElementById('reports-resolved-count').textContent = resolvedCount;
+        document.getElementById('reports-dismissed-count').textContent = dismissedCount;
+        
+        // Update badge on tab
+        const badge = document.getElementById('reports-badge');
+        if (openCount > 0) {
+          badge.textContent = openCount;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+        
+        // Render report cards
+        const container = document.getElementById('reports-list');
+        
+        if (reports.length === 0) {
+          container.innerHTML = '<p class="text-center text-gray-400 py-8">No reports found</p>';
+        } else {
+          container.innerHTML = reports.map(r => renderReportCard(r)).join('');
+        }
+        
+      } catch (err) {
+        console.error('Reports error:', err);
+        document.getElementById('reports-list').innerHTML = 
+          '<p class="text-center text-red-500 py-8">Failed to load reports. The reports table may not be set up yet.</p>';
+      }
+    }
+
+    function renderReportCard(r) {
+      const statusColors = {
+        open: 'bg-red-100 text-red-800 border-red-200',
+        reviewed: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        resolved: 'bg-green-100 text-green-800 border-green-200',
+        dismissed: 'bg-gray-100 text-gray-800 border-gray-200'
+      };
+      
+      const borderColors = {
+        open: 'border-l-red-500',
+        reviewed: 'border-l-yellow-500',
+        resolved: 'border-l-green-500',
+        dismissed: 'border-l-gray-500'
+      };
+      
+      const reasonLabels = {
+        spam: 'Spam',
+        harassment: 'Harassment',
+        inappropriate_content: 'Inappropriate Content',
+        fraud: 'Fraud / Scam',
+        other: 'Other'
+      };
+      
+      let actionButtons = '';
+      if (r.status === 'open') {
+        actionButtons = `
+          <button onclick="updateReportStatus('${r.id}', 'reviewed')" 
+            class="bg-yellow-600 text-white px-3 py-1.5 rounded text-sm hover:bg-yellow-700">
+            Mark Reviewed
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'resolved')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Resolve
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'dismissed')" 
+            class="bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600">
+            Dismiss
+          </button>
+        `;
+      } else if (r.status === 'reviewed') {
+        actionButtons = `
+          <button onclick="updateReportStatus('${r.id}', 'resolved')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Resolve
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'dismissed')" 
+            class="bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600">
+            Dismiss
+          </button>
+        `;
+      }
+      
+      const reporterName = r.reporter?.first_name ? `${r.reporter.first_name} ${r.reporter.last_name || ''}`.trim() : 'Unknown';
+      const reporterEmail = r.reporter?.email || 'N/A';
+      const reportedName = r.reported_user?.first_name ? `${r.reported_user.first_name} ${r.reported_user.last_name || ''}`.trim() : 'Unknown';
+      const reportedEmail = r.reported_user?.email || 'N/A';
+      
+      return `
+        <div class="glass-card rounded-xl p-5 border-l-4 ${borderColors[r.status] || 'border-l-gray-500'}">
+          <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2 py-1 rounded text-xs font-medium border ${statusColors[r.status]}">${r.status.toUpperCase()}</span>
+                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">${reasonLabels[r.reason] || r.reason}</span>
+              </div>
+              <p class="text-xs text-gray-500">${formatDate(r.created_at)}</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+              <p class="text-xs text-blue-600 font-medium mb-1">Reporter</p>
+              <p class="font-semibold text-gray-800">${reporterName}</p>
+              <p class="text-sm text-gray-600">${reporterEmail}</p>
+            </div>
+            
+            <div class="bg-red-50 rounded-lg p-3 border border-red-200">
+              <p class="text-xs text-red-600 font-medium mb-1">Reported User</p>
+              <p class="font-semibold text-gray-800">${reportedName}</p>
+              <p class="text-sm text-gray-600">${reportedEmail}</p>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Details</p>
+              <p class="text-sm text-gray-700">${r.details || 'No additional details provided'}</p>
+            </div>
+          </div>
+          
+          ${r.admin_notes ? `
+            <div class="bg-yellow-50 rounded-lg p-3 mb-4 border border-yellow-200">
+              <p class="text-xs text-yellow-600 font-medium mb-1">Admin Notes</p>
+              <p class="text-sm text-gray-700">${r.admin_notes}</p>
+            </div>
+          ` : ''}
+          
+          <div class="flex flex-wrap gap-2 items-center justify-between">
+            <div class="flex-1">
+              <input type="text" id="notes-${r.id}" placeholder="Add admin notes..." 
+                class="w-full px-3 py-1.5 rounded border border-gray-300 text-sm" value="${r.admin_notes || ''}">
+            </div>
+            <div class="flex gap-2">
+              <button onclick="saveReportNotes('${r.id}')" 
+                class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+                Save Notes
+              </button>
+              ${actionButtons}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateReportStatus(reportId, newStatus) {
+      const action = newStatus === 'resolved' ? 'resolve' : 
+                     newStatus === 'reviewed' ? 'mark as reviewed' : 
+                     newStatus === 'dismissed' ? 'dismiss' : 'update';
+      
+      if (!confirm(`Are you sure you want to ${action} this report?`)) return;
+      
+      try {
+        const notes = document.getElementById(`notes-${reportId}`)?.value || '';
+        
+        const res = await fetch(`${API_BASE}/reports/${reportId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ status: newStatus, admin_notes: notes })
+        });
+        
+        if (res.ok) {
+          loadReports();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to update report');
+        }
+      } catch (err) {
+        console.error('Update report error:', err);
+        alert('Failed to update report');
+      }
+    }
+
+    async function saveReportNotes(reportId) {
+      try {
+        const notes = document.getElementById(`notes-${reportId}`)?.value || '';
+        
+        const res = await fetch(`${API_BASE}/reports/${reportId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ admin_notes: notes })
+        });
+        
+        if (res.ok) {
+          alert('Notes saved successfully');
+          loadReports();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to save notes');
+        }
+      } catch (err) {
+        console.error('Save notes error:', err);
+        alert('Failed to save notes');
       }
     }
 
