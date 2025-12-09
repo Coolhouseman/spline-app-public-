@@ -32,6 +32,12 @@ app.get('/sitemap.xml', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/sitemap.xml'));
 });
 
+// Google Play Console site verification
+app.get('/google9ae7f141ca49f2ac.html', (req, res) => {
+  res.type('text/html');
+  res.sendFile(path.join(__dirname, 'public/google9ae7f141ca49f2ac.html'));
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/index.html'));
 });
