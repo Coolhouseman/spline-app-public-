@@ -954,30 +954,42 @@ app.get('/api/friends/blocked', async (req, res) => {
       return res.status(400).json({ error: 'Missing required field: userId' });
     }
     
-    const { data, error } = await supabaseServer
+    // First get blocked user IDs (avoid PostgREST FK join issues)
+    const { data: blockedData, error: blockedError } = await supabaseServer
       .from('blocked_users')
-      .select(`
-        id,
-        user_id,
-        blocked_user_id,
-        created_at,
-        blocked_user:users!blocked_users_blocked_user_id_fkey (
-          id,
-          unique_id,
-          name,
-          email,
-          profile_picture
-        )
-      `)
+      .select('id, user_id, blocked_user_id, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     
-    if (error) {
-      console.error('Error fetching blocked users:', error);
-      return res.status(500).json({ error: 'Failed to fetch blocked users', details: error.message });
+    if (blockedError) {
+      console.error('Error fetching blocked users:', blockedError);
+      return res.status(500).json({ error: 'Failed to fetch blocked users', details: blockedError.message });
     }
     
-    res.json({ blockedUsers: data || [] });
+    if (!blockedData || blockedData.length === 0) {
+      return res.json({ blockedUsers: [] });
+    }
+    
+    // Then fetch user details separately
+    const blockedUserIds = blockedData.map(b => b.blocked_user_id);
+    const { data: usersData, error: usersError } = await supabaseServer
+      .from('users')
+      .select('id, unique_id, name, email, profile_picture')
+      .in('id', blockedUserIds);
+    
+    if (usersError) {
+      console.error('Error fetching blocked user details:', usersError);
+      return res.status(500).json({ error: 'Failed to fetch blocked user details', details: usersError.message });
+    }
+    
+    // Combine the data
+    const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+    const blockedUsers = blockedData.map(b => ({
+      ...b,
+      blocked_user: usersMap.get(b.blocked_user_id) || null
+    }));
+    
+    res.json({ blockedUsers });
     
   } catch (error: any) {
     console.error('Get blocked users error:', error);
