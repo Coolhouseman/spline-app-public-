@@ -172,11 +172,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await AuthService.logout();
+      // Set user to null first to immediately update UI
       setUser(null);
       userSetBySignup.current = false;
+      globalIsSigningUp = false;
+      
+      // Then sign out from Supabase (this might be slow or fail, but UI is already updated)
+      await AuthService.logout();
     } catch (error) {
       console.error('Logout failed:', error);
+      // Even if signOut fails, ensure user state is cleared
+      setUser(null);
+      userSetBySignup.current = false;
     }
   };
 
