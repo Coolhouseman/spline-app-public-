@@ -506,26 +506,39 @@ export class FriendsService {
       }
     }
     
-    const { data, error } = await supabase
+    // First get blocked user IDs
+    const { data: blockedData, error: blockedError } = await supabase
       .from('blocked_users')
-      .select(`
-        *,
-        blocked_user:blocked_user_id (
-          id,
-          unique_id,
-          name,
-          email,
-          profile_picture
-        )
-      `)
+      .select('id, user_id, blocked_user_id, created_at')
       .eq('user_id', userId);
     
-    if (error) {
-      console.error('Failed to get blocked users:', error);
+    if (blockedError) {
+      console.error('Failed to get blocked users:', blockedError);
       return [];
     }
     
-    return (data || []) as BlockedUser[];
+    if (!blockedData || blockedData.length === 0) {
+      return [];
+    }
+    
+    // Then fetch user details separately
+    const blockedUserIds = blockedData.map(b => b.blocked_user_id);
+    const { data: usersData, error: usersError } = await supabase
+      .from('users')
+      .select('id, unique_id, name, email, profile_picture')
+      .in('id', blockedUserIds);
+    
+    if (usersError) {
+      console.error('Failed to get blocked user details:', usersError);
+      return [];
+    }
+    
+    // Combine the data
+    const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+    return blockedData.map(b => ({
+      ...b,
+      blocked_user: usersMap.get(b.blocked_user_id) || null
+    })) as BlockedUser[];
   }
 
   static async blockUser(userId: string, blockedUserId: string): Promise<void> {

@@ -1826,44 +1826,48 @@ router.get('/reports', adminAuthMiddleware, async (req: AuthenticatedRequest, re
       auth: { autoRefreshToken: false, persistSession: false }
     });
     
+    // First get reports without FK joins (FK references auth.users, not public.users)
     let query = freshClient
       .from('user_reports')
-      .select(`
-        id,
-        reporter_id,
-        reported_user_id,
-        reason,
-        status,
-        admin_notes,
-        created_at,
-        updated_at,
-        reporter:users!user_reports_reporter_id_fkey (
-          id,
-          unique_id,
-          name,
-          email
-        ),
-        reported_user:users!user_reports_reported_user_id_fkey (
-          id,
-          unique_id,
-          name,
-          email
-        )
-      `)
+      .select('id, reporter_id, reported_user_id, reason, status, admin_notes, created_at, updated_at')
       .order('created_at', { ascending: false });
     
     if (status && status !== 'all') {
       query = query.eq('status', status as string);
     }
     
-    const { data, error } = await query;
+    const { data: reports, error } = await query;
     
     if (error) {
       console.error('Error fetching reports:', error);
       return res.status(500).json({ error: 'Failed to fetch reports', details: error.message });
     }
     
-    res.json({ reports: data || [] });
+    if (!reports || reports.length === 0) {
+      return res.json({ reports: [] });
+    }
+    
+    // Get unique user IDs and fetch user details separately
+    const userIds = [...new Set([
+      ...reports.map(r => r.reporter_id),
+      ...reports.map(r => r.reported_user_id)
+    ])];
+    
+    const { data: users } = await freshClient
+      .from('users')
+      .select('id, unique_id, name, email')
+      .in('id', userIds);
+    
+    const usersMap = new Map((users || []).map(u => [u.id, u]));
+    
+    // Combine data
+    const enrichedReports = reports.map(r => ({
+      ...r,
+      reporter: usersMap.get(r.reporter_id) || null,
+      reported_user: usersMap.get(r.reported_user_id) || null
+    }));
+    
+    res.json({ reports: enrichedReports });
     
   } catch (error: any) {
     console.error('Get reports error:', error);
