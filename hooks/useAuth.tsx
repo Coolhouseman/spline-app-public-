@@ -171,19 +171,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    console.log('[Auth] Logout called');
     try {
       // Set user to null first to immediately update UI
       setUser(null);
       userSetBySignup.current = false;
       globalIsSigningUp = false;
+      setIsSigningUp(false);
       
-      // Then sign out from Supabase (this might be slow or fail, but UI is already updated)
-      await AuthService.logout();
+      // Then sign out from Supabase with a timeout (this might be slow or fail, but UI is already updated)
+      // Attach .catch() to prevent unhandled rejection if promise rejects after timeout
+      const signOutPromise = AuthService.logout().catch((err) => {
+        console.log('[Auth] Logout promise rejected (handled):', err);
+      });
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+      await Promise.race([signOutPromise, timeoutPromise]);
+      console.log('[Auth] Logout completed');
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error('[Auth] Logout failed:', error);
       // Even if signOut fails, ensure user state is cleared
       setUser(null);
       userSetBySignup.current = false;
+      globalIsSigningUp = false;
+      setIsSigningUp(false);
     }
   };
 

@@ -128,23 +128,34 @@ export default function ProfileSettingsScreen({ navigation }: Props) {
     const performLogout = async () => {
       setLoggingOut(true);
       try {
-        // Add timeout to prevent hanging
-        const logoutPromise = logout();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Logout timed out')), 10000)
+        console.log('[Logout] Starting logout...');
+        // Add timeout to prevent hanging - reduced to 5 seconds for faster UX
+        // Attach .catch() to prevent unhandled rejection if promise rejects after timeout
+        const logoutPromise = logout().catch((err) => {
+          console.log('[Logout] Logout promise rejected (handled):', err);
+        });
+        const timeoutPromise = new Promise<void>((resolve) => 
+          setTimeout(() => {
+            console.log('[Logout] Timeout reached, proceeding with force logout');
+            resolve();
+          }, 5000)
         );
         await Promise.race([logoutPromise, timeoutPromise]);
+        console.log('[Logout] Logout completed or timed out');
       } catch (error) {
-        console.error('Logout error:', error);
-        // Force logout even on error by calling signOut directly
-        try {
-          await supabase.auth.signOut();
-        } catch (e) {
-          console.error('Fallback signOut also failed:', e);
-        }
-      } finally {
-        setLoggingOut(false);
+        console.error('[Logout] Error during logout:', error);
       }
+      
+      // Always try to force signOut as a fallback, regardless of success/failure
+      try {
+        await supabase.auth.signOut();
+        console.log('[Logout] Fallback signOut completed');
+      } catch (e) {
+        console.error('[Logout] Fallback signOut error (non-blocking):', e);
+      }
+      
+      // Always clear loading state
+      setLoggingOut(false);
     };
 
     if (Platform.OS === 'web') {
@@ -230,14 +241,33 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
 
   const handleDeleteAccount = async () => {
     setDeletingAccount(true);
+    console.log('[DeleteAccount] Starting account deletion...');
+    
     try {
-      // Add timeout to prevent hanging on slow network
-      const deletePromise = AuthService.deleteAccount();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timed out. Please try again.')), 30000)
+      // Add timeout to prevent hanging on slow network - reduced to 15 seconds
+      // Use settled promise pattern to avoid unhandled rejections
+      let deleteError: Error | null = null;
+      let deleteSuccess = false;
+      
+      const deletePromise = AuthService.deleteAccount()
+        .then(() => { deleteSuccess = true; })
+        .catch((err) => { deleteError = err; });
+      
+      const timeoutPromise = new Promise<void>((resolve) => 
+        setTimeout(() => resolve(), 15000)
       );
+      
       await Promise.race([deletePromise, timeoutPromise]);
       
+      // Check results after race
+      if (deleteError) {
+        throw deleteError;
+      }
+      if (!deleteSuccess) {
+        throw new Error('Request timed out. Please check your connection and try again.');
+      }
+      
+      console.log('[DeleteAccount] Account deletion successful');
       setShowDeleteModal(false);
       
       // Call logout from auth context to properly clear user state and trigger navigation
@@ -245,15 +275,33 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
       try {
         await logout();
       } catch (logoutError) {
-        // Even if logout has issues, force clear by calling signOut again
-        console.log('Post-delete logout cleanup:', logoutError);
+        console.log('[DeleteAccount] Post-delete logout cleanup:', logoutError);
+      }
+      
+      // Force signOut as final cleanup
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.log('[DeleteAccount] Final signOut cleanup:', e);
       }
     } catch (error: any) {
-      console.error('Delete account error:', error);
-      Alert.alert('Error', error.message || 'Failed to delete account. Please try again or contact support.');
+      console.error('[DeleteAccount] Error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to delete account.';
+      if (error.message?.includes('timed out')) {
+        errorMessage = 'The request timed out. Please check your internet connection and try again.';
+      } else if (error.message?.includes('Not authenticated')) {
+        errorMessage = 'Your session has expired. Please sign out and sign back in, then try again.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Error', errorMessage + ' If the problem persists, please contact support.');
+    } finally {
+      // Always clear loading state
       setDeletingAccount(false);
     }
-    // Note: Don't reset deletingAccount on success - component will unmount after logout
   };
 
   if (!user) return null;

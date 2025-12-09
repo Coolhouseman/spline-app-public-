@@ -81,6 +81,20 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
 
   const uploadProfilePicture = async (uri: string): Promise<string | null> => {
     try {
+      console.log('[ProfilePicture] Starting upload for user:', params.userId);
+      
+      // Verify session is valid before attempting upload
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('[ProfilePicture] Session error:', sessionError);
+        throw new Error('Session error - please try signing in again');
+      }
+      if (!session) {
+        console.error('[ProfilePicture] No active session found');
+        throw new Error('No active session - please try signing in again');
+      }
+      console.log('[ProfilePicture] Session verified for user:', session.user.id);
+      
       let fileExt = 'jpg';
       const uriParts = uri.split('.');
       if (uriParts.length > 1) {
@@ -117,8 +131,10 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
         }
         
         uploadData = decode(base64);
+        console.log('[ProfilePicture] File read successfully, size:', (uploadData as ArrayBuffer).byteLength);
       }
 
+      console.log('[ProfilePicture] Uploading to Supabase storage...');
       const { error: uploadError } = await supabase.storage
         .from('user-uploads')
         .upload(filePath, uploadData, {
@@ -127,18 +143,24 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
         });
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
-        return null;
+        console.error('[ProfilePicture] Upload error:', uploadError);
+        console.error('[ProfilePicture] Error details:', JSON.stringify(uploadError));
+        // Provide more helpful error message
+        if (uploadError.message?.includes('policy') || uploadError.message?.includes('RLS') || uploadError.message?.includes('permission')) {
+          throw new Error('Storage permission denied. Please contact support.');
+        }
+        throw new Error(uploadError.message || 'Upload failed');
       }
 
       const { data: { publicUrl } } = supabase.storage
         .from('user-uploads')
         .getPublicUrl(filePath);
 
+      console.log('[ProfilePicture] Upload successful, URL:', publicUrl);
       return publicUrl;
-    } catch (error) {
-      console.error('Error uploading profile picture:', error);
-      return null;
+    } catch (error: any) {
+      console.error('[ProfilePicture] Error uploading:', error);
+      throw error; // Re-throw to allow caller to handle
     }
   };
 
@@ -149,10 +171,12 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
       let avatarUrl: string | null = null;
       
       if (profilePicture) {
-        avatarUrl = await uploadProfilePicture(profilePicture);
-        
-        if (!avatarUrl) {
-          Alert.alert('Upload Failed', 'Failed to upload your profile picture. Would you like to try again or skip?', [
+        try {
+          avatarUrl = await uploadProfilePicture(profilePicture);
+        } catch (uploadError: any) {
+          console.error('[ProfilePicture] Upload caught error:', uploadError);
+          const errorMessage = uploadError.message || 'Failed to upload your profile picture';
+          Alert.alert('Upload Failed', `${errorMessage}. Would you like to try again or skip?`, [
             {
               text: 'Try Again',
               onPress: () => setLoading(false),
@@ -160,6 +184,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
             {
               text: 'Skip',
               onPress: () => {
+                setLoading(false);
                 navigation.navigate('SocialSignupBio', { 
                   userId: params.userId,
                   fullName: params.fullName,
@@ -172,6 +197,29 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
           return;
         }
         
+        if (!avatarUrl) {
+          Alert.alert('Upload Failed', 'Failed to upload your profile picture. Would you like to try again or skip?', [
+            {
+              text: 'Try Again',
+              onPress: () => setLoading(false),
+            },
+            {
+              text: 'Skip',
+              onPress: () => {
+                setLoading(false);
+                navigation.navigate('SocialSignupBio', { 
+                  userId: params.userId,
+                  fullName: params.fullName,
+                  provider: params.provider,
+                  avatarUrl: null,
+                });
+              },
+            },
+          ]);
+          return;
+        }
+        
+        console.log('[ProfilePicture] Updating user profile with avatar URL...');
         const { error: updateError } = await supabase
           .from('users')
           .update({ 
@@ -181,13 +229,15 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
           .eq('id', params.userId);
           
         if (updateError) {
-          console.error('Error updating avatar:', updateError);
+          console.error('[ProfilePicture] Error updating avatar in database:', updateError);
           Alert.alert('Error', 'Failed to save profile picture. Please try again.');
           setLoading(false);
           return;
         }
+        console.log('[ProfilePicture] User profile updated successfully');
       }
 
+      setLoading(false);
       navigation.navigate('SocialSignupBio', { 
         userId: params.userId,
         fullName: params.fullName,
@@ -195,7 +245,8 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
         avatarUrl: avatarUrl,
       });
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to save profile picture. Please try again.');
+      console.error('[ProfilePicture] handleContinue error:', error);
+      Alert.alert('Error', error.message || 'Failed to save profile picture. Please try again.');
       setLoading(false);
     }
   };
