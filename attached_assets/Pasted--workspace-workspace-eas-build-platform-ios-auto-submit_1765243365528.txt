@@ -1,0 +1,76 @@
+~/workspace$ 
+~/workspace$ eas build --platform ios --auto-submit
+Found eas-cli in your project dependencies.
+It's recommended to use the "cli.version" field in eas.json to enforce the eas-cli version for your project.
+Learn more: https://github.com/expo/eas-cli#enforcing-eas-cli-version-for-your-project
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+
+
+
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … zenginvestment@gmail.com
+› Restoring session /home/runner/.app-store/auth/zenginvestment@gmail.com/cookie
+› Team XIAN LONG ZENG (YR5JZ7RG79)
+› Provider XIAN LONG ZENG (127876113)
+✔ Logged in Local session
+✔ Bundle identifier registered com.splitpaymentapp.split
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @xzen693/spline
+Bundle Identifier         com.splitpaymentapp.split
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             41F0D049C1560A038938A9EB11B7B3C
+Expiration Date           Sun, 06 Dec 2026 01:54:42 UTC
+Apple Team                YR5JZ7RG79 (XIAN LONG ZENG (Individual))
+Updated                   2 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       PC7YA4C9KX
+Status                    active
+Expiration                Sun, 06 Dec 2026 01:54:42 UTC
+Apple Team                YR5JZ7RG79 (XIAN LONG ZENG (Individual))
+Updated                   2 days ago
+                          
+All credentials are ready to build @xzen693/spline (com.splitpaymentapp.split)
+
+✔ Push Notifications are set up
+
+Bumping expo.ios.buildNumber from 14 to 15
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+✔ Compressed project files 10s (130 MB)
+✔ Uploaded to EAS 23s
+✔ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/xzen693/projects/spline/builds/ae48d462-d5ac-47aa-9bc4-33bea3bb52d2
+
+Ensuring your app exists on App Store Connect. This step can be skipped by providing ascAppId in the submit profile. Learn more:
+https://expo.fyi/asc-app-id
+
+
+Internal Server Error: 'h', 'Received an internal server error from Apple's App Store Connect / Developer Portal servers, please try again later.
+
+An unexpected error occurred. - An unexpected error occurred on the server side. If this issue continues, contact us at https://developer.apple.com/contact/.'. Retrying after 3 seconds (remaining: 3)
+
+Received an internal server error from Apple's App Store Connect / Developer Portal servers, please try again later.
+
+An unexpected error occurred. - An unexpected error occurred on the server side. If this issue continues, contact us at https://developer.apple.com/contact/.
+Submission failed
+    Error: build command failed.
+~/workspace$ 

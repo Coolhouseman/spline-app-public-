@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import nodemailer from 'nodemailer';
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
@@ -10,6 +11,17 @@ import stripeRouter from './routes/stripe.routes';
 import gamificationRouter from './routes/gamification.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 import { sendWithdrawalNotification } from './services/email.service';
+
+// Email transporter for admin notifications
+const emailTransporter = process.env.EMAIL_HOST ? nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: parseInt(process.env.EMAIL_PORT || '587'),
+  secure: process.env.EMAIL_PORT === '465',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+}) : null;
 
 dotenv.config();
 
@@ -48,6 +60,10 @@ app.get('/terms', (req, res) => {
 
 app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/privacy.html'));
+});
+
+app.get('/delete-account', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/delete-account.html'));
 });
 
 app.get('/card-setup.html', (req, res) => {
@@ -129,6 +145,53 @@ app.post('/api/request-password-reset', async (req, res) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Password reset request error:', error);
+    res.status(500).json({ error: 'An error occurred' });
+  }
+});
+
+// API endpoint for account deletion requests (public - for Google Play compliance)
+app.post('/api/account/delete-request', async (req, res) => {
+  try {
+    const { email, reason } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Send notification email to admin about the deletion request
+    const emailContent = `
+Account Deletion Request
+========================
+
+User Email: ${email}
+Reason: ${reason || 'Not provided'}
+Requested At: ${new Date().toISOString()}
+
+Please process this account deletion request within 30 days as per our privacy policy.
+
+Steps to complete:
+1. Verify the user's identity
+2. Check for any pending wallet balance
+3. Delete user data from Supabase
+4. Send confirmation email to user
+    `;
+
+    // Send email notification to admin
+    if (emailTransporter) {
+      await emailTransporter.sendMail({
+        from: 'Spline <noreply@spline.nz>',
+        to: 'hzeng1217@gmail.com',
+        subject: `Account Deletion Request - ${email}`,
+        text: emailContent,
+        html: emailContent.replace(/\n/g, '<br>'),
+      });
+    }
+
+    console.log('Account deletion request received:', { email, reason, timestamp: new Date().toISOString() });
+    
+    res.json({ success: true, message: 'Deletion request submitted' });
+  } catch (error: any) {
+    console.error('Account deletion request error:', error);
     res.status(500).json({ error: 'An error occurred' });
   }
 });
