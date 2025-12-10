@@ -3,6 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import nodemailer from 'nodemailer';
+import { Pool } from 'pg';
+
+// PostgreSQL connection for local reports table
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
 import twilioRouter from './routes/twilio.routes';
@@ -1029,7 +1036,7 @@ app.get('/api/friends/is-blocked', async (req, res) => {
 // USER REPORT ENDPOINTS
 // =============================================
 
-// Create a user report
+// Create a user report - uses local PostgreSQL database
 app.post('/api/reports', async (req, res) => {
   try {
     const { reporterId, reportedUserId, reason } = req.body;
@@ -1046,69 +1053,46 @@ app.post('/api/reports', async (req, res) => {
       return res.status(400).json({ error: 'Reason must be at least 10 characters' });
     }
     
-    // Try RPC function first, fallback to direct insert if RPC doesn't exist
-    let reportId: string | null = null;
+    // Use local PostgreSQL database for reports
+    const result = await pool.query(
+      `INSERT INTO user_reports (reporter_id, reported_user_id, reason, status) 
+       VALUES ($1, $2, $3, 'pending') 
+       RETURNING id`,
+      [reporterId, reportedUserId, reason]
+    );
     
-    const { data: rpcData, error: rpcError } = await supabaseServer.rpc('create_user_report', {
-      p_reporter_id: reporterId,
-      p_reported_user_id: reportedUserId,
-      p_reason: reason
-    });
+    const reportId = result.rows[0]?.id;
     
-    if (rpcError) {
-      console.log('RPC create_user_report failed, trying direct insert:', rpcError.message);
-      // Fallback to direct insert if RPC doesn't exist
-      const { data: insertData, error: insertError } = await supabaseServer
-        .from('user_reports')
-        .insert({
-          reporter_id: reporterId,
-          reported_user_id: reportedUserId,
-          reason: reason,
-          status: 'open'
-        })
-        .select('id')
-        .single();
-      
-      if (insertError) {
-        console.error('Error creating report (direct insert):', insertError);
-        return res.status(500).json({ error: 'Failed to create report', details: insertError.message });
-      }
-      reportId = insertData?.id;
-    } else {
-      reportId = rpcData;
+    if (!reportId) {
+      return res.status(500).json({ error: 'Failed to create report' });
     }
     
-    const data = reportId;
+    // Get user details from Supabase for email notification
+    const { data: users } = await supabaseServer
+      .from('users')
+      .select('id, name, email')
+      .in('id', [reporterId, reportedUserId]);
     
-    // Only send email notification if report was created successfully
-    if (data) {
-      // Get user details for email notification
-      const { data: users } = await supabaseServer
-        .from('users')
-        .select('id, name, email')
-        .in('id', [reporterId, reportedUserId]);
-      
-      const reporter = users?.find(u => u.id === reporterId);
-      const reportedUser = users?.find(u => u.id === reportedUserId);
-      
-      // Send email notification to admin
-      if (reporter && reportedUser) {
-        await sendUserReportNotification({
-          reportId: data,
-          reporterId,
-          reporterName: reporter.name || 'Unknown',
-          reporterEmail: reporter.email || 'Unknown',
-          reportedUserId,
-          reportedUserName: reportedUser.name || 'Unknown',
-          reportedUserEmail: reportedUser.email || 'Unknown',
-          reason,
-          timestamp: new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland' })
-        });
-      }
+    const reporter = users?.find(u => u.id === reporterId);
+    const reportedUser = users?.find(u => u.id === reportedUserId);
+    
+    // Send email notification to admin
+    if (reporter && reportedUser) {
+      await sendUserReportNotification({
+        reportId,
+        reporterId,
+        reporterName: reporter.name || 'Unknown',
+        reporterEmail: reporter.email || 'Unknown',
+        reportedUserId,
+        reportedUserName: reportedUser.name || 'Unknown',
+        reportedUserEmail: reportedUser.email || 'Unknown',
+        reason,
+        timestamp: new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland' })
+      });
     }
     
     console.log(`Report created: ${reporterId} reported ${reportedUserId}`);
-    res.json({ success: true, reportId: data, message: 'Report submitted successfully' });
+    res.json({ success: true, reportId, message: 'Report submitted successfully' });
     
   } catch (error: any) {
     console.error('Create report error:', error);
