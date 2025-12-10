@@ -1046,17 +1046,39 @@ app.post('/api/reports', async (req, res) => {
       return res.status(400).json({ error: 'Reason must be at least 10 characters' });
     }
     
-    // Use RPC function to create report
-    const { data, error } = await supabaseServer.rpc('create_user_report', {
+    // Try RPC function first, fallback to direct insert if RPC doesn't exist
+    let reportId: string | null = null;
+    
+    const { data: rpcData, error: rpcError } = await supabaseServer.rpc('create_user_report', {
       p_reporter_id: reporterId,
       p_reported_user_id: reportedUserId,
       p_reason: reason
     });
     
-    if (error) {
-      console.error('Error creating report:', error);
-      return res.status(500).json({ error: 'Failed to create report', details: error.message });
+    if (rpcError) {
+      console.log('RPC create_user_report failed, trying direct insert:', rpcError.message);
+      // Fallback to direct insert if RPC doesn't exist
+      const { data: insertData, error: insertError } = await supabaseServer
+        .from('user_reports')
+        .insert({
+          reporter_id: reporterId,
+          reported_user_id: reportedUserId,
+          reason: reason,
+          status: 'open'
+        })
+        .select('id')
+        .single();
+      
+      if (insertError) {
+        console.error('Error creating report (direct insert):', insertError);
+        return res.status(500).json({ error: 'Failed to create report', details: insertError.message });
+      }
+      reportId = insertData?.id;
+    } else {
+      reportId = rpcData;
     }
+    
+    const data = reportId;
     
     // Only send email notification if report was created successfully
     if (data) {
