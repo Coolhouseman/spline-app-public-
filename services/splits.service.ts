@@ -26,8 +26,8 @@ export interface PaySplitResult {
 }
 
 const SPLIT_RATE_LIMITS = {
-  MAX_SPLITS_PER_HOUR: 5,
-  MAX_SPLITS_PER_DAY: 15,
+  MAX_SPLITS_PER_HOUR: 3,
+  MAX_SPLITS_PER_DAY: 5,
   ONE_HOUR_MS: 60 * 60 * 1000,
   ONE_DAY_MS: 24 * 60 * 60 * 1000,
 };

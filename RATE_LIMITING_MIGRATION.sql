@@ -6,9 +6,9 @@
 -- OTP Rate Limiting (Currently In-Memory)
 -- =============================================
 -- Current limits:
--- - Max 3 OTP requests per phone number per 10 minutes
--- - Max 6 OTP requests per phone number per hour  
--- - Max 10 OTP requests per IP address per hour
+-- - Max 4 OTP requests per phone number per 10 minutes
+-- - Max 5 OTP requests per phone number per hour  
+-- - Max 7 OTP requests per IP address per hour
 
 -- Optional: Persistent OTP request logging table (for audit purposes)
 CREATE TABLE IF NOT EXISTS otp_request_logs (
@@ -34,8 +34,8 @@ CREATE POLICY "Service role only" ON otp_request_logs FOR ALL USING (false);
 -- Split Creation Rate Limiting (Database-Based)
 -- =============================================
 -- Current limits checked against split_events table:
--- - Max 5 splits per user per hour
--- - Max 15 splits per user per day
+-- - Max 3 splits per user per hour
+-- - Max 5 splits per user per day
 -- These limits are enforced by querying split_events.created_at directly
 
 -- Helper function to check split creation rate limit
@@ -53,8 +53,8 @@ AS $$
 DECLARE
   v_splits_last_hour INT;
   v_splits_last_day INT;
-  v_max_per_hour INT := 5;
-  v_max_per_day INT := 15;
+  v_max_per_hour INT := 3;
+  v_max_per_day INT := 5;
 BEGIN
   -- Count splits in the last hour
   SELECT COUNT(*) INTO v_splits_last_hour
@@ -104,12 +104,12 @@ GRANT EXECUTE ON FUNCTION check_split_rate_limit(UUID) TO authenticated;
 -- =============================================
 -- 
 -- OTP Requests (SMS Verification):
---   - Per Phone Number: 3 per 10 min, 6 per hour
---   - Per IP Address: 10 per hour
+--   - Per Phone Number: 4 per 10 min, 5 per hour
+--   - Per IP Address: 7 per hour
 --   - Enforcement: In-memory on server
 -- 
 -- Split Event Creation:
---   - Per User: 5 per hour, 15 per day
+--   - Per User: 3 per hour, 5 per day
 --   - Enforcement: Client-side + Database query
 --
 -- Friend Requests (Existing):
