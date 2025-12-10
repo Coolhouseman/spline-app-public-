@@ -3,12 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { Pool } from 'pg';
-
-// PostgreSQL connection for local reports table
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
@@ -1036,7 +1030,7 @@ app.get('/api/friends/is-blocked', async (req, res) => {
 // USER REPORT ENDPOINTS
 // =============================================
 
-// Create a user report - uses local PostgreSQL database
+// Create a user report - stores in Supabase cloud database
 app.post('/api/reports', async (req, res) => {
   try {
     const { reporterId, reportedUserId, reason } = req.body;
@@ -1053,19 +1047,24 @@ app.post('/api/reports', async (req, res) => {
       return res.status(400).json({ error: 'Reason must be at least 10 characters' });
     }
     
-    // Use local PostgreSQL database for reports
-    const result = await pool.query(
-      `INSERT INTO user_reports (reporter_id, reported_user_id, reason, status) 
-       VALUES ($1, $2, $3, 'pending') 
-       RETURNING id`,
-      [reporterId, reportedUserId, reason]
-    );
+    // Insert directly into Supabase user_reports table
+    const { data: insertData, error: insertError } = await supabaseServer
+      .from('user_reports')
+      .insert({
+        reporter_id: reporterId,
+        reported_user_id: reportedUserId,
+        reason: reason,
+        status: 'pending'
+      })
+      .select('id')
+      .single();
     
-    const reportId = result.rows[0]?.id;
-    
-    if (!reportId) {
-      return res.status(500).json({ error: 'Failed to create report' });
+    if (insertError) {
+      console.error('Error creating report:', insertError);
+      return res.status(500).json({ error: 'Failed to create report', details: insertError.message });
     }
+    
+    const reportId = insertData?.id;
     
     // Get user details from Supabase for email notification
     const { data: users } = await supabaseServer
