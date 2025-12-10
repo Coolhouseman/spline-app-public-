@@ -107,9 +107,12 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
   const handleBlock = () => {
     if (!userId || !friend) return;
     
+    const friendName = friend.name;
+    const friendId = friend.id;
+    
     Alert.alert(
       'Block User',
-      `Are you sure you want to block ${friend.name}? They won't be able to send you friend requests or include you in splits.`,
+      `Are you sure you want to block ${friendName}? They won't be able to send you friend requests or include you in splits.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -118,17 +121,22 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
           onPress: async () => {
             try {
               setSubmitting(true);
-              await FriendsService.blockUser(userId, friend.id);
+              await FriendsService.blockUser(userId, friendId);
+              setSubmitting(false);
+              
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              Alert.alert('User Blocked', `${friend.name} has been blocked`);
+              
               onClose();
               onBlock?.();
+              
+              setTimeout(() => {
+                Alert.alert('User Blocked', `${friendName} has been blocked`);
+              }, 100);
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to block user');
-            } finally {
               setSubmitting(false);
+              Alert.alert('Error', error.message || 'Failed to block user');
             }
           },
         },
@@ -137,23 +145,35 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
   };
 
   const handleReportPress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setReportModalVisible(true);
   };
 
   const handleSubmitReport = async () => {
     if (!userId || !friend || !selectedReason) return;
     
-    const reason = selectedReason === 'other' 
-      ? (customReason.trim() || 'Other')
+    const friendId = friend.id;
+    const friendName = friend.name;
+    
+    let reason = selectedReason === 'other' 
+      ? (customReason.trim() || 'Other reason not specified')
       : REPORT_REASONS.find(r => r.id === selectedReason)?.label || selectedReason;
+    
+    if (reason.length < 10) {
+      reason = `${reason} - User reported`;
+    }
     
     try {
       setSubmitting(true);
-      await FriendsService.reportUser(userId, friend.id, reason);
+      await FriendsService.reportUser(userId, friendId, reason);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       setReportModalVisible(false);
+      setSelectedReason(null);
+      setCustomReason('');
       Alert.alert(
         'Report Submitted',
         'Thank you for your report. Our team will review it shortly.',

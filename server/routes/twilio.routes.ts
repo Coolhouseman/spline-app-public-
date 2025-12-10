@@ -20,6 +20,115 @@ const getTwilioClient = () => {
   return twilioClient;
 };
 
+interface RateLimitEntry {
+  count: number;
+  firstRequest: number;
+  lastRequest: number;
+}
+
+const OTP_RATE_LIMITS = {
+  PHONE_MAX_REQUESTS_10MIN: 3,
+  PHONE_MAX_REQUESTS_HOUR: 6,
+  IP_MAX_REQUESTS_HOUR: 10,
+  TEN_MINUTES_MS: 10 * 60 * 1000,
+  ONE_HOUR_MS: 60 * 60 * 1000,
+};
+
+const phoneRateLimits = new Map<string, RateLimitEntry>();
+const ipRateLimits = new Map<string, RateLimitEntry>();
+
+const cleanupRateLimits = () => {
+  const now = Date.now();
+  for (const [key, entry] of phoneRateLimits.entries()) {
+    if (now - entry.lastRequest > OTP_RATE_LIMITS.ONE_HOUR_MS) {
+      phoneRateLimits.delete(key);
+    }
+  }
+  for (const [key, entry] of ipRateLimits.entries()) {
+    if (now - entry.lastRequest > OTP_RATE_LIMITS.ONE_HOUR_MS) {
+      ipRateLimits.delete(key);
+    }
+  }
+};
+
+setInterval(cleanupRateLimits, 5 * 60 * 1000);
+
+const getClientIp = (req: Request): string => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  if (Array.isArray(forwarded)) {
+    return forwarded[0];
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+};
+
+const checkPhoneRateLimit = (phoneNumber: string): { allowed: boolean; message?: string; retryAfterMinutes?: number } => {
+  const now = Date.now();
+  const entry = phoneRateLimits.get(phoneNumber);
+  
+  if (!entry) {
+    phoneRateLimits.set(phoneNumber, { count: 1, firstRequest: now, lastRequest: now });
+    return { allowed: true };
+  }
+  
+  if (now - entry.firstRequest < OTP_RATE_LIMITS.TEN_MINUTES_MS) {
+    if (entry.count >= OTP_RATE_LIMITS.PHONE_MAX_REQUESTS_10MIN) {
+      const retryAfter = Math.ceil((OTP_RATE_LIMITS.TEN_MINUTES_MS - (now - entry.firstRequest)) / 60000);
+      return { 
+        allowed: false, 
+        message: `Too many OTP requests. Please try again in ${retryAfter} minutes.`,
+        retryAfterMinutes: retryAfter
+      };
+    }
+  } else if (now - entry.firstRequest < OTP_RATE_LIMITS.ONE_HOUR_MS) {
+    if (entry.count >= OTP_RATE_LIMITS.PHONE_MAX_REQUESTS_HOUR) {
+      const retryAfter = Math.ceil((OTP_RATE_LIMITS.ONE_HOUR_MS - (now - entry.firstRequest)) / 60000);
+      return { 
+        allowed: false, 
+        message: `Too many OTP requests. Please try again in ${retryAfter} minutes.`,
+        retryAfterMinutes: retryAfter
+      };
+    }
+  } else {
+    phoneRateLimits.set(phoneNumber, { count: 1, firstRequest: now, lastRequest: now });
+    return { allowed: true };
+  }
+  
+  entry.count++;
+  entry.lastRequest = now;
+  return { allowed: true };
+};
+
+const checkIpRateLimit = (ip: string): { allowed: boolean; message?: string; retryAfterMinutes?: number } => {
+  const now = Date.now();
+  const entry = ipRateLimits.get(ip);
+  
+  if (!entry) {
+    ipRateLimits.set(ip, { count: 1, firstRequest: now, lastRequest: now });
+    return { allowed: true };
+  }
+  
+  if (now - entry.firstRequest < OTP_RATE_LIMITS.ONE_HOUR_MS) {
+    if (entry.count >= OTP_RATE_LIMITS.IP_MAX_REQUESTS_HOUR) {
+      const retryAfter = Math.ceil((OTP_RATE_LIMITS.ONE_HOUR_MS - (now - entry.firstRequest)) / 60000);
+      return { 
+        allowed: false, 
+        message: `Too many OTP requests from this network. Please try again in ${retryAfter} minutes.`,
+        retryAfterMinutes: retryAfter
+      };
+    }
+  } else {
+    ipRateLimits.set(ip, { count: 1, firstRequest: now, lastRequest: now });
+    return { allowed: true };
+  }
+  
+  entry.count++;
+  entry.lastRequest = now;
+  return { allowed: true };
+};
+
 router.post('/send-otp', async (req: Request, res: Response) => {
   try {
     const { phoneNumber } = req.body;
@@ -28,6 +137,28 @@ router.post('/send-otp', async (req: Request, res: Response) => {
       return res.status(400).json({ 
         success: false, 
         error: 'Phone number is required' 
+      });
+    }
+
+    const clientIp = getClientIp(req);
+    
+    const ipCheck = checkIpRateLimit(clientIp);
+    if (!ipCheck.allowed) {
+      console.log(`OTP rate limit (IP): ${clientIp} blocked`);
+      return res.status(429).json({ 
+        success: false, 
+        error: ipCheck.message,
+        retryAfterMinutes: ipCheck.retryAfterMinutes
+      });
+    }
+    
+    const phoneCheck = checkPhoneRateLimit(phoneNumber);
+    if (!phoneCheck.allowed) {
+      console.log(`OTP rate limit (Phone): ${phoneNumber} blocked`);
+      return res.status(429).json({ 
+        success: false, 
+        error: phoneCheck.message,
+        retryAfterMinutes: phoneCheck.retryAfterMinutes
       });
     }
 

@@ -25,8 +25,48 @@ export interface PaySplitResult {
   xpResult?: XPAwardResult | null;
 }
 
+const SPLIT_RATE_LIMITS = {
+  MAX_SPLITS_PER_HOUR: 5,
+  MAX_SPLITS_PER_DAY: 15,
+  ONE_HOUR_MS: 60 * 60 * 1000,
+  ONE_DAY_MS: 24 * 60 * 60 * 1000,
+};
+
 export class SplitsService {
+  private static async checkSplitCreationRateLimit(userId: string): Promise<void> {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - SPLIT_RATE_LIMITS.ONE_HOUR_MS);
+    const oneDayAgo = new Date(now.getTime() - SPLIT_RATE_LIMITS.ONE_DAY_MS);
+    
+    const { data: recentSplits, error } = await supabase
+      .from('split_events')
+      .select('id, created_at')
+      .eq('creator_id', userId)
+      .gte('created_at', oneDayAgo.toISOString());
+    
+    if (error) {
+      console.error('Failed to check split rate limit:', error);
+      throw new Error('Unable to verify rate limits. Please try again in a moment.');
+    }
+    
+    const splitsLastHour = (recentSplits || []).filter(
+      s => new Date(s.created_at) >= oneHourAgo
+    ).length;
+    
+    const splitsLastDay = (recentSplits || []).length;
+    
+    if (splitsLastHour >= SPLIT_RATE_LIMITS.MAX_SPLITS_PER_HOUR) {
+      throw new Error(`You can only create ${SPLIT_RATE_LIMITS.MAX_SPLITS_PER_HOUR} splits per hour. Please wait before creating another split.`);
+    }
+    
+    if (splitsLastDay >= SPLIT_RATE_LIMITS.MAX_SPLITS_PER_DAY) {
+      throw new Error(`You can only create ${SPLIT_RATE_LIMITS.MAX_SPLITS_PER_DAY} splits per day. Please try again tomorrow.`);
+    }
+  }
+
   static async createSplit(data: CreateSplitData): Promise<CreateSplitResult> {
+    await this.checkSplitCreationRateLimit(data.creatorId);
+    
     let receiptUrl: string | undefined;
 
     if (data.receiptUri) {

@@ -552,11 +552,15 @@ export default function FriendsScreen({ navigation }: Props) {
 
       <FriendProfileModal
         visible={profileModalVisible}
-        onClose={() => setProfileModalVisible(false)}
+        onClose={() => {
+          setProfileModalVisible(false);
+          setSelectedFriend(null);
+        }}
         friend={selectedFriend}
         userId={user?.id}
         onBlock={() => {
           setProfileModalVisible(false);
+          setSelectedFriend(null);
           loadData();
         }}
       />
