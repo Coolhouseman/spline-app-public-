@@ -623,33 +623,17 @@ export class FriendsService {
   }
 
   static async reportUser(reporterId: string, reportedUserId: string, reason: string): Promise<void> {
-    if (isBackendAccessible()) {
-      try {
-        const backendUrl = getBackendUrl();
-        const response = await fetch(`${backendUrl}/api/reports`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reporterId, reportedUserId, reason }),
-        });
-        
-        if (response.ok) return;
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.error) throw new Error(errorData.error);
-      } catch (error: any) {
-        if (error.message && !error.message.includes('fetch')) {
-          throw error;
-        }
-        console.warn('Backend report failed, using Supabase fallback');
-      }
-    }
-    
-    const { data, error } = await supabase.rpc('create_user_report', {
-      p_reporter_id: reporterId,
-      p_reported_user_id: reportedUserId,
-      p_reason: reason,
+    // Always use backend for reports - works on all platforms including Expo Go
+    const backendUrl = getBackendUrl();
+    const response = await fetch(`${backendUrl}/api/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reporterId, reportedUserId, reason }),
     });
     
-    if (error) throw new Error(error.message || 'Failed to submit report');
-    if (data && !data.success) throw new Error(data.error || 'Failed to submit report');
+    if (response.ok) return;
+    
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to submit report');
   }
 }
