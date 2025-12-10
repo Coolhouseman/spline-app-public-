@@ -145,9 +145,11 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
   };
 
   const handleReportPress = () => {
+    console.log('[FriendProfileModal] Report button pressed, submitting:', submitting);
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    console.log('[FriendProfileModal] Setting reportModalVisible to true');
     setReportModalVisible(true);
   };
 
