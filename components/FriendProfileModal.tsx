@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, Image, ActivityIndicator, Platform, Dimensions, Alert, TextInput } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, Image, ActivityIndicator, Platform, Dimensions, Alert, TextInput, ScrollView, KeyboardAvoidingView } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -161,7 +161,11 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
   };
 
   const handleSubmitReport = async () => {
-    if (!userId || !friend || !selectedReason) return;
+    console.log('[FriendProfileModal] handleSubmitReport called', { userId, friendId: friend?.id, selectedReason });
+    if (!userId || !friend || !selectedReason) {
+      console.log('[FriendProfileModal] Missing required fields:', { userId: !!userId, friend: !!friend, selectedReason });
+      return;
+    }
     
     const friendId = friend.id;
     const friendName = friend.name;
@@ -174,9 +178,12 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
       reason = `${reason} - User reported`;
     }
     
+    console.log('[FriendProfileModal] Submitting report:', { userId, friendId, reason });
+    
     try {
       setSubmitting(true);
       await FriendsService.reportUser(userId, friendId, reason);
+      console.log('[FriendProfileModal] Report submitted successfully');
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -189,6 +196,7 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
         [{ text: 'OK', onPress: onClose }]
       );
     } catch (error: any) {
+      console.error('[FriendProfileModal] Report submission error:', error);
       Alert.alert('Error', error.message || 'Failed to submit report');
     } finally {
       setSubmitting(false);
@@ -221,7 +229,10 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
               onPress={() => {}}
             >
               {showingReportView ? (
-                <>
+                <KeyboardAvoidingView 
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  style={styles.reportKeyboardView}
+                >
                   <Pressable 
                     style={[styles.closeButton, { backgroundColor: colors.backgroundSecondary }]} 
                     onPress={handleBackToProfile}
@@ -229,87 +240,94 @@ export function FriendProfileModal({ visible, onClose, friend, userId, onBlock }
                     <Feather name="arrow-left" size={20} color={colors.textSecondary} />
                   </Pressable>
 
-                  <View style={styles.reportHeader}>
-                    <ThemedText style={[styles.reportTitle, { color: colors.text }]}>
-                      Report {friend.name}
+                  <ScrollView 
+                    style={styles.reportScrollView}
+                    contentContainerStyle={styles.reportScrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <View style={styles.reportHeader}>
+                      <ThemedText style={[styles.reportTitle, { color: colors.text }]}>
+                        Report {friend.name}
+                      </ThemedText>
+                    </View>
+
+                    <ThemedText style={[styles.reportSubtitle, { color: colors.textSecondary }]}>
+                      Why are you reporting this user?
                     </ThemedText>
-                  </View>
 
-                  <ThemedText style={[styles.reportSubtitle, { color: colors.textSecondary }]}>
-                    Why are you reporting this user?
-                  </ThemedText>
+                    <View style={styles.reasonsList}>
+                      {REPORT_REASONS.map((reason) => (
+                        <Pressable
+                          key={reason.id}
+                          style={[
+                            styles.reasonItem,
+                            { 
+                              backgroundColor: selectedReason === reason.id ? colors.primary + '15' : colors.backgroundSecondary,
+                              borderColor: selectedReason === reason.id ? colors.primary : colors.border,
+                            }
+                          ]}
+                          onPress={() => setSelectedReason(reason.id)}
+                        >
+                          <View style={[
+                            styles.radioButton,
+                            { borderColor: selectedReason === reason.id ? colors.primary : colors.textSecondary }
+                          ]}>
+                            {selectedReason === reason.id ? (
+                              <View style={[styles.radioButtonInner, { backgroundColor: colors.primary }]} />
+                            ) : null}
+                          </View>
+                          <ThemedText style={[styles.reasonText, { color: colors.text }]}>
+                            {reason.label}
+                          </ThemedText>
+                        </Pressable>
+                      ))}
+                    </View>
 
-                  <View style={styles.reasonsList}>
-                    {REPORT_REASONS.map((reason) => (
-                      <Pressable
-                        key={reason.id}
+                    {selectedReason === 'other' ? (
+                      <TextInput
                         style={[
-                          styles.reasonItem,
+                          styles.customReasonInput,
                           { 
-                            backgroundColor: selectedReason === reason.id ? colors.primary + '15' : colors.backgroundSecondary,
-                            borderColor: selectedReason === reason.id ? colors.primary : colors.border,
+                            backgroundColor: colors.backgroundSecondary, 
+                            color: colors.text,
+                            borderColor: colors.border,
                           }
                         ]}
-                        onPress={() => setSelectedReason(reason.id)}
-                      >
-                        <View style={[
-                          styles.radioButton,
-                          { borderColor: selectedReason === reason.id ? colors.primary : colors.textSecondary }
-                        ]}>
-                          {selectedReason === reason.id ? (
-                            <View style={[styles.radioButtonInner, { backgroundColor: colors.primary }]} />
-                          ) : null}
-                        </View>
-                        <ThemedText style={[styles.reasonText, { color: colors.text }]}>
-                          {reason.label}
-                        </ThemedText>
-                      </Pressable>
-                    ))}
-                  </View>
+                        placeholder="Please describe the issue..."
+                        placeholderTextColor={colors.textSecondary}
+                        value={customReason}
+                        onChangeText={setCustomReason}
+                        multiline
+                        numberOfLines={3}
+                        textAlignVertical="top"
+                      />
+                    ) : null}
 
-                  {selectedReason === 'other' ? (
-                    <TextInput
-                      style={[
-                        styles.customReasonInput,
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.submitButton,
                         { 
-                          backgroundColor: colors.backgroundSecondary, 
-                          color: colors.text,
-                          borderColor: colors.border,
+                          backgroundColor: selectedReason ? colors.primary : colors.backgroundSecondary,
+                          opacity: pressed && selectedReason ? 0.7 : 1 
                         }
                       ]}
-                      placeholder="Please describe the issue..."
-                      placeholderTextColor={colors.textSecondary}
-                      value={customReason}
-                      onChangeText={setCustomReason}
-                      multiline
-                      numberOfLines={3}
-                      textAlignVertical="top"
-                    />
-                  ) : null}
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.submitButton,
-                      { 
-                        backgroundColor: selectedReason ? colors.primary : colors.backgroundSecondary,
-                        opacity: pressed && selectedReason ? 0.7 : 1 
-                      }
-                    ]}
-                    onPress={handleSubmitReport}
-                    disabled={!selectedReason || submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <ThemedText style={[
-                        styles.submitButtonText, 
-                        { color: selectedReason ? '#FFFFFF' : colors.textSecondary }
-                      ]}>
-                        Submit Report
-                      </ThemedText>
-                    )}
-                  </Pressable>
-                </>
+                      onPress={handleSubmitReport}
+                      disabled={!selectedReason || submitting}
+                    >
+                      {submitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <ThemedText style={[
+                          styles.submitButtonText, 
+                          { color: selectedReason ? '#FFFFFF' : colors.textSecondary }
+                        ]}>
+                          Submit Report
+                        </ThemedText>
+                      )}
+                    </Pressable>
+                  </ScrollView>
+                </KeyboardAvoidingView>
               ) : (
                 <>
                   <Pressable style={[styles.closeButton, { backgroundColor: colors.backgroundSecondary }]} onPress={onClose}>
@@ -770,5 +788,16 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  reportKeyboardView: {
+    flex: 1,
+    width: '100%',
+  },
+  reportScrollView: {
+    flex: 1,
+    marginTop: Spacing.xl,
+  },
+  reportScrollContent: {
+    paddingBottom: Spacing.lg,
   },
 });
