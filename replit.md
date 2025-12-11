@@ -96,8 +96,13 @@ Preferred communication style: Simple, everyday language.
 
 ### Push Notifications (iOS/Android)
 - `expo-notifications` for native push notifications.
-- **Triggers**: Split invites, payment received, split completed, payment reminders.
-- **Features**: Badge count, deep linking.
+- **Triggers**: Split invites, payment received, split completed, payment reminders, friend requests.
+- **Features**: Badge count, deep linking to relevant screens.
+- **Deep Linking Routes** (handled in `hooks/usePushNotifications.ts`):
+  - `friend_request` / `friend_accepted` → Friends Tab
+  - `split_invite` / `split_accepted` / `split_declined` / `split_paid` / `split_completed` / `payment_received` → EventDetail screen (with splitEventId)
+  - `payment_reminder` → Notifications screen
+  - Fallback logic based on `splitEventId` or `friendship_id` fields for legacy notifications
 
 ### Daily Payment Reminders
 - Automated backend service (hourly run, 9 AM daily) for users with pending split payments.
