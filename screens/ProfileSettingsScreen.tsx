@@ -224,21 +224,37 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
     console.log('[DeleteAccount] Starting account deletion...');
     
     try {
-      // The AuthService.deleteAccount now has its own 30 second timeout
+      // The AuthService.deleteAccount has its own 30 second timeout
       await AuthService.deleteAccount();
       
       console.log('[DeleteAccount] Account deletion successful');
+      
+      // IMPORTANT: Clear loading state and close modal BEFORE calling logout
+      // because logout will set user to null, which causes this component to unmount
+      // If we don't clear state first, the loading indicator could get stuck
+      setDeletingAccount(false);
       setShowDeleteModal(false);
       
-      // Call logout from auth context to properly clear user state and trigger navigation
-      // The deleteAccount already signs out from Supabase, but this ensures UI state is cleared
-      try {
-        await logout();
-      } catch (logoutError) {
-        console.log('[DeleteAccount] Post-delete logout cleanup:', logoutError);
-      }
+      // Show success message before navigation
+      Alert.alert(
+        'Account Deleted',
+        'Your account has been successfully deleted. You will now be signed out.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Call logout from auth context to properly clear user state
+              // This is fire-and-forget since account is already deleted
+              logout().catch(e => console.log('[DeleteAccount] Logout cleanup:', e));
+            }
+          }
+        ]
+      );
     } catch (error: any) {
       console.error('[DeleteAccount] Error:', error);
+      
+      // Always clear loading state on error
+      setDeletingAccount(false);
       
       // Provide more specific error messages
       let errorMessage = 'Failed to delete account.';
@@ -251,9 +267,6 @@ Sent from Spline App on ${Platform.OS} at ${new Date().toLocaleString()}
       }
       
       Alert.alert('Error', errorMessage + ' If the problem persists, please contact support.');
-    } finally {
-      // Always clear loading state
-      setDeletingAccount(false);
     }
   };
 

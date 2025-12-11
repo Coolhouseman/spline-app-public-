@@ -481,13 +481,11 @@ export class AuthService {
       }
       throw error;
     }
-
-    // Sign out locally after successful deletion
-    try {
-      await supabase.auth.signOut();
-    } catch (signOutError) {
-      // Ignore signout errors since account is already deleted
-      console.log('Sign out after deletion (non-blocking):', signOutError);
-    }
+    
+    // NOTE: We intentionally do NOT call supabase.auth.signOut() here.
+    // The calling component handles showing a success message first,
+    // then calls logout() which will clear the user state and sign out.
+    // This prevents a race condition where the UI unmounts before
+    // the user can see the confirmation message.
   }
 }
