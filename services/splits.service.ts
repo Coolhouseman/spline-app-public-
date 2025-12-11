@@ -487,4 +487,200 @@ export class SplitsService {
       console.error('Error checking split completion:', error);
     }
   }
+
+  static async deleteSplit(userId: string, splitId: string): Promise<void> {
+    // Verify the user is the creator of this split
+    const { data: split, error: fetchError } = await supabase
+      .from('split_events')
+      .select('id, creator_id, name')
+      .eq('id', splitId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!split) throw new Error('Split event not found');
+    if (split.creator_id !== userId) throw new Error('Only the creator can delete this split');
+
+    // Get all participants to notify them
+    const { data: participants } = await supabase
+      .from('split_participants')
+      .select('user_id, status')
+      .eq('split_event_id', splitId);
+
+    // Delete the split event (cascade will delete participants)
+    const { error: deleteError } = await supabase
+      .from('split_events')
+      .delete()
+      .eq('id', splitId);
+
+    if (deleteError) throw deleteError;
+
+    // Notify all non-creator participants that the split was cancelled
+    if (participants) {
+      const nonCreatorParticipants = participants.filter(p => p.user_id !== userId);
+      
+      for (const participant of nonCreatorParticipants) {
+        await BackendNotificationsService.createNotification({
+          user_id: participant.user_id,
+          type: 'split_cancelled',
+          title: 'Split Cancelled',
+          message: `The split "${split.name}" has been cancelled by the creator`,
+        });
+
+        await PushNotificationsService.sendPushToUser(participant.user_id, {
+          title: 'Split Cancelled',
+          body: `The split "${split.name}" has been cancelled by the creator`,
+          data: {
+            type: 'split_cancelled',
+          },
+        });
+      }
+    }
+  }
+
+  // Subscribe to realtime updates for user's splits with full participant coverage
+  // Uses per-split channels with stable naming (limited to MAX_SPLIT_CHANNELS)
+  // Also maintains always-on invite listener for new split invitations
+  private static MAX_SPLIT_CHANNELS = 20;
+
+  static subscribeToSplitUpdates(
+    userId: string,
+    onUpdate: () => void
+  ): { unsubscribe: () => void; updateSplitIds: (ids: string[]) => void } {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const splitChannels: Map<string, ReturnType<typeof supabase.channel>> = new Map();
+    let isUnsubscribed = false;
+
+    const debouncedUpdate = () => {
+      if (isUnsubscribed) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(onUpdate, 300);
+    };
+
+    // Always-on invite channel - never destroyed until unsubscribe
+    const inviteChannel = supabase
+      .channel(`split_invites_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'split_participants',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => debouncedUpdate()
+      )
+      .subscribe();
+
+    // Create individual per-split subscription with stable channel name
+    const subscribeToSplit = (splitId: string) => {
+      if (splitChannels.has(splitId) || isUnsubscribed) return;
+
+      const channel = supabase
+        .channel(`split_realtime_${splitId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'split_participants',
+            filter: `split_event_id=eq.${splitId}`,
+          },
+          () => debouncedUpdate()
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'split_events',
+            filter: `id=eq.${splitId}`,
+          },
+          () => debouncedUpdate()
+        )
+        .subscribe();
+
+      splitChannels.set(splitId, channel);
+    };
+
+    const unsubscribeFromSplit = (splitId: string) => {
+      const channel = splitChannels.get(splitId);
+      if (channel) {
+        supabase.removeChannel(channel);
+        splitChannels.delete(splitId);
+      }
+    };
+
+    return {
+      unsubscribe: () => {
+        isUnsubscribed = true;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        supabase.removeChannel(inviteChannel);
+        splitChannels.forEach(channel => supabase.removeChannel(channel));
+        splitChannels.clear();
+      },
+      updateSplitIds: (newSplitIds: string[]) => {
+        if (isUnsubscribed) return;
+        
+        // Limit to MAX_SPLIT_CHANNELS most recent splits
+        const limitedIds = newSplitIds.slice(0, SplitsService.MAX_SPLIT_CHANNELS);
+        const newSet = new Set(limitedIds);
+        
+        // Remove channels for splits no longer in the list
+        const toRemove: string[] = [];
+        splitChannels.forEach((_, id) => {
+          if (!newSet.has(id)) {
+            toRemove.push(id);
+          }
+        });
+        toRemove.forEach(id => unsubscribeFromSplit(id));
+        
+        // Add channels for new splits (only if not already subscribed)
+        limitedIds.forEach(id => {
+          if (!splitChannels.has(id)) {
+            subscribeToSplit(id);
+          }
+        });
+      },
+    };
+  }
+
+  // Subscribe to realtime updates for a specific split event
+  static subscribeToSplitEventUpdates(
+    splitId: string,
+    onUpdate: () => void
+  ): { unsubscribe: () => void } {
+    const channel = supabase
+      .channel(`split_event_${splitId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'split_participants',
+          filter: `split_event_id=eq.${splitId}`,
+        },
+        () => {
+          onUpdate();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'split_events',
+          filter: `id=eq.${splitId}`,
+        },
+        () => {
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    return {
+      unsubscribe: () => {
+        supabase.removeChannel(channel);
+      },
+    };
+  }
 }

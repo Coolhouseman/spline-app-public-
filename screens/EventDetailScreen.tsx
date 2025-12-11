@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Pressable, Image, ScrollView, Alert, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
@@ -67,6 +68,28 @@ export default function EventDetailScreen({ route, navigation }: Props) {
     loadEvent();
     loadFriendIds();
   }, [eventId, user?.id]);
+
+  // Subscribe to realtime updates for this specific split event
+  useEffect(() => {
+    if (!eventId) return;
+
+    const subscription = SplitsService.subscribeToSplitEventUpdates(eventId, () => {
+      // Reload event data when there are changes
+      loadEvent();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [eventId]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadEvent();
+      loadFriendIds();
+    }, [eventId, user?.id])
+  );
 
   const loadFriendIds = async () => {
     if (!user?.id) return;

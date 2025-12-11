@@ -15,6 +15,7 @@ import { WalletService } from '@/services/wallet.service';
 import { NotificationsService } from '@/services/notifications.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
+import { useFocusEffect } from '@react-navigation/native';
 
 type Props = NativeStackScreenProps<any, 'MainHome'>;
 
@@ -28,6 +29,8 @@ function SwipeableEventCard({
   showGreyOverlay,
   isCreator,
   userAmount,
+  progress,
+  isInProgress,
   theme,
   swipeOpenIdShared,
   setSwipeOpenId,
@@ -39,6 +42,8 @@ function SwipeableEventCard({
   showGreyOverlay: boolean;
   isCreator: boolean;
   userAmount: number;
+  progress?: number;
+  isInProgress?: boolean;
   theme: any;
   swipeOpenIdShared: SharedValue<string | null>;
   setSwipeOpenId: (id: string | null) => void;
@@ -74,9 +79,13 @@ function SwipeableEventCard({
   }, [setSwipeOpenId, item.id]);
 
   const handleDelete = useCallback(() => {
+    const isCreatorDeletingInProgress = isCreator && isInProgress;
+    
     Alert.alert(
-      'Remove Split',
-      'Remove this split from your view? This won\'t affect other participants.',
+      isCreatorDeletingInProgress ? 'Delete Split' : 'Remove Split',
+      isCreatorDeletingInProgress 
+        ? 'Delete this split permanently? This will cancel the split for all participants. Any collected payments are already processed, but pending participants will no longer be able to pay.'
+        : 'Remove this split from your view? This won\'t affect other participants.',
       [
         { 
           text: 'Cancel', 
@@ -88,7 +97,7 @@ function SwipeableEventCard({
           }
         },
         { 
-          text: 'Remove', 
+          text: isCreatorDeletingInProgress ? 'Delete' : 'Remove', 
           style: 'destructive', 
           onPress: () => {
             translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
@@ -99,7 +108,7 @@ function SwipeableEventCard({
         },
       ]
     );
-  }, [translateX, isOpen, closeSwipe, onDelete]);
+  }, [translateX, isOpen, closeSwipe, onDelete, isCreator, isInProgress]);
 
   const panGesture = useMemo(() => 
     Gesture.Pan()
@@ -204,6 +213,24 @@ function SwipeableEventCard({
                 Your share: ${parseFloat(userAmount.toString()).toFixed(2)}
               </ThemedText>
             </View>
+
+            {isInProgress && progress !== undefined ? (
+              <View style={styles.progressContainer}>
+                <View style={[styles.progressBar, { backgroundColor: showGreyOverlay ? theme.textSecondary + '30' : theme.border }]}>
+                  <View 
+                    style={[
+                      styles.progressFill, 
+                      { backgroundColor: showGreyOverlay ? theme.textSecondary : theme.primary, width: `${progress}%` }
+                    ]} 
+                  />
+                </View>
+                <View style={styles.progressInfo}>
+                  <ThemedText style={[Typography.small, { color: theme.textSecondary }]}>
+                    {Math.round(progress)}% paid
+                  </ThemedText>
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.eventFooter}>
               <View style={styles.participantCount}>
@@ -331,6 +358,7 @@ export default function MainHomeScreen({ navigation }: Props) {
   const swipeOpenIdShared = useSharedValue<string | null>(null);
   const retryCountRef = useRef(0);
   const appState = useRef(AppState.currentState);
+  const subscriptionRef = useRef<{ unsubscribe: () => void; updateSplitIds: (ids: string[]) => void } | null>(null);
 
   const nativeScrollGesture = useMemo(() => Gesture.Native(), []);
 
@@ -349,6 +377,11 @@ export default function MainHomeScreen({ navigation }: Props) {
       setNotifications(unreadCount);
       setNetworkError(false);
       retryCountRef.current = 0;
+      
+      // Update realtime subscription with current split IDs for cross-participant updates
+      if (subscriptionRef.current?.updateSplitIds) {
+        subscriptionRef.current.updateSplitIds(splitsData.map(s => s.id));
+      }
     } catch (error: any) {
       const isNetworkError = error?.message?.includes('Network') || 
                              error?.message?.includes('network') ||
@@ -371,9 +404,34 @@ export default function MainHomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(false), 5000);
+    // Backup polling for edge cases (splits beyond MAX_SPLIT_CHANNELS limit)
+    const interval = setInterval(() => loadData(false), 60000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Subscribe to realtime updates for instant cross-participant updates
+  // Uses per-split channels for up to 15 most recent splits
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = SplitsService.subscribeToSplitUpdates(
+      user.id,
+      () => loadData()
+    );
+    subscriptionRef.current = subscription;
+
+    return () => {
+      subscription.unsubscribe();
+      subscriptionRef.current = null;
+    };
+  }, [user?.id, loadData]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
@@ -406,6 +464,18 @@ export default function MainHomeScreen({ navigation }: Props) {
 
   const handleHideEvent = (eventId: string) => {
     setHiddenEventIds(prev => [...prev, eventId]);
+  };
+
+  const handleDeleteSplit = async (eventId: string) => {
+    if (!user?.id) return;
+    
+    try {
+      await SplitsService.deleteSplit(user.id, eventId);
+      loadData();
+    } catch (error: any) {
+      console.error('Failed to delete split:', error);
+      Alert.alert('Error', error.message || 'Failed to delete split');
+    }
   };
 
   const filteredEvents = events.filter(event => {
@@ -459,10 +529,12 @@ export default function MainHomeScreen({ navigation }: Props) {
     const userAmount = userParticipant?.amount || 0;
     const userHasPaid = userParticipant?.status === 'paid';
     const isCompleted = selectedTab === 'completed';
+    const isInProgress = selectedTab === 'in_progress';
     
     // Grey overlay only shows when: user is NOT the creator AND user has paid AND split is still in progress
-    const showGreyOverlay = selectedTab === 'in_progress' && !isCreator && userHasPaid && progress < 100;
+    const showGreyOverlay = isInProgress && !isCreator && userHasPaid && progress < 100;
 
+    // For completed tab: all users can swipe to hide
     if (isCompleted) {
       return (
         <SwipeableEventCard
@@ -473,6 +545,7 @@ export default function MainHomeScreen({ navigation }: Props) {
           showGreyOverlay={false}
           isCreator={isCreator}
           userAmount={userAmount}
+          isInProgress={false}
           theme={theme}
           swipeOpenIdShared={swipeOpenIdShared}
           setSwipeOpenId={updateSwipeOpenId}
@@ -481,6 +554,28 @@ export default function MainHomeScreen({ navigation }: Props) {
       );
     }
 
+    // For in_progress tab: only creators can swipe to delete
+    if (isInProgress && isCreator) {
+      return (
+        <SwipeableEventCard
+          key={item.id}
+          item={item}
+          onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+          onDelete={() => handleDeleteSplit(item.id)}
+          showGreyOverlay={showGreyOverlay}
+          isCreator={isCreator}
+          userAmount={userAmount}
+          progress={progress}
+          isInProgress={true}
+          theme={theme}
+          swipeOpenIdShared={swipeOpenIdShared}
+          setSwipeOpenId={updateSwipeOpenId}
+          nativeScrollGesture={nativeScrollGesture}
+        />
+      );
+    }
+
+    // For in_progress tab: non-creators see regular EventCard
     return (
       <EventCard
         item={item}

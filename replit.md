@@ -53,6 +53,12 @@ Preferred communication style: Simple, everyday language.
 - **Status Tracking**: Pending, accepted, paid, and declined states for participants.
 - **Visibility Rules**: Dynamic display of splits based on user participation and status.
 - **Settlement**: Wallet-based payment system.
+- **Realtime Updates**: Supabase Realtime subscriptions for live progress updates.
+  - **EventDetailScreen**: Per-split subscription for instant updates when viewing a specific split
+  - **MainHomeScreen**: Per-split channels (up to 20 most recent) + always-on invite listener + 60s polling backup
+  - **Architecture**: Individual channels per split to avoid Supabase filter size limits (512 bytes)
+  - **Delete Functionality**: Split creators can swipe-delete splits from 'In Progress' tab, removing for all participants
+  - **Future Enhancement**: For 100% realtime coverage beyond 20 splits, implement a `user_split_events_feed` table with database triggers that fan out changes to all participants, allowing a single user-scoped subscription per client
 
 ### Wallet System & Payment Processing
 - **Balance Management**: Tracks available funds.
