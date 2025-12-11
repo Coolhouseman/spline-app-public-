@@ -636,4 +636,51 @@ export class FriendsService {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to submit report');
   }
+
+  // Subscribe to realtime updates for friend requests and status changes
+  static subscribeToFriendUpdates(
+    userId: string,
+    onUpdate: () => void
+  ): { unsubscribe: () => void } {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const debouncedUpdate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(onUpdate, 300);
+    };
+
+    // Subscribe to friends table changes for this user
+    const channel = supabase
+      .channel(`friends_updates_${userId}`)
+      // Listen for incoming friend requests (where user is the recipient)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friends',
+          filter: `friend_id=eq.${userId}`,
+        },
+        () => debouncedUpdate()
+      )
+      // Listen for changes to requests the user sent
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friends',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => debouncedUpdate()
+      )
+      .subscribe();
+
+    return {
+      unsubscribe: () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        supabase.removeChannel(channel);
+      },
+    };
+  }
 }

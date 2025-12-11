@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Pressable, FlatList, Image, TextInput, RefreshControl, Alert, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
@@ -114,13 +114,7 @@ export default function FriendsScreen({ navigation }: Props) {
     setProfileModalVisible(true);
   };
 
-  useEffect(() => {
-    loadData();
-    const unsubscribe = navigation.addListener('focus', loadData);
-    return unsubscribe;
-  }, [navigation, user?.id]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user?.id) return;
     
     try {
@@ -155,7 +149,27 @@ export default function FriendsScreen({ navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadData();
+    const unsubscribe = navigation.addListener('focus', loadData);
+    return unsubscribe;
+  }, [navigation, loadData]);
+
+  // Subscribe to realtime updates for friend requests
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = FriendsService.subscribeToFriendUpdates(
+      user.id,
+      () => loadData()
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id, loadData]);
 
   const onRefresh = async () => {
     setRefreshing(true);

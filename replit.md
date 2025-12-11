@@ -46,6 +46,7 @@ Preferred communication style: Simple, everyday language.
 - **Friend Requests**: Send requests by unique_id (5-10 digit numeric ID).
 - **Friend Lists**: Categorized display of incoming, sent, and accepted friend requests.
 - **Cooldown Period**: 24-hour cooldown for reminder sending.
+- **Realtime Updates**: Supabase Realtime subscription for instant updates when receiving friend requests or when requests are accepted/declined.
 
 ### Split Payment Features
 - **Split Types**: Equal and specified amount splitting.
