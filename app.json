@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
-      "buildNumber": "21",
+      "buildNumber": "22",
       "infoPlist": {
         "NSCameraUsageDescription": "Spline needs camera access to capture receipt photos and profile pictures.",
         "NSPhotoLibraryUsageDescription": "Spline needs photo library access to upload receipt images and profile pictures.",
