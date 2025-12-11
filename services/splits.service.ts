@@ -506,6 +506,21 @@ export class SplitsService {
       .select('user_id, status')
       .eq('split_event_id', splitId);
 
+    // Delete all notifications related to this split BEFORE deleting the split
+    // This removes accept/decline buttons from all participants' notification lists
+    try {
+      const { error: notifDeleteError } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('split_event_id', splitId);
+      
+      if (notifDeleteError) {
+        console.error('Failed to delete split notifications:', notifDeleteError);
+      }
+    } catch (notifError) {
+      console.error('Error deleting split notifications:', notifError);
+    }
+
     // Delete the split event (cascade will delete participants)
     const { error: deleteError } = await supabase
       .from('split_events')

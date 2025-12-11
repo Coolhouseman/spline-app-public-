@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import type { Subscription } from 'expo-notifications';
-import { useNavigation } from '@react-navigation/native';
 import { PushNotificationsService } from '@/services/pushNotifications.service';
 import { NotificationsService } from '@/services/notifications.service';
+import * as RootNavigation from '@/utils/RootNavigation';
 
 type NotificationType = 
   | 'friend_request' 
@@ -14,12 +15,127 @@ type NotificationType =
   | 'split_paid' 
   | 'split_completed' 
   | 'payment_reminder'
-  | 'payment_received';
+  | 'payment_received'
+  | 'split_cancelled';
+
+function handleNotificationNavigation(data: Record<string, any> | undefined, delayMs: number = 0) {
+  const notificationType = data?.type as NotificationType | undefined;
+  
+  console.log('[PushNotification] Handling navigation for type:', notificationType, 'data:', data);
+  
+  const doNavigation = () => {
+    try {
+      switch (notificationType) {
+        case 'friend_request':
+        case 'friend_accepted':
+          console.log('[PushNotification] Deep linking to FriendsTab for:', notificationType);
+          RootNavigation.navigate('Main', {
+            screen: 'FriendsTab',
+            params: {
+              screen: 'Friends',
+            },
+          });
+          break;
+
+        case 'split_invite':
+        case 'split_accepted':
+        case 'split_declined':
+        case 'split_paid':
+        case 'split_completed':
+        case 'payment_received':
+          if (data?.splitEventId) {
+            console.log('[PushNotification] Deep linking to EventDetail for split:', data.splitEventId);
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'EventDetail',
+                params: { eventId: data.splitEventId },
+              },
+            });
+          } else {
+            console.log('[PushNotification] Deep linking to Notifications (no splitEventId)');
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'Notifications',
+              },
+            });
+          }
+          break;
+
+        case 'split_cancelled':
+          console.log('[PushNotification] Split was cancelled, navigating to Notifications');
+          RootNavigation.navigate('Main', {
+            screen: 'HomeTab',
+            params: {
+              screen: 'Notifications',
+            },
+          });
+          break;
+
+        case 'payment_reminder':
+          console.log('[PushNotification] Deep linking to Notifications for payment reminder');
+          RootNavigation.navigate('Main', {
+            screen: 'HomeTab',
+            params: {
+              screen: 'Notifications',
+            },
+          });
+          break;
+
+        default:
+          if (data?.splitEventId) {
+            console.log('[PushNotification] Deep linking to EventDetail (default with splitEventId)');
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'EventDetail',
+                params: { eventId: data.splitEventId },
+              },
+            });
+          } else if (data?.friendship_id) {
+            console.log('[PushNotification] Deep linking to FriendsTab (default with friendship_id)');
+            RootNavigation.navigate('Main', {
+              screen: 'FriendsTab',
+              params: {
+                screen: 'Friends',
+              },
+            });
+          } else {
+            console.log('[PushNotification] Deep linking to Notifications (default fallback)');
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'Notifications',
+              },
+            });
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('[PushNotification] Navigation error:', error);
+      try {
+        RootNavigation.navigate('Main', {
+          screen: 'HomeTab',
+          params: { screen: 'MainHome' },
+        });
+      } catch (fallbackError) {
+        console.error('[PushNotification] Fallback navigation error:', fallbackError);
+      }
+    }
+  };
+
+  if (delayMs > 0) {
+    setTimeout(doNavigation, delayMs);
+  } else {
+    doNavigation();
+  }
+}
 
 export function usePushNotifications(userId: string | undefined) {
   const notificationListener = useRef<Subscription | null>(null);
   const responseListener = useRef<Subscription | null>(null);
-  const navigation = useNavigation<any>();
+  const initialNotificationHandled = useRef(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -37,6 +153,27 @@ export function usePushNotifications(userId: string | undefined) {
 
     registerAndSetup();
 
+    const checkInitialNotification = async () => {
+      if (initialNotificationHandled.current) return;
+      
+      try {
+        const lastResponse = await Notifications.getLastNotificationResponseAsync();
+        if (lastResponse) {
+          initialNotificationHandled.current = true;
+          console.log('[PushNotification] Handling initial notification response (cold start)');
+          const data = lastResponse.notification.request.content.data;
+          
+          handleNotificationNavigation(data, 1000);
+        }
+      } catch (error) {
+        console.error('[PushNotification] Error checking initial notification:', error);
+      }
+    };
+
+    setTimeout(() => {
+      checkInitialNotification();
+    }, 500);
+
     notificationListener.current = PushNotificationsService.addNotificationReceivedListener(
       (notification) => {
         console.log('Notification received:', notification);
@@ -45,84 +182,9 @@ export function usePushNotifications(userId: string | undefined) {
 
     responseListener.current = PushNotificationsService.addNotificationResponseListener(
       (response) => {
-        console.log('Notification response:', response);
+        console.log('[PushNotification] Notification response received');
         const data = response.notification.request.content.data;
-        const notificationType = data?.type as NotificationType | undefined;
-        
-        try {
-          // Handle navigation based on notification type
-          switch (notificationType) {
-            case 'friend_request':
-            case 'friend_accepted':
-              // Navigate to Friends tab for friend-related notifications
-              console.log('Deep linking to FriendsTab for:', notificationType);
-              navigation.navigate('FriendsTab', {
-                screen: 'Friends',
-              });
-              break;
-
-            case 'split_invite':
-            case 'split_accepted':
-            case 'split_declined':
-            case 'split_paid':
-            case 'split_completed':
-            case 'payment_received':
-              // Navigate to specific split event if splitEventId is available
-              if (data?.splitEventId) {
-                console.log('Deep linking to EventDetail for split:', data.splitEventId);
-                navigation.navigate('HomeTab', {
-                  screen: 'EventDetail',
-                  params: { eventId: data.splitEventId },
-                });
-              } else {
-                // Fallback to notifications screen if no splitEventId
-                console.log('Deep linking to Notifications (no splitEventId)');
-                navigation.navigate('HomeTab', {
-                  screen: 'Notifications',
-                });
-              }
-              break;
-
-            case 'payment_reminder':
-              // Navigate to notifications screen to see all pending payments
-              console.log('Deep linking to Notifications for payment reminder');
-              navigation.navigate('HomeTab', {
-                screen: 'Notifications',
-              });
-              break;
-
-            default:
-              // For any unknown notification type, check for splitEventId first
-              if (data?.splitEventId) {
-                console.log('Deep linking to EventDetail (default with splitEventId)');
-                navigation.navigate('HomeTab', {
-                  screen: 'EventDetail',
-                  params: { eventId: data.splitEventId },
-                });
-              } else if (data?.friendship_id) {
-                // If it has a friendship_id, go to Friends
-                console.log('Deep linking to FriendsTab (default with friendship_id)');
-                navigation.navigate('FriendsTab', {
-                  screen: 'Friends',
-                });
-              } else {
-                // Default fallback to notifications screen
-                console.log('Deep linking to Notifications (default fallback)');
-                navigation.navigate('HomeTab', {
-                  screen: 'Notifications',
-                });
-              }
-              break;
-          }
-        } catch (error) {
-          console.error('Navigation error:', error);
-          // Fallback: try to navigate to home on error
-          try {
-            navigation.navigate('HomeTab', { screen: 'MainHome' });
-          } catch (fallbackError) {
-            console.error('Fallback navigation error:', fallbackError);
-          }
-        }
+        handleNotificationNavigation(data);
       }
     );
 
@@ -148,5 +210,5 @@ export function usePushNotifications(userId: string | undefined) {
       }
       subscription.remove();
     };
-  }, [userId, navigation]);
+  }, [userId]);
 }

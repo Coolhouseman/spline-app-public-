@@ -469,11 +469,15 @@ export default function MainHomeScreen({ navigation }: Props) {
   const handleDeleteSplit = async (eventId: string) => {
     if (!user?.id) return;
     
+    // Optimistically remove from UI immediately
+    setEvents(prev => prev.filter(e => e.id !== eventId));
+    
     try {
       await SplitsService.deleteSplit(user.id, eventId);
-      loadData();
     } catch (error: any) {
       console.error('Failed to delete split:', error);
+      // Restore events on error by reloading data
+      loadData();
       Alert.alert('Error', error.message || 'Failed to delete split');
     }
   };

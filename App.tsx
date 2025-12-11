@@ -18,7 +18,7 @@ import { LevelUpProvider } from "@/contexts/LevelUpContext";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
 import { supabase } from "@/services/supabase";
-import { navigationRef } from "@/utils/RootNavigation";
+import { navigationRef, notifyReady } from "@/utils/RootNavigation";
 
 const Stack = createNativeStackNavigator();
 
@@ -187,6 +187,7 @@ function AppContent() {
           ref={navigationRef}
           theme={navTheme}
           linking={linking}
+          onReady={notifyReady}
         >
           <RootNavigator />
         </NavigationContainer>

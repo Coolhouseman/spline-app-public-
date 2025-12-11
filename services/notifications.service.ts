@@ -41,4 +41,15 @@ export class NotificationsService {
     if (error) throw error;
     return count || 0;
   }
+
+  static async deleteNotificationsBySplitEventId(splitEventId: string): Promise<void> {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('split_event_id', splitEventId);
+
+    if (error) {
+      console.error('Failed to delete notifications for split:', error);
+    }
+  }
 }

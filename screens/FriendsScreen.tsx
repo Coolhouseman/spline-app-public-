@@ -114,11 +114,13 @@ export default function FriendsScreen({ navigation }: Props) {
     setProfileModalVisible(true);
   };
 
-  const loadData = useCallback(async () => {
+  const gamificationCacheRef = React.useRef<Map<string, { current_level: number; total_xp: number } | null>>(new Map());
+
+  const loadData = useCallback(async (showLoading = true, skipGamification = false) => {
     if (!user?.id) return;
     
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [friendsData, requestsData, sentData, blockedData] = await Promise.all([
         FriendsService.getFriends(user.id),
         FriendsService.getPendingRequests(user.id),
@@ -130,16 +132,26 @@ export default function FriendsScreen({ navigation }: Props) {
       setBlockedUsers(blockedData);
       setBlockedUserIds(blockedIds);
       
-      const friendsWithGamification = await Promise.all(
-        (friendsData as FriendWithDetails[]).map(async (friend) => {
-          try {
-            const gamification = await GamificationService.getProfile(friend.friend_details.id);
-            return { ...friend, gamification };
-          } catch {
-            return { ...friend, gamification: null };
-          }
-        })
-      );
+      let friendsWithGamification: FriendWithDetails[];
+      
+      if (skipGamification) {
+        friendsWithGamification = (friendsData as FriendWithDetails[]).map((friend) => {
+          const cachedGamification = gamificationCacheRef.current.get(friend.friend_details.id);
+          return { ...friend, gamification: cachedGamification || null };
+        });
+      } else {
+        friendsWithGamification = await Promise.all(
+          (friendsData as FriendWithDetails[]).map(async (friend) => {
+            try {
+              const gamification = await GamificationService.getProfile(friend.friend_details.id);
+              gamificationCacheRef.current.set(friend.friend_details.id, gamification);
+              return { ...friend, gamification };
+            } catch {
+              return { ...friend, gamification: null };
+            }
+          })
+        );
+      }
       
       setFriends(friendsWithGamification);
       setPendingRequests(requestsData as unknown as PendingRequest[]);
@@ -147,7 +159,7 @@ export default function FriendsScreen({ navigation }: Props) {
     } catch (error) {
       console.error('Failed to load friends:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [user?.id]);
 
@@ -161,12 +173,17 @@ export default function FriendsScreen({ navigation }: Props) {
   useEffect(() => {
     if (!user?.id) return;
 
+    console.log('[FriendsScreen] Setting up realtime subscription for user:', user.id);
     const subscription = FriendsService.subscribeToFriendUpdates(
       user.id,
-      () => loadData()
+      () => {
+        console.log('[FriendsScreen] Realtime update received, refreshing data (using cached gamification)');
+        loadData(false, true);
+      }
     );
 
     return () => {
+      console.log('[FriendsScreen] Cleaning up realtime subscription');
       subscription.unsubscribe();
     };
   }, [user?.id, loadData]);

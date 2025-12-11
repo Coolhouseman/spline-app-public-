@@ -644,9 +644,13 @@ export class FriendsService {
   ): { unsubscribe: () => void } {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const debouncedUpdate = () => {
+    const debouncedUpdate = (eventType: string) => {
+      console.log('[FriendsService] Realtime event received:', eventType);
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(onUpdate, 300);
+      debounceTimer = setTimeout(() => {
+        console.log('[FriendsService] Triggering update callback');
+        onUpdate();
+      }, 300);
     };
 
     // Subscribe to friends table changes for this user
@@ -661,7 +665,10 @@ export class FriendsService {
           table: 'friends',
           filter: `friend_id=eq.${userId}`,
         },
-        () => debouncedUpdate()
+        (payload) => {
+          console.log('[FriendsService] Friend change (as recipient):', payload.eventType);
+          debouncedUpdate(`recipient_${payload.eventType}`);
+        }
       )
       // Listen for changes to requests the user sent
       .on(
@@ -672,12 +679,21 @@ export class FriendsService {
           table: 'friends',
           filter: `user_id=eq.${userId}`,
         },
-        () => debouncedUpdate()
+        (payload) => {
+          console.log('[FriendsService] Friend change (as sender):', payload.eventType);
+          debouncedUpdate(`sender_${payload.eventType}`);
+        }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log('[FriendsService] Subscription status:', status);
+        if (err) {
+          console.error('[FriendsService] Subscription error:', err);
+        }
+      });
 
     return {
       unsubscribe: () => {
+        console.log('[FriendsService] Unsubscribing from friend updates');
         if (debounceTimer) clearTimeout(debounceTimer);
         supabase.removeChannel(channel);
       },
