@@ -168,8 +168,50 @@ export class WalletService {
       .eq('user_id', userId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        const newWallet = await this.ensureWalletExists(userId);
+        return newWallet;
+      }
+      throw error;
+    }
     return data as Wallet;
+  }
+
+  static async ensureWalletExists(userId: string): Promise<Wallet> {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('ensure_user_wallet', {
+      p_user_id: userId
+    });
+
+    if (rpcError) {
+      console.error('Failed to ensure wallet exists via RPC:', rpcError);
+      const { data: directInsert, error: insertError } = await supabase
+        .from('wallets')
+        .insert({ user_id: userId, balance: 0, bank_connected: false })
+        .select()
+        .single();
+      
+      if (insertError) {
+        const { data: existing, error: fetchError } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        
+        if (fetchError) throw fetchError;
+        return existing as Wallet;
+      }
+      return directInsert as Wallet;
+    }
+
+    const { data: wallet, error: fetchError } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    return wallet as Wallet;
   }
 
   static async initiateBlinkPayConsent(

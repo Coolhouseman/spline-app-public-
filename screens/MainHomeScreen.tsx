@@ -366,28 +366,43 @@ export default function MainHomeScreen({ navigation }: Props) {
     if (!user) return;
     
     try {
-      const [splitsData, walletData, unreadCount] = await Promise.all([
+      const results = await Promise.allSettled([
         SplitsService.getSplits(user.id),
         WalletService.getWallet(user.id),
         NotificationsService.getUnreadCount(user.id),
       ]);
       
-      setEvents(splitsData);
-      setWallet(walletData);
-      setNotifications(unreadCount);
-      setNetworkError(false);
-      retryCountRef.current = 0;
+      const [splitsResult, walletResult, notificationsResult] = results;
       
-      // Update realtime subscription with current split IDs for cross-participant updates
-      if (subscriptionRef.current?.updateSplitIds) {
-        subscriptionRef.current.updateSplitIds(splitsData.map(s => s.id));
+      if (splitsResult.status === 'fulfilled') {
+        setEvents(splitsResult.value);
+        if (subscriptionRef.current?.updateSplitIds) {
+          subscriptionRef.current.updateSplitIds(splitsResult.value.map(s => s.id));
+        }
+      } else {
+        console.error('Failed to load splits:', splitsResult.reason);
       }
-    } catch (error: any) {
-      const isNetworkError = error?.message?.includes('Network') || 
-                             error?.message?.includes('network') ||
-                             error?.message?.includes('fetch');
       
-      if (isNetworkError) {
+      if (walletResult.status === 'fulfilled') {
+        setWallet(walletResult.value);
+      } else {
+        console.error('Failed to load wallet:', walletResult.reason);
+        setWallet({ id: '', user_id: user.id, balance: 0, bank_connected: false } as Wallet);
+      }
+      
+      if (notificationsResult.status === 'fulfilled') {
+        setNotifications(notificationsResult.value);
+      }
+      
+      const hasNetworkError = results.some(r => 
+        r.status === 'rejected' && (
+          r.reason?.message?.includes('Network') || 
+          r.reason?.message?.includes('network') ||
+          r.reason?.message?.includes('fetch')
+        )
+      );
+      
+      if (hasNetworkError) {
         setNetworkError(true);
         if (!isRetry && retryCountRef.current < 3) {
           retryCountRef.current += 1;
@@ -395,8 +410,11 @@ export default function MainHomeScreen({ navigation }: Props) {
           setTimeout(() => loadData(true), delay);
         }
       } else {
-        console.error('Failed to load home data:', error);
+        setNetworkError(false);
+        retryCountRef.current = 0;
       }
+    } catch (error: any) {
+      console.error('Failed to load home data:', error);
     } finally {
       setLoading(false);
     }
