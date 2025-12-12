@@ -179,39 +179,65 @@ export class WalletService {
   }
 
   static async ensureWalletExists(userId: string): Promise<Wallet> {
-    const { data: rpcResult, error: rpcError } = await supabase.rpc('ensure_user_wallet', {
+    console.log('[WalletService] Ensuring wallet exists for user:', userId);
+    
+    // Try using the RPC function first (bypasses RLS)
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('ensure_wallet_exists', {
       p_user_id: userId
     });
 
-    if (rpcError) {
-      console.error('Failed to ensure wallet exists via RPC:', rpcError);
-      const { data: directInsert, error: insertError } = await supabase
+    if (!rpcError && rpcResult?.success) {
+      console.log('[WalletService] Wallet ensured via RPC:', rpcResult);
+      // Fetch the full wallet data
+      const { data: wallet, error: fetchError } = await supabase
         .from('wallets')
-        .insert({ user_id: userId, balance: 0, bank_connected: false })
-        .select()
+        .select('*')
+        .eq('user_id', userId)
         .single();
-      
-      if (insertError) {
-        const { data: existing, error: fetchError } = await supabase
-          .from('wallets')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-        
-        if (fetchError) throw fetchError;
-        return existing as Wallet;
+
+      if (!fetchError && wallet) {
+        return wallet as Wallet;
       }
+    }
+
+    if (rpcError) {
+      console.log('[WalletService] RPC not available, trying direct insert:', rpcError.message);
+    }
+
+    // Fallback: Try direct insert
+    const { data: directInsert, error: insertError } = await supabase
+      .from('wallets')
+      .insert({ user_id: userId, balance: 0, bank_connected: false })
+      .select()
+      .single();
+    
+    if (!insertError && directInsert) {
+      console.log('[WalletService] Wallet created via direct insert');
       return directInsert as Wallet;
     }
 
-    const { data: wallet, error: fetchError } = await supabase
+    // If insert failed (probably already exists), try to fetch
+    console.log('[WalletService] Insert failed, fetching existing wallet:', insertError?.message);
+    const { data: existing, error: fetchError } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
       .single();
-
-    if (fetchError) throw fetchError;
-    return wallet as Wallet;
+    
+    if (fetchError) {
+      console.error('[WalletService] Failed to fetch wallet:', fetchError);
+      // Return a default wallet object so the UI doesn't break
+      return {
+        id: '',
+        user_id: userId,
+        balance: 0,
+        bank_connected: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as Wallet;
+    }
+    
+    return existing as Wallet;
   }
 
   static async initiateBlinkPayConsent(

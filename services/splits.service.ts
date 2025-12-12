@@ -199,15 +199,23 @@ export class SplitsService {
   }
 
   static async getSplits(userId: string): Promise<SplitEvent[]> {
+    console.log('[SplitsService] getSplits for user:', userId);
+    
     const { data: participantIds, error: participantError } = await supabase
       .from('split_participants')
       .select('split_event_id')
       .eq('user_id', userId);
 
-    if (participantError) throw participantError;
+    if (participantError) {
+      console.error('[SplitsService] Failed to get participant IDs:', participantError);
+      throw participantError;
+    }
+    
+    console.log('[SplitsService] Found participant entries:', participantIds?.length || 0);
     if (!participantIds || participantIds.length === 0) return [];
 
     const splitIds = participantIds.map(p => p.split_event_id);
+    console.log('[SplitsService] Fetching splits:', splitIds);
 
     const { data, error } = await supabase
       .from('split_events')
@@ -231,12 +239,18 @@ export class SplitsService {
       `)
       .in('id', splitIds);
 
-    if (error) throw error;
+    if (error) {
+      console.error('[SplitsService] Failed to get split events:', error);
+      throw error;
+    }
 
+    console.log('[SplitsService] Fetched splits:', data?.length || 0);
     return data as SplitEvent[];
   }
 
   static async getSplitDetails(splitId: string): Promise<SplitEvent> {
+    console.log('[SplitsService] getSplitDetails for split:', splitId);
+    
     const { data, error } = await supabase
       .from('split_events')
       .select(`
@@ -260,7 +274,12 @@ export class SplitsService {
       .eq('id', splitId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[SplitsService] Failed to get split details:', error);
+      throw error;
+    }
+    
+    console.log('[SplitsService] Split details loaded successfully');
     return data as SplitEvent;
   }
 
