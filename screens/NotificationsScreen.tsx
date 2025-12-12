@@ -104,6 +104,24 @@ export default function NotificationsScreen({ navigation }: Props) {
     loadNotifications();
   }, [loadNotifications]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('[NotificationsScreen] Setting up realtime subscription');
+    const subscription = NotificationsService.subscribeToNotifications(
+      user.id,
+      () => {
+        console.log('[NotificationsScreen] Realtime update received, refreshing');
+        loadNotifications();
+      }
+    );
+
+    return () => {
+      console.log('[NotificationsScreen] Cleaning up realtime subscription');
+      subscription.unsubscribe();
+    };
+  }, [user?.id, loadNotifications]);
+
   useFocusEffect(
     useCallback(() => {
       loadNotifications();

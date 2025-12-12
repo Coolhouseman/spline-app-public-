@@ -444,6 +444,27 @@ export default function MainHomeScreen({ navigation }: Props) {
     };
   }, [user?.id, loadData]);
 
+  // Subscribe to realtime notification updates for instant badge updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = NotificationsService.subscribeToNotifications(
+      user.id,
+      async () => {
+        try {
+          const count = await NotificationsService.getUnreadCount(user.id);
+          setNotifications(count);
+        } catch (error) {
+          console.error('Failed to update notification count:', error);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id]);
+
   // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {

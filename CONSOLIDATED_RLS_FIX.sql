@@ -308,7 +308,51 @@ TO authenticated
 USING (bucket_id = 'user-uploads');
 
 -- =====================================================
--- STEP 12: CREATE WALLETS FOR ALL EXISTING USERS
+-- STEP 12: NOTIFICATIONS TABLE RLS (for realtime updates)
+-- =====================================================
+
+-- Enable RLS on notifications
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
+DROP POLICY IF EXISTS "Users can delete own notifications" ON notifications;
+DROP POLICY IF EXISTS "notifications_select" ON notifications;
+DROP POLICY IF EXISTS "notifications_insert" ON notifications;
+DROP POLICY IF EXISTS "notifications_update" ON notifications;
+DROP POLICY IF EXISTS "notifications_delete" ON notifications;
+DROP POLICY IF EXISTS "Service can insert notifications" ON notifications;
+
+-- Users can view their own notifications
+CREATE POLICY "notifications_select" ON notifications
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+-- Allow insert (for backend/service role - also allow authenticated for edge cases)
+CREATE POLICY "notifications_insert" ON notifications
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+-- Users can update their own notifications (mark as read)
+CREATE POLICY "notifications_update" ON notifications
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- Users can delete their own notifications
+CREATE POLICY "notifications_delete" ON notifications
+  FOR DELETE TO authenticated
+  USING (user_id = auth.uid());
+
+-- =====================================================
+-- STEP 13: ENABLE REALTIME FOR NOTIFICATIONS TABLE
+-- This allows Supabase realtime subscriptions to work
+-- =====================================================
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+
+-- =====================================================
+-- STEP 14: CREATE WALLETS FOR ALL EXISTING USERS
 -- This ensures every user has a wallet
 -- =====================================================
 INSERT INTO wallets (user_id, balance, bank_connected)
@@ -324,7 +368,7 @@ ON CONFLICT (user_id) DO NOTHING;
 SELECT tablename, rowsecurity 
 FROM pg_tables 
 WHERE schemaname = 'public' 
-  AND tablename IN ('split_events', 'split_participants', 'wallets');
+  AND tablename IN ('split_events', 'split_participants', 'wallets', 'notifications');
 
 -- List all policies on split_events
 SELECT policyname, cmd, qual, with_check 
