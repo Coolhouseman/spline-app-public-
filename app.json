@@ -42,7 +42,7 @@
     },
     "android": {
       "package": "com.splitpaymentapp.split",
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/adaptive-icon.png",
