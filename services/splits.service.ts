@@ -171,9 +171,13 @@ export class SplitsService {
       
       for (const userId of inviteeIds) {
         const participant = data.participants.find(p => p.userId === userId);
+        const notificationBody = data.splitType === 'specified'
+          ? `${creator?.name || 'Someone'} invited you to join a split for ${data.name}`
+          : `${creator?.name || 'Someone'} invited you to split $${participant?.amount.toFixed(2)} for ${data.name}`;
+        
         await PushNotificationsService.sendPushToUser(userId, {
           title: 'New Split Request',
-          body: `${creator?.name || 'Someone'} invited you to split $${participant?.amount.toFixed(2)} for ${data.name}`,
+          body: notificationBody,
           data: {
             type: 'split_invite',
             splitEventId: split.id,
