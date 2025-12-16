@@ -135,7 +135,7 @@ app.post('/api/request-password-reset', async (req, res) => {
     }
     
     const { error } = await supabaseServer.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://splinepay.replit.app/reset-password'
+      redirectTo: `${process.env.BACKEND_URL || 'https://splinepay.replit.app'}/reset-password`
     });
     
     if (error) {
@@ -256,6 +256,23 @@ app.post('/api/notify-withdrawal', async (req, res) => {
   } catch (error: any) {
     console.error('Withdrawal notification error:', error);
     res.status(500).json({ error: 'Failed to send notification' });
+  }
+});
+
+// Cron job endpoint for daily reminders (Vercel Cron)
+app.get('/api/cron/daily-reminders', async (req, res) => {
+  // Verify this is a legitimate cron request from Vercel
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const { DailyReminderService } = await import('./services/dailyReminder.service');
+    await DailyReminderService.sendDailyReminders();
+    res.json({ success: true, message: 'Daily reminders sent' });
+  } catch (error: any) {
+    console.error('Cron daily reminders error:', error);
+    res.status(500).json({ error: 'Failed to send reminders' });
   }
 });
 
@@ -1121,10 +1138,13 @@ app.post('/api/reminders/send-now', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Spline server running on port ${PORT}`);
-  console.log(`Landing page: http://localhost:${PORT}`);
-  console.log(`Admin dashboard: http://localhost:${PORT}/admin`);
-  
-  DailyReminderService.start();
-});
+// Export for Vercel serverless
+export default app;
+
+// Only listen when running directly (not in Vercel serverless)
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const PORT = parseInt(process.env.PORT || '8082', 10);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}

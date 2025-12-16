@@ -12,7 +12,7 @@ import * as Constants from 'expo-constants';
  * Note: Expo tunnel mode cannot reach local backends.
  * Set EXPO_PUBLIC_BACKEND_URL to your Replit domain for tunnel testing.
  */
-const PRODUCTION_BACKEND_URL = 'https://splinepay.replit.app';
+const PRODUCTION_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
 
 export const resolveBackendOrigin = (): string => {
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
@@ -29,13 +29,6 @@ export const resolveBackendOrigin = (): string => {
     return PRODUCTION_BACKEND_URL;
   }
   
-  const replitDevDomain = process.env.EXPO_PUBLIC_REPLIT_DEV_DOMAIN;
-  
-  if (replitDevDomain) {
-    const url = `https://${replitDevDomain}:8082`;
-    console.log('Using REPLIT_DEV_DOMAIN:', url);
-    return url;
-  }
   
   if (Constants.default.expoConfig?.hostUri) {
     const fullHostUri = Constants.default.expoConfig.hostUri;
@@ -46,8 +39,7 @@ export const resolveBackendOrigin = (): string => {
     if (host === 'exp.host' || host === 'u.expo.dev') {
       console.error(
         '⚠️ EXPO TUNNEL DETECTED: Backend cannot be reached through Expo tunnel.',
-        '\nPlease set EXPO_PUBLIC_BACKEND_URL environment variable to your Replit domain:',
-        '\nEXPO_PUBLIC_BACKEND_URL=https://your-repl.replit.dev:8082',
+        '\nPlease set EXPO_PUBLIC_BACKEND_URL environment variable to your Vercel backend URL.',
         '\nOr use LAN mode instead of tunnel mode for local testing.'
       );
       throw new Error(
@@ -55,8 +47,7 @@ export const resolveBackendOrigin = (): string => {
       );
     }
     
-    const scheme = fullHostUri.includes('.replit.dev') ? 'https' : 'http';
-    const url = `${scheme}://${host}:8082`;
+    const url = `http://${host}:8082`;
     console.log('Using hostUri with scheme:', url, 'from', fullHostUri);
     return url;
   }
