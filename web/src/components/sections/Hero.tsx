@@ -1,12 +1,9 @@
 "use client";
 
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useRef } from "react";
 
-const heroImages = [
-  "https://hozn2hsy91dhisxu.public.blob.vercel-storage.com/living-room-fruits-and-floral-painting-on-dark-blue-silk.jpg",
-  "https://hozn2hsy91dhisxu.public.blob.vercel-storage.com/home-wallpaper-showing-living-birds-and-floral-on-dark-blue-silk.jpg",
-];
+const heroImage = "https://hozn2hsy91dhisxu.public.blob.vercel-storage.com/living-room-fruits-and-floral-painting-on-dark-blue-silk.jpg";
 
 export function Hero() {
   const ref = useRef(null);
@@ -17,40 +14,21 @@ export function Hero() {
 
   const y = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-  
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % heroImages.length);
-    }, 8000); // Rotate every 8 seconds
-
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div ref={ref} className="relative h-screen w-full overflow-hidden flex items-center justify-center bg-stone-100">
-      {/* Background Image Slideshow */}
+      {/* Background Image */}
       <motion.div 
         style={{ y, opacity }}
         className="absolute inset-0 z-0"
       >
         <div className="absolute inset-0 bg-black/20 z-10" />
-        {heroImages.map((imageUrl, index) => (
-          <motion.div
-            key={index}
-            className="absolute inset-0 w-full h-full bg-cover bg-center"
-            style={{
-              backgroundImage: `url('${imageUrl}')`,
-            }}
-            initial={{ opacity: 0 }}
-            animate={{ 
-              opacity: index === currentImageIndex ? 1 : 0,
-              scale: index === currentImageIndex ? 1 : 1.05,
-            }}
-            transition={{ duration: 1, ease: "easeInOut" }}
-          />
-        ))}
+        <div
+          className="absolute inset-0 w-full h-full bg-cover bg-center"
+          style={{
+            backgroundImage: `url('${heroImage}')`,
+          }}
+        />
       </motion.div>
 
       <motion.div 
