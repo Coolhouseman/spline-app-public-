@@ -1,0 +1,116 @@
+Ok to proceed? (y) y
+
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@react-native/dev-middleware@0.81.5',
+npm warn EBADENGINE   required: { node: '>= 20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'expo-server@1.0.4',
+npm warn EBADENGINE   required: { node: '>=20.16.0' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-babel-transformer@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-cache@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-cache-key@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-config@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-core@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-file-map@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-resolver@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-runtime@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-source-map@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-transform-plugins@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-transform-worker@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@react-native/debugger-frontend@0.81.5',
+npm warn EBADENGINE   required: { node: '>= 20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@react-native/babel-preset@0.81.5',
+npm warn EBADENGINE   required: { node: '>= 20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@react-native/babel-plugin-codegen@0.81.5',
+npm warn EBADENGINE   required: { node: '>= 20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@react-native/codegen@0.81.5',
+npm warn EBADENGINE   required: { node: '>= 20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-symbolicate@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'ob1@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'metro-minify-terser@0.83.2',
+npm warn EBADENGINE   required: { node: '>=20.19.4' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+Starting project at /Users/henryry
+ConfigError: Cannot determine the project's Expo SDK version because the module `expo` is not installed. Install it with `npm install expo` and try again.
+henryry@Henrys-MacBook-Air ~ % 

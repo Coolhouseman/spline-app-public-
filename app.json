@@ -1,0 +1,89 @@
+{
+  "expo": {
+    "name": "Spline",
+    "slug": "spline",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "splitpaymentapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "description": "Split bills effortlessly with friends. Create shared expenses, track who owes what, and settle up instantly with secure bank payments.",
+    "extra": {
+      "supabaseUrl": "https://vhicohutiocnfjwsofhy.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTQ2NjksImV4cCI6MjA3OTUzMDY2OX0.KJuLMgwy2Dfu5amY0VN4KfPemfsJcRB3EI0AxZQpOb8",
+      "backendUrl": "https://splinepay.replit.app",
+      "eas": {
+        "projectId": "01cd5886-e4f7-44e0-a739-12e90948f1fe"
+      }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.splitpaymentapp.split",
+      "buildNumber": "23",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Spline needs camera access to capture receipt photos and profile pictures.",
+        "NSPhotoLibraryUsageDescription": "Spline needs photo library access to upload receipt images and profile pictures.",
+        "NSFaceIDUsageDescription": "Spline uses Face ID for secure authentication."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          }
+        ]
+      }
+    },
+    "android": {
+      "package": "com.splitpaymentapp.split",
+      "versionCode": 4,
+      "adaptiveIcon": {
+        "backgroundColor": "#2563EB",
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Spline needs access to your photos to upload receipts and profile pictures.",
+          "cameraPermission": "Spline needs access to your camera to take receipt photos and profile pictures."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#2563EB"
+        }
+      ]
+    ],
+    "experiments": {
+      "reactCompiler": true
+    },
+    "owner": "zimingzeng"
+  }
+}

@@ -1,0 +1,30 @@
+henryry@Henrys-MacBook-Air Blinksplitpay % 
+henryry@Henrys-MacBook-Air Blinksplitpay % 
+henryry@Henrys-MacBook-Air Blinksplitpay % 
+henryry@Henrys-MacBook-Air Blinksplitpay % 
+henryry@Henrys-MacBook-Air Blinksplitpay % 
+henryry@Henrys-MacBook-Air Blinksplitpay % npm run dev
+
+> my-app@1.0.0 dev
+> concurrently "PORT=8082 npx tsx server/index.ts" "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN npx expo start"
+
+[1] env: load .env
+[1] env: export DATABASE_URL JWT_SECRET PORT BLINKPAY_CLIENT_ID BLINKPAY_CLIENT_SECRET BLINKPAY_URL EXPO_PUBLIC_BACKEND_URL
+[1] Starting project at /Users/henryry/Downloads/BlinkSplitPay
+[1] React Compiler enabled
+[1] TypeError [ERR_INVALID_URL]: Invalid URL
+[1] TypeError: Invalid URL
+[1]     at new NodeError (node:internal/errors:405:5)
+[1]     at new URL (node:internal/url:676:13)
+[1]     at getUrlComponentsFromProxyUrl (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/UrlCreator.ts:130:26)
+[1]     at UrlCreator.getUrlComponents (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/UrlCreator.ts:104:14)
+[1]     at UrlCreator.constructUrl (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/UrlCreator.ts:77:32)
+[1]     at createDebugMiddleware (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/metro/debugging/createDebugMiddleware.ts:24:8)
+[1]     at instantiateMetroAsync (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/metro/instantiateMetro.ts:220:79)
+[1]     at MetroBundlerDevServer.startImplementationAsync (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/metro/MetroBundlerDevServer.ts:1054:69)
+[1]     at MetroBundlerDevServer.startAsync (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/BundlerDevServer.ts:160:18)
+[1]     at DevServerManager.startAsync (/Users/henryry/Downloads/BlinkSplitPay/node_modules/expo/node_modules/@expo/cli/src/start/server/DevServerManager.ts:184:7)
+[1] EXPO_PACKAGER_PROXY_URL=https:// REACT_NATIVE_PACKAGER_HOSTNAME= npx expo start exited with code 1
+[0] [dotenv@17.2.3] injecting env (6) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[0] [dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+[0] Backend server running on port 8082

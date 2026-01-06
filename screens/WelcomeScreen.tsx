@@ -1,0 +1,560 @@
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Pressable, useWindowDimensions, Platform, ActivityIndicator, Alert } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as RootNavigation from '@/utils/RootNavigation';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  withDelay,
+  Easing,
+  interpolate,
+  useDerivedValue,
+} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { ThemedText } from '@/components/ThemedText';
+import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/hooks/useAuth';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { SocialAuthService } from '@/services/socialAuth.service';
+
+type Props = NativeStackScreenProps<any, 'Welcome'>;
+
+function quadraticBezier(t: number, p0: {x: number, y: number}, p1: {x: number, y: number}, p2: {x: number, y: number}) {
+  'worklet';
+  const oneMinusT = 1 - t;
+  const x = oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * p1.x + t * t * p2.x;
+  const y = oneMinusT * oneMinusT * p0.y + 2 * oneMinusT * t * p1.y + t * t * p2.y;
+  return { x, y };
+}
+
+export default function WelcomeScreen({ navigation }: Props) {
+  const { theme } = useTheme();
+  const { refreshUser, setSocialSignupInProgress, clearSignupOverlay } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showAppleButton, setShowAppleButton] = useState(false);
+
+  const progress = useSharedValue(0);
+  const fadeIn = useSharedValue(0);
+  const floatAnim1 = useSharedValue(0);
+  const floatAnim2 = useSharedValue(0);
+  const floatAnim3 = useSharedValue(0);
+
+  const curveStartX = width * 0.08;
+  const curveEndX = width * 0.92;
+  const curveY = height * 0.32;
+  const curveControlY = height * 0.18;
+  const controlX = width * 0.5;
+
+  const startPoint = { x: curveStartX, y: curveY };
+  const controlPoint = { x: controlX, y: curveControlY };
+  const endPoint = { x: curveEndX, y: curveY };
+
+  useEffect(() => {
+    SocialAuthService.isAppleSignInAvailable().then(setShowAppleButton);
+    
+    fadeIn.value = withTiming(1, { duration: 1000 });
+    
+    progress.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 3000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+
+    floatAnim1.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 4000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+
+    floatAnim2.value = withDelay(1000, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 5000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    ));
+
+    floatAnim3.value = withDelay(2000, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 3500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    ));
+  }, []);
+
+  const dotPosition = useDerivedValue(() => {
+    return quadraticBezier(progress.value, startPoint, controlPoint, endPoint);
+  });
+
+  const dotStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: dotPosition.value.x - 14 },
+        { translateY: dotPosition.value.y - 14 },
+      ],
+    };
+  });
+
+  const trailDot1Style = useAnimatedStyle(() => {
+    const trailProgress = Math.max(0, progress.value - 0.06);
+    const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
+    return {
+      transform: [
+        { translateX: pos.x - 8 },
+        { translateY: pos.y - 8 },
+      ],
+      opacity: 0.6,
+    };
+  });
+
+  const trailDot2Style = useAnimatedStyle(() => {
+    const trailProgress = Math.max(0, progress.value - 0.12);
+    const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
+    return {
+      transform: [
+        { translateX: pos.x - 5 },
+        { translateY: pos.y - 5 },
+      ],
+      opacity: 0.35,
+    };
+  });
+
+  const trailDot3Style = useAnimatedStyle(() => {
+    const trailProgress = Math.max(0, progress.value - 0.18);
+    const pos = quadraticBezier(trailProgress, startPoint, controlPoint, endPoint);
+    return {
+      transform: [
+        { translateX: pos.x - 3 },
+        { translateY: pos.y - 3 },
+      ],
+      opacity: 0.15,
+    };
+  });
+
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: fadeIn.value,
+  }));
+
+  const logoFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 1]),
+    transform: [
+      { translateY: interpolate(fadeIn.value, [0, 1], [30, 0]) },
+    ],
+  }));
+
+  const curvePathStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.2]),
+  }));
+
+  const floatingCircle1Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim1.value, [0, 1], [0, -20]) },
+      { scale: interpolate(floatAnim1.value, [0, 1], [1, 1.1]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.08]),
+  }));
+
+  const floatingCircle2Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim2.value, [0, 1], [0, 15]) },
+      { scale: interpolate(floatAnim2.value, [0, 1], [1, 0.9]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.06]),
+  }));
+
+  const floatingCircle3Style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(floatAnim3.value, [0, 1], [0, -12]) },
+      { translateX: interpolate(floatAnim3.value, [0, 1], [0, 8]) },
+    ],
+    opacity: interpolate(fadeIn.value, [0, 1], [0, 0.05]),
+  }));
+
+  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
+    console.log('[WelcomeScreen] handleSocialAuthResult called with:', JSON.stringify(result, null, 2));
+    if (result.success && result.userId) {
+      console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
+      
+      // Use RootNavigation (app-level navigation ref) for reliable navigation after OAuth browser return
+      // This is the standard pattern for navigating from OAuth callbacks
+      
+      if (result.needsName) {
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupName');
+        RootNavigation.navigate('SocialSignupName', {
+          userId: result.userId,
+          email: result.email,
+          provider,
+          needsPhone: result.needsPhoneVerification,
+          needsDOB: result.needsDOB,
+          existingPhone: result.existingPhone,
+        });
+        // Clear overlay after navigation
+        setTimeout(() => clearSignupOverlay(), 100);
+      } else if (result.needsPhoneVerification) {
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupPhone');
+        RootNavigation.navigate('SocialSignupPhone', {
+          userId: result.userId,
+          email: result.email,
+          fullName: result.fullName,
+          provider,
+        });
+        // Clear overlay after navigation
+        setTimeout(() => clearSignupOverlay(), 100);
+      } else if (result.needsDOB) {
+        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupDOB');
+        RootNavigation.navigate('SocialSignupDOB', {
+          userId: result.userId,
+          fullName: result.fullName,
+          provider,
+          phone: result.existingPhone,
+        });
+        // Clear overlay after navigation
+        setTimeout(() => clearSignupOverlay(), 100);
+      } else {
+        console.log('[WelcomeScreen] Profile complete, refreshing user');
+        await refreshUser();
+      }
+    } else {
+      console.log('[WelcomeScreen] Auth failed or no userId:', result.error);
+      setSocialSignupInProgress(false);
+      if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+        Alert.alert('Sign-In Failed', result.error);
+      }
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setAppleLoading(true);
+    setSocialSignupInProgress(true);
+    try {
+      const result = await SocialAuthService.signInWithApple();
+      await handleSocialAuthResult(result, 'apple');
+    } catch (error: any) {
+      setSocialSignupInProgress(false);
+      Alert.alert('Error', error.message || 'Apple Sign-In failed');
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setSocialSignupInProgress(true);
+    try {
+      const result = await SocialAuthService.signInWithGoogle();
+      await handleSocialAuthResult(result, 'google');
+    } catch (error: any) {
+      setSocialSignupInProgress(false);
+      Alert.alert('Error', error.message || 'Google Sign-In failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const generateCurvePoints = () => {
+    const points = [];
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40;
+      const pos = quadraticBezier(t, startPoint, controlPoint, endPoint);
+      points.push(pos);
+    }
+    return points;
+  };
+
+  const curvePoints = generateCurvePoints();
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <Animated.View style={[styles.floatingCircle1, { backgroundColor: Colors.light.primary }, floatingCircle1Style]} />
+      <Animated.View style={[styles.floatingCircle2, { backgroundColor: Colors.light.primary }, floatingCircle2Style]} />
+      <Animated.View style={[styles.floatingCircle3, { backgroundColor: Colors.light.primary }, floatingCircle3Style]} />
+
+
+      <View style={StyleSheet.absoluteFill}>
+        <Animated.View style={curvePathStyle}>
+          {curvePoints.map((point, index) => (
+            <View
+              key={index}
+              style={[
+                styles.curvePoint,
+                {
+                  left: point.x - 2.5,
+                  top: point.y - 2.5,
+                  backgroundColor: Colors.light.primary,
+                },
+              ]}
+            />
+          ))}
+        </Animated.View>
+
+        <Animated.View style={[styles.trailDot3, { backgroundColor: Colors.light.primary }, trailDot3Style]} />
+        <Animated.View style={[styles.trailDot2, { backgroundColor: Colors.light.primary }, trailDot2Style]} />
+        <Animated.View style={[styles.trailDot1, { backgroundColor: Colors.light.primary }, trailDot1Style]} />
+        <Animated.View style={[styles.dot, { backgroundColor: Colors.light.primary }, dotStyle]}>
+          <View style={styles.dotInner} />
+        </Animated.View>
+      </View>
+
+      <Animated.View style={[styles.content, { paddingTop: insets.top + Spacing['2xl'] }, logoFadeStyle]}>
+        <View style={styles.logoContainer}>
+          <View style={styles.logoTextContainer}>
+            <ThemedText style={[styles.logoText, { color: Colors.light.primary }]}>
+              Sp
+            </ThemedText>
+            <ThemedText style={[styles.logoText, { color: theme.text }]}>
+              line
+            </ThemedText>
+          </View>
+          <View style={styles.logoUnderline}>
+            <View style={[styles.underlineSegment, { backgroundColor: Colors.light.primary }]} />
+            <View style={[styles.underlineDot, { backgroundColor: Colors.light.primary }]} />
+          </View>
+          <ThemedText style={[Typography.body, styles.tagline, { color: theme.textSecondary }]}>
+            Split bills effortlessly with friends
+          </ThemedText>
+        </View>
+      </Animated.View>
+
+      <Animated.View style={[styles.buttonContainer, { paddingBottom: insets.bottom + Spacing['2xl'] }, fadeStyle]}>
+        {showAppleButton ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.socialButton,
+              { backgroundColor: '#000000', opacity: pressed || appleLoading ? 0.8 : 1 }
+            ]}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading || googleLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <>
+                <Feather name="smartphone" size={20} color="#FFFFFF" style={styles.buttonIcon} />
+                <ThemedText style={[Typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>
+                  Continue with Apple
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.socialButton,
+            { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: theme.border, opacity: pressed || googleLoading ? 0.8 : 1 }
+          ]}
+          onPress={handleGoogleSignIn}
+          disabled={appleLoading || googleLoading}
+        >
+          {googleLoading ? (
+            <ActivityIndicator color="#4285F4" size="small" />
+          ) : (
+            <>
+              <View style={styles.googleIconContainer}>
+                <ThemedText style={{ color: '#4285F4', fontWeight: '700', fontSize: 16 }}>G</ThemedText>
+              </View>
+              <ThemedText style={[Typography.body, { color: '#333333', fontWeight: '600' }]}>
+                Continue with Google
+              </ThemedText>
+            </>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.socialButton,
+            { 
+              backgroundColor: theme.surface, 
+              borderWidth: 1,
+              borderColor: theme.border,
+              opacity: pressed ? 0.8 : 1 
+            }
+          ]}
+          onPress={() => navigation.navigate('SignupFirstName')}
+          disabled={appleLoading || googleLoading}
+        >
+          <Feather name="mail" size={20} color={theme.text} style={styles.buttonIcon} />
+          <ThemedText style={[Typography.body, { color: theme.text, fontWeight: '600' }]}>
+            Continue with Email
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          style={styles.loginLink}
+          onPress={() => navigation.navigate('Login')}
+          disabled={appleLoading || googleLoading}
+        >
+          <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+            Already have an account?{' '}
+          </ThemedText>
+          <ThemedText style={[Typography.body, { color: Colors.light.primary, fontWeight: '600' }]}>
+            Login
+          </ThemedText>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  floatingCircle1: {
+    position: 'absolute',
+    top: '15%',
+    left: '10%',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+  },
+  floatingCircle2: {
+    position: 'absolute',
+    top: '55%',
+    right: '-10%',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+  },
+  floatingCircle3: {
+    position: 'absolute',
+    bottom: '20%',
+    left: '-5%',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+  },
+  curvePoint: {
+    position: 'absolute',
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  dot: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.light.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.7,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 10,
+      },
+      default: {},
+    }),
+  },
+  dotInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  trailDot1: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  trailDot2: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  trailDot3: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+  },
+  logoTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  logoText: {
+    fontSize: 56,
+    fontWeight: '700',
+    letterSpacing: -1,
+  },
+  logoUnderline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+    gap: 6,
+  },
+  underlineSegment: {
+    width: 60,
+    height: 4,
+    borderRadius: 2,
+  },
+  underlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tagline: {
+    marginTop: Spacing.lg,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  buttonContainer: {
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.md,
+  },
+  socialButton: {
+    height: Spacing.buttonHeight + 4,
+    borderRadius: BorderRadius.sm,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonIcon: {
+    marginRight: Spacing.sm,
+  },
+  googleIconContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  loginLink: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.xs,
+  },
+});

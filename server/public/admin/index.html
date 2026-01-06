@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spline Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .status-healthy { background-color: #10B981; }
+    .status-warning { background-color: #F59E0B; }
+    .status-critical { background-color: #EF4444; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    body {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+      min-height: 100vh;
+    }
+    .tab-active {
+      background-color: #2563EB;
+      color: white;
+    }
+    .loading-spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #2563EB;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="font-sans">
+  <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass-card rounded-2xl p-8 w-full max-w-md shadow-2xl">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-800">Spline Admin</h1>
+        <p class="text-gray-600 mt-2">Business Management Dashboard</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
+          <input type="email" id="admin-email" placeholder="admin@spline.nz" 
+            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <input type="password" id="admin-password" placeholder="Enter your password" 
+            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+        </div>
+        <button onclick="login()" id="login-btn"
+          class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+          <span>Sign In</span>
+        </button>
+        <p id="login-error" class="text-red-500 text-sm text-center hidden"></p>
+      </div>
+      <p class="text-xs text-gray-500 text-center mt-6">Sign in with your Supabase account. Only authorized admin emails can access.</p>
+    </div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <nav class="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <h1 class="text-xl font-bold text-blue-600">Spline Admin</h1>
+          <span id="admin-name" class="text-sm text-gray-500"></span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span id="live-status" class="text-xs text-gray-500 font-medium">
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full"></span> Connecting...</span>
+          </span>
+          <span id="last-updated" class="text-xs text-gray-400"></span>
+          <button onclick="refreshData()" class="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Refresh
+          </button>
+          <button onclick="logout()" class="text-gray-500 hover:text-gray-700 text-sm">Logout</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <button onclick="showTab('overview')" id="tab-overview" class="tab-active px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap">Overview</button>
+        <button onclick="showTab('buffer')" id="tab-buffer" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Buffer Analysis</button>
+        <button onclick="showTab('transactions')" id="tab-transactions" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Transactions</button>
+        <button onclick="showTab('withdrawals')" id="tab-withdrawals" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
+          <span>Withdrawals</span>
+          <span id="withdrawal-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">0</span>
+        </button>
+        <button onclick="showTab('gamification')" id="tab-gamification" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
+          <span>Users & Levels</span>
+        </button>
+        <button onclick="showTab('reports')" id="tab-reports" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap flex items-center gap-2">
+          <span>Reports</span>
+          <span id="reports-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">0</span>
+        </button>
+        <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/80 whitespace-nowrap">Settings</button>
+      </div>
+
+      <div id="content-overview">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Wallet Liabilities</p>
+            <p id="metric-liabilities" class="text-2xl font-bold text-gray-800 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">What we owe users</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Deposits</p>
+            <p id="metric-deposits" class="text-2xl font-bold text-green-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Total Withdrawals</p>
+            <p id="metric-withdrawals" class="text-2xl font-bold text-red-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Active Wallets</p>
+            <p id="metric-wallets" class="text-2xl font-bold text-blue-600 mt-1">0</p>
+            <p class="text-xs text-gray-400 mt-1">With balance > $0</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Stripe Fees Absorbed</p>
+            <p id="metric-stripe-fees" class="text-2xl font-bold text-orange-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">~2.9% + 30c per transaction (our cost)</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Fast Withdrawal Revenue</p>
+            <p id="metric-fast-fees" class="text-2xl font-bold text-green-600 mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">3.5% fee on fast transfers</p>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <p class="text-sm text-gray-500">Net Fee Position</p>
+            <p id="metric-net-fees" class="text-2xl font-bold mt-1">$0.00</p>
+            <p class="text-xs text-gray-400 mt-1">Revenue - Costs</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="glass-card rounded-xl p-5">
+            <h3 class="font-semibold text-gray-800 mb-4">Activity (Last 7 Days)</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-green-50 rounded-lg p-3">
+                <p class="text-xs text-green-600">Deposits</p>
+                <p id="metric-deposits-7d" class="text-xl font-bold text-green-700">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3">
+                <p class="text-xs text-red-600">Withdrawals</p>
+                <p id="metric-withdrawals-7d" class="text-xl font-bold text-red-700">$0.00</p>
+              </div>
+            </div>
+          </div>
+          <div class="glass-card rounded-xl p-5">
+            <h3 class="font-semibold text-gray-800 mb-4">Activity (Last 30 Days)</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-green-50 rounded-lg p-3">
+                <p class="text-xs text-green-600">Deposits</p>
+                <p id="metric-deposits-30d" class="text-xl font-bold text-green-700">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3">
+                <p class="text-xs text-red-600">Withdrawals</p>
+                <p id="metric-withdrawals-30d" class="text-xl font-bold text-red-700">$0.00</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-5">
+          <h3 class="font-semibold text-gray-800 mb-4">Transaction Trends (30 Days)</h3>
+          <div style="height: 300px;">
+            <canvas id="trends-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-buffer" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-gray-800">Buffer/Cushion Status</h3>
+            <div id="buffer-status-badge" class="px-4 py-2 rounded-full text-white font-semibold text-sm">
+              Loading...
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-50 rounded-lg p-4">
+              <p class="text-xs text-blue-600">Total Wallet Liabilities</p>
+              <p id="buffer-liabilities" class="text-xl font-bold text-blue-800">$0.00</p>
+              <p class="text-xs text-blue-500 mt-1">What we owe users</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4">
+              <p class="text-xs text-green-600">Net Cash Position</p>
+              <p id="buffer-cash" class="text-xl font-bold text-green-800">$0.00</p>
+              <p class="text-xs text-green-500 mt-1">Deposits - Fees - Withdrawals</p>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-4">
+              <p class="text-xs text-orange-600">Total Stripe Fees</p>
+              <p id="buffer-stripe" class="text-xl font-bold text-orange-800">$0.00</p>
+              <p class="text-xs text-orange-500 mt-1">Base + Additional fees</p>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-4">
+              <p class="text-xs text-purple-600">Fast Fee Revenue</p>
+              <p id="buffer-fast-fees" class="text-xl font-bold text-purple-800">$0.00</p>
+              <p class="text-xs text-purple-500 mt-1">3.5% of fast withdrawals</p>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 rounded-xl p-6 mb-6">
+            <h4 class="font-semibold text-gray-700 mb-4">Buffer Requirement Calculator</h4>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div class="text-center">
+                <p class="text-sm text-gray-500">Current Buffer Required</p>
+                <p id="buffer-required" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Liabilities - Cash Position</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">Recommended Buffer</p>
+                <p id="buffer-recommended" class="text-3xl font-bold text-blue-600 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Required + 10% Safety Margin</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">7-Day Projection</p>
+                <p id="buffer-7d" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Based on avg daily withdrawals</p>
+              </div>
+              <div class="text-center">
+                <p class="text-sm text-gray-500">30-Day Projection</p>
+                <p id="buffer-30d" class="text-3xl font-bold text-gray-800 mt-2">$0.00</p>
+                <p class="text-xs text-gray-400 mt-1">Based on avg daily withdrawals</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card rounded-xl p-5 mb-6">
+            <h4 class="font-semibold text-gray-700 mb-4">Stripe Fee Breakdown (NZ Domestic)</h4>
+            <p class="text-xs text-gray-500 mb-4">Fee model for NZ domestic operations only - no international/cross-border fees</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div class="bg-orange-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-orange-600">Base Fee (2.9%)</p>
+                <p id="fee-base-pct" class="text-lg font-bold text-orange-800">$0.00</p>
+              </div>
+              <div class="bg-orange-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-orange-600">Per-Txn (30c)</p>
+                <p id="fee-fixed" class="text-lg font-bold text-orange-800">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-red-600">Dispute Reserve</p>
+                <p id="fee-disputes" class="text-lg font-bold text-red-800">$0.00</p>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3 text-center">
+                <p class="text-xs text-red-600">Refund Fee Loss</p>
+                <p id="fee-refunds" class="text-lg font-bold text-red-800">$0.00</p>
+              </div>
+            </div>
+            <div class="mt-4 pt-4 border-t flex justify-between items-center">
+              <div>
+                <span class="text-sm text-gray-600">Base Fees: </span>
+                <span id="fee-base-total" class="font-bold text-orange-700">$0.00</span>
+                <span class="text-gray-400 mx-2">|</span>
+                <span class="text-sm text-gray-600">Risk Fees: </span>
+                <span id="fee-additional-total" class="font-bold text-red-700">$0.00</span>
+              </div>
+              <div class="text-right">
+                <span class="text-sm text-gray-600">Total Stripe Cost: </span>
+                <span id="fee-grand-total" class="text-xl font-bold text-red-600">$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">Understanding the Buffer Model</h4>
+            <ul class="text-sm text-yellow-700 space-y-1">
+              <li><strong>Base Stripe Fees:</strong> 2.9% + 30c per card transaction (deposits + card-funded split payments)</li>
+              <li><strong>Dispute Reserve:</strong> $15 per chargeback (estimated 0.5% dispute rate)</li>
+              <li><strong>Refund Loss:</strong> Stripe keeps the processing fee on refunds (estimated 2% refund rate)</li>
+              <li><strong>Safety Margin:</strong> 10% of total liabilities as contingency buffer</li>
+              <li><strong>Fast Withdrawals (3.5% fee)</strong> help offset costs - user deposits $100, withdraws fast, you keep $3.50</li>
+            </ul>
+          </div>
+
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h4 class="font-semibold text-blue-800 mb-2">Stripe Risk Factors</h4>
+            <ul class="text-sm text-blue-700 space-y-1">
+              <li><strong>Platform Liability:</strong> As the marketplace, you're responsible for covering negative balances</li>
+              <li><strong>Dispute Costs:</strong> $15 per dispute cannot be passed to connected accounts</li>
+              <li><strong>Refund Policy:</strong> Stripe fees are NOT refunded when you issue refunds to users</li>
+              <li><strong>Manual Payouts:</strong> We use manual bank transfers (not Stripe payouts) to avoid payout fees (0.25% + $0.25)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-5">
+          <h3 class="font-semibold text-gray-800 mb-4">Withdrawal Patterns</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Average Daily Withdrawals (7 days)</p>
+              <p id="avg-withdrawal-7d" class="text-2xl font-bold text-gray-800">$0.00</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Average Daily Withdrawals (30 days)</p>
+              <p id="avg-withdrawal-30d" class="text-2xl font-bold text-gray-800">$0.00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-transactions" class="hidden">
+        <div class="glass-card rounded-xl p-5 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <h3 class="font-semibold text-gray-800">Transaction History</h3>
+            <div class="flex gap-2">
+              <select id="tx-filter" onchange="loadTransactions()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="">All Types</option>
+                <option value="deposit">Deposits</option>
+                <option value="withdrawal">Withdrawals</option>
+                <option value="split_payment">Split Payments</option>
+                <option value="split_received">Split Received</option>
+              </select>
+              <button onclick="exportCSV()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                Export CSV
+              </button>
+            </div>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-gray-500 border-b">
+                  <th class="pb-3 pr-4">Date</th>
+                  <th class="pb-3 pr-4">User</th>
+                  <th class="pb-3 pr-4">Type</th>
+                  <th class="pb-3 pr-4">Amount</th>
+                  <th class="pb-3 pr-4">Stripe Fee</th>
+                  <th class="pb-3 pr-4">Fast Fee</th>
+                  <th class="pb-3">Description</th>
+                </tr>
+              </thead>
+              <tbody id="transactions-table">
+                <tr><td colspan="7" class="py-8 text-center text-gray-400">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="flex items-center justify-between mt-4 pt-4 border-t">
+            <p id="tx-count" class="text-sm text-gray-500">Showing 0 of 0 transactions</p>
+            <div class="flex gap-2">
+              <button onclick="prevPage()" id="btn-prev" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Previous</button>
+              <button onclick="nextPage()" id="btn-next" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-withdrawals" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">Pending Withdrawal Requests</h3>
+              <p class="text-sm text-gray-500 mt-1">Manual bank transfers required for each withdrawal</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <select id="withdrawal-filter" onchange="loadWithdrawals()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+              <button onclick="loadWithdrawals()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+              <p class="text-xs text-yellow-700">Pending Transfers</p>
+              <p id="withdrawal-pending-count" class="text-2xl font-bold text-yellow-800">0</p>
+              <p class="text-xs text-yellow-600">Need manual processing</p>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <p class="text-xs text-blue-700">Processing</p>
+              <p id="withdrawal-processing-count" class="text-2xl font-bold text-blue-800">0</p>
+              <p class="text-xs text-blue-600">Being transferred</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+              <p class="text-xs text-green-700">Total Requests</p>
+              <p id="withdrawal-total-count" class="text-2xl font-bold text-green-800">0</p>
+              <p class="text-xs text-green-600">All time</p>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">How to Process Withdrawals</h4>
+            <ol class="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
+              <li>Click "Start Processing" to mark the withdrawal as being worked on</li>
+              <li>Use the bank details to manually transfer the <strong>Net Amount</strong> to the user's bank</li>
+              <li>For Fast Transfers: 3.5% fee is already deducted - transfer the Net Amount shown</li>
+              <li>After successful transfer, click "Mark Completed"</li>
+              <li>If transfer fails, click "Mark Failed" and contact the user</li>
+            </ol>
+          </div>
+
+          <div id="withdrawals-list" class="space-y-4">
+            <p class="text-center text-gray-400 py-8">Loading withdrawal requests...</p>
+          </div>
+
+          <div class="flex items-center justify-between mt-4 pt-4 border-t">
+            <p id="withdrawal-count" class="text-sm text-gray-500">Showing 0 withdrawals</p>
+            <div class="flex gap-2">
+              <button onclick="prevWithdrawalPage()" id="btn-prev-withdrawal" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Previous</button>
+              <button onclick="nextWithdrawalPage()" id="btn-next-withdrawal" class="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-gamification" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">User Gamification & Levels</h3>
+              <p class="text-sm text-gray-500 mt-1">Track user engagement, XP, levels, and Balance Momentum</p>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="processBalanceMomentum()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                Process Momentum
+              </button>
+              <button onclick="loadGamificationData()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-purple-50 rounded-lg p-4 border border-purple-200">
+              <p class="text-xs text-purple-700">Total Users with Gamification</p>
+              <p id="gam-total-users" class="text-2xl font-bold text-purple-800">0</p>
+              <p class="text-xs text-purple-600">Enrolled in XP system</p>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <p class="text-xs text-blue-700">Total XP Awarded</p>
+              <p id="gam-total-xp" class="text-2xl font-bold text-blue-800">0</p>
+              <p class="text-xs text-blue-600">All time</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+              <p class="text-xs text-green-700">Average Level</p>
+              <p id="gam-avg-level" class="text-2xl font-bold text-green-800">1</p>
+              <p class="text-xs text-green-600">Across all users</p>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
+              <p class="text-xs text-orange-700">Active Streaks</p>
+              <p id="gam-active-streaks" class="text-2xl font-bold text-orange-800">0</p>
+              <p class="text-xs text-orange-600">Users on streak &gt; 1 day</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-200">
+              <h4 class="font-semibold text-indigo-800 mb-4">Balance Momentum Program</h4>
+              <p class="text-sm text-indigo-600 mb-3">Users earn XP for keeping funds in their wallet</p>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="bg-white rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-indigo-700" id="momentum-tier1">0</p>
+                  <p class="text-xs text-gray-600">Bronze ($50+)</p>
+                </div>
+                <div class="bg-white rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-indigo-700" id="momentum-tier2">0</p>
+                  <p class="text-xs text-gray-600">Silver ($200+)</p>
+                </div>
+                <div class="bg-white rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-indigo-700" id="momentum-tier3">0</p>
+                  <p class="text-xs text-gray-600">Gold ($500+)</p>
+                </div>
+              </div>
+              <p class="text-xs text-indigo-500 mt-3">Tiers based on 7-day average wallet balance. Click "Process Momentum" to record snapshots and award XP.</p>
+            </div>
+
+            <div class="bg-gray-50 rounded-xl p-5 border border-gray-200">
+              <h4 class="font-semibold text-gray-800 mb-4">Level Distribution</h4>
+              <div id="level-distribution" class="space-y-2">
+                <p class="text-gray-400 text-center py-4">Loading...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6">
+          <h4 class="font-semibold text-gray-800 mb-4">User Leaderboard</h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-gray-500 border-b">
+                  <th class="pb-3 pr-4">Rank</th>
+                  <th class="pb-3 pr-4">User</th>
+                  <th class="pb-3 pr-4">Level</th>
+                  <th class="pb-3 pr-4">Title</th>
+                  <th class="pb-3 pr-4">Total XP</th>
+                  <th class="pb-3 pr-4">Current Streak</th>
+                  <th class="pb-3 pr-4">Splits Created</th>
+                  <th class="pb-3">Splits Paid</th>
+                </tr>
+              </thead>
+              <tbody id="gamification-table">
+                <tr><td colspan="8" class="py-8 text-center text-gray-400">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-reports" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">User Reports</h3>
+              <p class="text-sm text-gray-500 mt-1">Review and manage user-submitted reports</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <select id="report-filter" onchange="loadReports()" class="px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                <option value="all">All Status</option>
+                <option value="open">Open</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="resolved">Resolved</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+              <button onclick="loadReports()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+              <p class="text-xs text-red-700">Open Reports</p>
+              <p id="reports-open-count" class="text-2xl font-bold text-red-800">0</p>
+              <p class="text-xs text-red-600">Need review</p>
+            </div>
+            <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+              <p class="text-xs text-yellow-700">Under Review</p>
+              <p id="reports-reviewed-count" class="text-2xl font-bold text-yellow-800">0</p>
+              <p class="text-xs text-yellow-600">Being investigated</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+              <p class="text-xs text-green-700">Resolved</p>
+              <p id="reports-resolved-count" class="text-2xl font-bold text-green-800">0</p>
+              <p class="text-xs text-green-600">Action taken</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <p class="text-xs text-gray-700">Dismissed</p>
+              <p id="reports-dismissed-count" class="text-2xl font-bold text-gray-800">0</p>
+              <p class="text-xs text-gray-600">No action needed</p>
+            </div>
+          </div>
+
+          <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <h4 class="font-semibold text-yellow-800 mb-2">Report Review Guidelines</h4>
+            <ul class="text-sm text-yellow-700 space-y-1 list-disc list-inside">
+              <li><strong>Open:</strong> New reports that need to be reviewed</li>
+              <li><strong>Reviewed:</strong> Reports that are being investigated</li>
+              <li><strong>Resolved:</strong> Reports where action has been taken (user warned, banned, etc.)</li>
+              <li><strong>Dismissed:</strong> Reports that were found to be invalid or unsubstantiated</li>
+            </ul>
+          </div>
+
+          <div id="reports-list" class="space-y-4">
+            <p class="text-center text-gray-400 py-8">Loading reports...</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="content-settings" class="hidden">
+        <div class="glass-card rounded-xl p-6 mb-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Admin Users</h3>
+          <div id="admin-list" class="space-y-3 mb-4">
+            <p class="text-gray-400">Loading...</p>
+          </div>
+          
+          <div class="border-t pt-4 mt-4">
+            <h4 class="font-medium text-gray-700 mb-3">Add New Admin</h4>
+            <div class="flex flex-wrap gap-2">
+              <input type="email" id="new-admin-email" placeholder="email@example.com" 
+                class="flex-1 min-w-48 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+              <input type="text" id="new-admin-name" placeholder="Name (optional)" 
+                class="flex-1 min-w-32 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+              <button onclick="addAdmin()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                Add Admin
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Fee Configuration</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Stripe Fee Rate</p>
+              <p class="text-xl font-bold text-gray-800">2.9% + 30c</p>
+              <p class="text-xs text-gray-400">Charged on all card transactions (deposits, split payments)</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Fast Withdrawal Fee</p>
+              <p class="text-xl font-bold text-gray-800">3.5%</p>
+              <p class="text-xs text-gray-400">Included in withdrawal amount (not additional)</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6 mt-6">
+          <h3 class="font-semibold text-gray-800 mb-4">Withdrawal Limits</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Daily Limit</p>
+              <p class="text-xl font-bold text-gray-800">3 per day</p>
+              <p class="text-xs text-gray-400">Total across all types</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Fast Transfers / Month</p>
+              <p class="text-xl font-bold text-purple-800">4 per month</p>
+              <p class="text-xs text-gray-400">Tracked separately from normal</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-600">Normal Transfers / Month</p>
+              <p class="text-xl font-bold text-green-800">4 per month</p>
+              <p class="text-xs text-gray-400">Tracked separately from fast</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-4">Monthly limits reset on the 1st of each month. Users can make up to 4 fast AND 4 normal withdrawals each month.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/admin';
+    let accessToken = '';
+    let adminUser = null;
+    let tokenExpiresAt = null;
+    let currentPage = 0;
+    let totalTransactions = 0;
+    const PAGE_SIZE = 50;
+    let trendsChart = null;
+    let eventSource = null;
+    let isLiveConnected = false;
+    
+    function isTokenExpired() {
+      if (!tokenExpiresAt) return true;
+      return Date.now() > tokenExpiresAt * 1000 - 60000;
+    }
+
+    function formatCurrency(amount) {
+      return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(amount || 0);
+    }
+
+    function formatDate(dateStr) {
+      return new Date(dateStr).toLocaleString('en-NZ', { 
+        dateStyle: 'medium', 
+        timeStyle: 'short' 
+      });
+    }
+
+    async function login() {
+      const email = document.getElementById('admin-email').value.trim();
+      const password = document.getElementById('admin-password').value;
+      const loginBtn = document.getElementById('login-btn');
+      const errorEl = document.getElementById('login-error');
+      
+      if (!email) {
+        errorEl.textContent = 'Please enter your email';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      if (!password) {
+        errorEl.textContent = 'Please enter your password';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      loginBtn.innerHTML = '<div class="loading-spinner"></div>';
+      loginBtn.disabled = true;
+      errorEl.classList.add('hidden');
+
+      try {
+        const res = await fetch(`${API_BASE}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (data.success && data.session?.access_token) {
+          accessToken = data.session.access_token;
+          tokenExpiresAt = data.session.expires_at;
+          adminUser = data.user;
+          
+          sessionStorage.setItem('adminAccessToken', accessToken);
+          sessionStorage.setItem('adminUser', JSON.stringify(adminUser));
+          sessionStorage.setItem('tokenExpiresAt', tokenExpiresAt.toString());
+          
+          document.getElementById('admin-name').textContent = adminUser.name || adminUser.email;
+          document.getElementById('login-screen').classList.add('hidden');
+          document.getElementById('dashboard').classList.remove('hidden');
+          document.getElementById('admin-password').value = '';
+          refreshData();
+          connectSSE(); // Start live updates
+        } else {
+          errorEl.textContent = data.error || 'Login failed';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = 'Connection error. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+
+      loginBtn.innerHTML = '<span>Sign In</span>';
+      loginBtn.disabled = false;
+    }
+
+    async function logout() {
+      disconnectSSE(); // Stop live updates
+      
+      try {
+        if (accessToken) {
+          await fetch(`${API_BASE}/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+        }
+      } catch (err) {
+        console.error('Logout API error:', err);
+      }
+      
+      accessToken = '';
+      adminUser = null;
+      tokenExpiresAt = null;
+      sessionStorage.removeItem('adminAccessToken');
+      sessionStorage.removeItem('adminUser');
+      sessionStorage.removeItem('tokenExpiresAt');
+      document.getElementById('dashboard').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('admin-email').value = '';
+      document.getElementById('admin-password').value = '';
+    }
+
+    async function fetchWithAuth(endpoint) {
+      if (!accessToken) {
+        throw new Error('Not authenticated');
+      }
+      
+      if (isTokenExpired()) {
+        await logout();
+        throw new Error('Session expired');
+      }
+      
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (res.status === 401) {
+        await logout();
+        throw new Error('Session expired');
+      }
+      if (!res.ok) throw new Error('Request failed');
+      return res.json();
+    }
+
+    async function refreshData() {
+      document.getElementById('last-updated').textContent = 'Updating...';
+      
+      try {
+        await Promise.all([
+          loadMetrics(),
+          loadBuffer(),
+          loadTrends(),
+          loadTransactions(),
+          loadAdmins(),
+          loadWithdrawals(),
+          loadReports()
+        ]);
+        document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        console.error('Refresh error:', err);
+        document.getElementById('last-updated').textContent = 'Update failed';
+      }
+    }
+
+    // Connect to Server-Sent Events for real-time updates
+    function connectSSE() {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      if (!accessToken) return;
+
+      // Create EventSource with auth token via query parameter (SSE doesn't support headers)
+      eventSource = new EventSource(`${API_BASE}/stream?token=${encodeURIComponent(accessToken)}`);
+      
+      eventSource.onopen = () => {
+        console.log('SSE connected');
+        isLiveConnected = true;
+        updateConnectionStatus(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          updateDashboardFromSSE(data);
+        } catch (err) {
+          console.error('SSE parse error:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('SSE error:', err);
+        isLiveConnected = false;
+        updateConnectionStatus(false);
+        
+        // Reconnect after 5 seconds
+        setTimeout(() => {
+          if (accessToken && !isTokenExpired()) {
+            connectSSE();
+          }
+        }, 5000);
+      };
+    }
+
+    function disconnectSSE() {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      isLiveConnected = false;
+      updateConnectionStatus(false);
+    }
+
+    function updateConnectionStatus(connected) {
+      const statusEl = document.getElementById('live-status');
+      if (statusEl) {
+        if (connected) {
+          statusEl.innerHTML = '<span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Live</span>';
+          statusEl.className = 'text-xs text-green-600 font-medium';
+        } else {
+          statusEl.innerHTML = '<span class="inline-flex items-center gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full"></span> Offline</span>';
+          statusEl.className = 'text-xs text-gray-500 font-medium';
+        }
+      }
+    }
+
+    function updateDashboardFromSSE(data) {
+      // Update metrics
+      if (data.metrics) {
+        document.getElementById('metric-liabilities').textContent = formatCurrency(data.metrics.total_wallet_liabilities);
+        document.getElementById('metric-deposits').textContent = formatCurrency(data.metrics.total_deposits);
+        document.getElementById('metric-withdrawals').textContent = formatCurrency(data.metrics.total_withdrawals);
+        document.getElementById('metric-wallets').textContent = data.metrics.active_wallet_count || 0;
+        document.getElementById('metric-stripe-fees').textContent = formatCurrency(data.metrics.stripe_fees_absorbed || 0);
+        document.getElementById('metric-fast-fees').textContent = formatCurrency(data.metrics.fast_withdrawal_fee_revenue);
+        
+        const netFees = data.metrics.net_fee_position || 0;
+        const netFeesEl = document.getElementById('metric-net-fees');
+        netFeesEl.textContent = formatCurrency(netFees);
+        netFeesEl.className = `text-2xl font-bold mt-1 ${netFees >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        
+        document.getElementById('metric-deposits-7d').textContent = formatCurrency(data.metrics.deposits_7days);
+        document.getElementById('metric-withdrawals-7d').textContent = formatCurrency(data.metrics.withdrawals_7days);
+        document.getElementById('metric-deposits-30d').textContent = formatCurrency(data.metrics.deposits_30days);
+        document.getElementById('metric-withdrawals-30d').textContent = formatCurrency(data.metrics.withdrawals_30days);
+      }
+
+      // Update buffer analysis
+      if (data.buffer) {
+        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.buffer.total_liabilities);
+        document.getElementById('buffer-cash').textContent = formatCurrency(data.buffer.net_cash_position);
+        document.getElementById('buffer-stripe').textContent = formatCurrency(data.buffer.stripe_fees_paid || 0);
+        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.buffer.fast_fee_revenue);
+        document.getElementById('buffer-required').textContent = formatCurrency(data.buffer.buffer_required);
+        document.getElementById('buffer-recommended').textContent = formatCurrency(data.buffer.recommended_buffer);
+        document.getElementById('buffer-7d').textContent = formatCurrency(data.buffer.projection_7d);
+        document.getElementById('buffer-30d').textContent = formatCurrency(data.buffer.projection_30d);
+        document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.buffer.avg_daily_withdrawal_7d);
+        document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.buffer.avg_daily_withdrawal_30d);
+
+        // Fee breakdown
+        if (data.buffer.fee_breakdown) {
+          document.getElementById('fee-base-pct').textContent = formatCurrency(data.buffer.fee_breakdown.base_percentage || 0);
+          document.getElementById('fee-fixed').textContent = formatCurrency(data.buffer.fee_breakdown.fixed_per_transaction || 0);
+          document.getElementById('fee-disputes').textContent = formatCurrency(data.buffer.fee_breakdown.dispute_reserve || 0);
+          document.getElementById('fee-refunds').textContent = formatCurrency(data.buffer.fee_breakdown.refund_loss || 0);
+        }
+        
+        document.getElementById('fee-base-total').textContent = formatCurrency(data.buffer.stripe_base_fees || 0);
+        document.getElementById('fee-additional-total').textContent = formatCurrency(data.buffer.stripe_additional_fees || 0);
+        document.getElementById('fee-grand-total').textContent = formatCurrency(data.buffer.stripe_fees_paid || 0);
+        
+        const statusBadge = document.getElementById('buffer-status-badge');
+        const status = data.buffer.status || 'healthy';
+        statusBadge.textContent = data.buffer.status_message || (status.charAt(0).toUpperCase() + status.slice(1));
+        statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
+      }
+
+      // Update pending withdrawal badge
+      if (typeof data.pending_withdrawals !== 'undefined') {
+        const badge = document.getElementById('withdrawal-badge');
+        if (data.pending_withdrawals > 0) {
+          badge.textContent = data.pending_withdrawals;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      // Update timestamp
+      if (data.timestamp) {
+        const time = new Date(data.timestamp).toLocaleTimeString();
+        document.getElementById('last-updated').textContent = `Live: ${time}`;
+      }
+    }
+
+    async function loadMetrics() {
+      try {
+        const data = await fetchWithAuth('/metrics');
+        
+        document.getElementById('metric-liabilities').textContent = formatCurrency(data.total_wallet_liabilities);
+        document.getElementById('metric-deposits').textContent = formatCurrency(data.total_deposits);
+        document.getElementById('metric-withdrawals').textContent = formatCurrency(data.total_withdrawals);
+        document.getElementById('metric-wallets').textContent = data.active_wallet_count || 0;
+        document.getElementById('metric-stripe-fees').textContent = formatCurrency(data.stripe_fees_absorbed || 0);
+        document.getElementById('metric-fast-fees').textContent = formatCurrency(data.fast_withdrawal_fee_revenue);
+        
+        const netFees = data.net_fee_position || 0;
+        const netFeesEl = document.getElementById('metric-net-fees');
+        netFeesEl.textContent = formatCurrency(netFees);
+        netFeesEl.className = `text-2xl font-bold mt-1 ${netFees >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        
+        document.getElementById('metric-deposits-7d').textContent = formatCurrency(data.deposits_7days);
+        document.getElementById('metric-withdrawals-7d').textContent = formatCurrency(data.withdrawals_7days);
+        document.getElementById('metric-deposits-30d').textContent = formatCurrency(data.deposits_30days);
+        document.getElementById('metric-withdrawals-30d').textContent = formatCurrency(data.withdrawals_30days);
+      } catch (err) {
+        console.error('Metrics error:', err);
+      }
+    }
+
+    async function loadBuffer() {
+      try {
+        const data = await fetchWithAuth('/buffer');
+        
+        // Main metrics
+        document.getElementById('buffer-liabilities').textContent = formatCurrency(data.total_liabilities);
+        document.getElementById('buffer-cash').textContent = formatCurrency(data.net_cash_position);
+        document.getElementById('buffer-stripe').textContent = formatCurrency(data.stripe_fees_paid || 0);
+        document.getElementById('buffer-fast-fees').textContent = formatCurrency(data.fast_fee_revenue);
+        document.getElementById('buffer-required').textContent = formatCurrency(data.buffer_required);
+        document.getElementById('buffer-recommended').textContent = formatCurrency(data.recommended_buffer || data.buffer_required);
+        document.getElementById('buffer-7d').textContent = formatCurrency(data.projection_7d);
+        document.getElementById('buffer-30d').textContent = formatCurrency(data.projection_30d);
+        document.getElementById('avg-withdrawal-7d').textContent = formatCurrency(data.avg_daily_withdrawal_7d);
+        document.getElementById('avg-withdrawal-30d').textContent = formatCurrency(data.avg_daily_withdrawal_30d);
+        
+        // Fee breakdown (NZ domestic model)
+        if (data.fee_breakdown) {
+          document.getElementById('fee-base-pct').textContent = formatCurrency(data.fee_breakdown.base_percentage || 0);
+          document.getElementById('fee-fixed').textContent = formatCurrency(data.fee_breakdown.fixed_per_transaction || 0);
+          document.getElementById('fee-disputes').textContent = formatCurrency(data.fee_breakdown.dispute_reserve || 0);
+          document.getElementById('fee-refunds').textContent = formatCurrency(data.fee_breakdown.refund_loss || 0);
+        }
+        
+        // Fee totals
+        document.getElementById('fee-base-total').textContent = formatCurrency(data.stripe_base_fees || 0);
+        document.getElementById('fee-additional-total').textContent = formatCurrency(data.stripe_additional_fees || 0);
+        document.getElementById('fee-grand-total').textContent = formatCurrency(data.stripe_fees_paid || 0);
+        
+        const statusBadge = document.getElementById('buffer-status-badge');
+        const status = data.status || 'healthy';
+        statusBadge.textContent = data.status_message || (status.charAt(0).toUpperCase() + status.slice(1));
+        statusBadge.className = `px-4 py-2 rounded-full text-white font-semibold text-sm status-${status}`;
+      } catch (err) {
+        console.error('Buffer error:', err);
+      }
+    }
+
+    async function loadTrends() {
+      try {
+        const data = await fetchWithAuth('/trends?days=30');
+        
+        if (trendsChart) {
+          trendsChart.destroy();
+        }
+
+        const ctx = document.getElementById('trends-chart').getContext('2d');
+        const trends = data.trends || [];
+        
+        trendsChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: trends.map(t => new Date(t.date).toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' })),
+            datasets: [
+              {
+                label: 'Deposits',
+                data: trends.map(t => t.deposits || 0),
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.3
+              },
+              {
+                label: 'Withdrawals',
+                data: trends.map(t => t.withdrawals || 0),
+                borderColor: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                fill: true,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top' }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => '$' + value
+                }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Trends error:', err);
+      }
+    }
+
+    async function loadTransactions() {
+      try {
+        const filter = document.getElementById('tx-filter').value;
+        const offset = currentPage * PAGE_SIZE;
+        let url = `/transactions?limit=${PAGE_SIZE}&offset=${offset}`;
+        if (filter) url += `&type=${filter}`;
+        
+        const data = await fetchWithAuth(url);
+        totalTransactions = data.total_count || 0;
+        
+        const tbody = document.getElementById('transactions-table');
+        
+        if (!data.transactions || data.transactions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-gray-400">No transactions found</td></tr>';
+        } else {
+          tbody.innerHTML = data.transactions.map(tx => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+              <td class="py-3 pr-4 whitespace-nowrap">${formatDate(tx.created_at)}</td>
+              <td class="py-3 pr-4">
+                <div class="font-medium text-gray-800">${tx.user_name || 'Unknown'}</div>
+                <div class="text-xs text-gray-400">${tx.user_email || ''}</div>
+              </td>
+              <td class="py-3 pr-4">
+                <span class="px-2 py-1 rounded text-xs font-medium ${getTypeClass(tx.type)}">${tx.type}</span>
+              </td>
+              <td class="py-3 pr-4 font-medium ${tx.direction === 'in' ? 'text-green-600' : 'text-red-600'}">
+                ${tx.direction === 'in' ? '+' : '-'}${formatCurrency(tx.amount)}
+              </td>
+              <td class="py-3 pr-4 text-orange-600">${(tx.estimated_stripe_fee || tx.estimated_blinkpay_fee) > 0 ? formatCurrency(tx.estimated_stripe_fee || tx.estimated_blinkpay_fee) : '-'}</td>
+              <td class="py-3 pr-4 text-green-600">${tx.fast_withdrawal_fee > 0 ? formatCurrency(tx.fast_withdrawal_fee) : '-'}</td>
+              <td class="py-3 text-gray-600 text-xs">${tx.description || '-'}</td>
+            </tr>
+          `).join('');
+        }
+        
+        document.getElementById('tx-count').textContent = 
+          `Showing ${offset + 1}-${Math.min(offset + PAGE_SIZE, totalTransactions)} of ${totalTransactions} transactions`;
+        
+        document.getElementById('btn-prev').disabled = currentPage === 0;
+        document.getElementById('btn-next').disabled = (currentPage + 1) * PAGE_SIZE >= totalTransactions;
+      } catch (err) {
+        console.error('Transactions error:', err);
+      }
+    }
+
+    function getTypeClass(type) {
+      const classes = {
+        deposit: 'bg-green-100 text-green-800',
+        withdrawal: 'bg-red-100 text-red-800',
+        split_payment: 'bg-blue-100 text-blue-800',
+        split_received: 'bg-purple-100 text-purple-800'
+      };
+      return classes[type] || 'bg-gray-100 text-gray-800';
+    }
+
+    function prevPage() {
+      if (currentPage > 0) {
+        currentPage--;
+        loadTransactions();
+      }
+    }
+
+    function nextPage() {
+      if ((currentPage + 1) * PAGE_SIZE < totalTransactions) {
+        currentPage++;
+        loadTransactions();
+      }
+    }
+
+    async function exportCSV() {
+      try {
+        const res = await fetch(`${API_BASE}/export/transactions`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (res.status === 401) {
+          logout();
+          alert('Session expired. Please sign in again.');
+          return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `spline-transactions-${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+      } catch (err) {
+        alert('Export failed');
+      }
+    }
+
+    async function loadAdmins() {
+      try {
+        const data = await fetchWithAuth('/admins');
+        
+        const listEl = document.getElementById('admin-list');
+        listEl.innerHTML = data.map(admin => `
+          <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+            <div>
+              <p class="font-medium text-gray-800">${admin.name || admin.email}</p>
+              <p class="text-sm text-gray-500">${admin.email}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-1 rounded text-xs ${admin.role === 'super_admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">${admin.role}</span>
+              ${admin.email !== 'admin@spline.nz' ? 
+                `<button onclick="removeAdmin('${admin.email}')" class="text-red-500 hover:text-red-700 text-sm">Remove</button>` : 
+                ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Admins error:', err);
+      }
+    }
+
+    async function addAdmin() {
+      const email = document.getElementById('new-admin-email').value.trim();
+      const name = document.getElementById('new-admin-name').value.trim();
+      
+      if (!email) {
+        alert('Please enter an email');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/admins`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ email, name })
+        });
+        
+        if (res.ok) {
+          document.getElementById('new-admin-email').value = '';
+          document.getElementById('new-admin-name').value = '';
+          loadAdmins();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to add admin');
+        }
+      } catch (err) {
+        alert('Failed to add admin');
+      }
+    }
+
+    async function removeAdmin(email) {
+      if (!confirm(`Remove admin access for ${email}?`)) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/admins/${encodeURIComponent(email)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        
+        if (res.ok) {
+          loadAdmins();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to remove admin');
+        }
+      } catch (err) {
+        alert('Failed to remove admin');
+      }
+    }
+
+    // ========== WITHDRAWAL MANAGEMENT ==========
+    let withdrawalPage = 0;
+    let totalWithdrawals = 0;
+    const WITHDRAWAL_PAGE_SIZE = 50;
+
+    async function loadWithdrawals() {
+      try {
+        const status = document.getElementById('withdrawal-filter').value;
+        const offset = withdrawalPage * WITHDRAWAL_PAGE_SIZE;
+        
+        const data = await fetchWithAuth(`/withdrawals?status=${status}&limit=${WITHDRAWAL_PAGE_SIZE}&offset=${offset}`);
+        
+        totalWithdrawals = data.total_count || 0;
+        
+        // Update counts
+        document.getElementById('withdrawal-pending-count').textContent = data.pending_count || 0;
+        document.getElementById('withdrawal-processing-count').textContent = data.processing_count || 0;
+        document.getElementById('withdrawal-total-count').textContent = data.total_count || 0;
+        
+        // Update badge on tab
+        const badge = document.getElementById('withdrawal-badge');
+        if (data.pending_count > 0) {
+          badge.textContent = data.pending_count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+        
+        // Render withdrawal cards
+        const container = document.getElementById('withdrawals-list');
+        
+        if (!data.withdrawals || data.withdrawals.length === 0) {
+          container.innerHTML = '<p class="text-center text-gray-400 py-8">No withdrawal requests found</p>';
+        } else {
+          container.innerHTML = data.withdrawals.map(w => renderWithdrawalCard(w)).join('');
+        }
+        
+        // Update pagination
+        document.getElementById('withdrawal-count').textContent = 
+          `Showing ${Math.min(offset + 1, totalWithdrawals)}-${Math.min(offset + WITHDRAWAL_PAGE_SIZE, totalWithdrawals)} of ${totalWithdrawals} withdrawals`;
+        document.getElementById('btn-prev-withdrawal').disabled = withdrawalPage === 0;
+        document.getElementById('btn-next-withdrawal').disabled = (withdrawalPage + 1) * WITHDRAWAL_PAGE_SIZE >= totalWithdrawals;
+        
+      } catch (err) {
+        console.error('Withdrawals error:', err);
+        document.getElementById('withdrawals-list').innerHTML = 
+          '<p class="text-center text-red-500 py-8">Failed to load withdrawals</p>';
+      }
+    }
+
+    function renderWithdrawalCard(w) {
+      const statusColors = {
+        pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        processing: 'bg-blue-100 text-blue-800 border-blue-200',
+        completed: 'bg-green-100 text-green-800 border-green-200',
+        failed: 'bg-red-100 text-red-800 border-red-200'
+      };
+      
+      const typeLabel = w.withdrawal_type === 'fast' 
+        ? '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">FAST (3.5% fee)</span>'
+        : '<span class="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-xs">NORMAL (free)</span>';
+      
+      let actionButtons = '';
+      if (w.status === 'pending') {
+        actionButtons = `
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'processing')" 
+            class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+            Start Processing
+          </button>
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'failed')" 
+            class="bg-red-100 text-red-700 px-3 py-1.5 rounded text-sm hover:bg-red-200">
+            Mark Failed
+          </button>
+        `;
+      } else if (w.status === 'processing') {
+        actionButtons = `
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'completed')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Mark Completed
+          </button>
+          <button onclick="updateWithdrawalStatus('${w.transaction_id}', 'failed')" 
+            class="bg-red-100 text-red-700 px-3 py-1.5 rounded text-sm hover:bg-red-200">
+            Mark Failed
+          </button>
+        `;
+      }
+      
+      return `
+        <div class="glass-card rounded-xl p-5 border-l-4 ${w.status === 'pending' ? 'border-l-yellow-500' : w.status === 'processing' ? 'border-l-blue-500' : w.status === 'completed' ? 'border-l-green-500' : 'border-l-red-500'}">
+          <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2 py-1 rounded text-xs font-medium border ${statusColors[w.status]}">${w.status.toUpperCase()}</span>
+                ${typeLabel}
+              </div>
+              <p class="text-xs text-gray-500">${formatDate(w.created_at)}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-2xl font-bold text-gray-800">${formatCurrency(w.net_amount_to_transfer)}</p>
+              <p class="text-xs text-gray-500">Net amount to transfer</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">User Details</p>
+              <p class="font-semibold text-gray-800">${w.user_name}</p>
+              <p class="text-sm text-gray-600">${w.user_email}</p>
+              <p class="text-sm text-gray-600">ID: ${w.user_unique_id}</p>
+              <p class="text-sm text-gray-600">Phone: ${w.user_phone}</p>
+            </div>
+            
+            <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+              <p class="text-xs text-blue-600 font-medium mb-1">Bank Details (For Transfer)</p>
+              <p class="font-bold text-gray-800">${w.bank_name}</p>
+              <p class="text-sm font-mono text-blue-800 bg-blue-100 px-2 py-1 rounded my-1">${w.account_number || 'Not provided'}</p>
+              <p class="text-sm text-gray-700">Name: ${w.account_holder_name || 'Not provided'}</p>
+              <p class="text-xs text-gray-500">Type: ${w.account_type}</p>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Amount Breakdown</p>
+              <p class="text-sm text-gray-600">Requested: ${formatCurrency(w.amount_requested)}</p>
+              ${w.withdrawal_type === 'fast' ? `
+                <p class="text-sm text-red-600">Fee (${w.fee_percentage}%): -${formatCurrency(w.fee_amount)}</p>
+                <p class="font-semibold text-green-700">Net: ${formatCurrency(w.net_amount_to_transfer)}</p>
+              ` : `
+                <p class="text-sm text-gray-600">Fee: $0.00 (Normal)</p>
+                <p class="font-semibold text-green-700">Net: ${formatCurrency(w.net_amount_to_transfer)}</p>
+              `}
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Arrival</p>
+              <p class="font-semibold text-gray-800">${w.withdrawal_type === 'fast' ? 'Instant / Same Day' : '3-5 Business Days'}</p>
+              <p class="text-sm text-gray-600">${w.estimated_arrival}</p>
+            </div>
+          </div>
+          
+          <div class="flex gap-2 justify-end">
+            ${actionButtons}
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateWithdrawalStatus(transactionId, newStatus) {
+      const action = newStatus === 'completed' ? 'mark as completed' : 
+                     newStatus === 'processing' ? 'start processing' : 
+                     newStatus === 'failed' ? 'mark as failed' : 'update';
+      
+      if (!confirm(`Are you sure you want to ${action} this withdrawal?`)) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/withdrawals/${transactionId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ status: newStatus })
+        });
+        
+        if (res.ok) {
+          loadWithdrawals();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to update withdrawal');
+        }
+      } catch (err) {
+        alert('Failed to update withdrawal status');
+      }
+    }
+
+    function prevWithdrawalPage() {
+      if (withdrawalPage > 0) {
+        withdrawalPage--;
+        loadWithdrawals();
+      }
+    }
+
+    function nextWithdrawalPage() {
+      if ((withdrawalPage + 1) * WITHDRAWAL_PAGE_SIZE < totalWithdrawals) {
+        withdrawalPage++;
+        loadWithdrawals();
+      }
+    }
+
+    function showTab(tab) {
+      ['overview', 'buffer', 'transactions', 'withdrawals', 'gamification', 'reports', 'settings'].forEach(t => {
+        document.getElementById(`content-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).classList.remove('tab-active');
+        document.getElementById(`tab-${t}`).classList.add('bg-white/80');
+      });
+      
+      document.getElementById(`content-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).classList.add('tab-active');
+      document.getElementById(`tab-${tab}`).classList.remove('bg-white/80');
+      
+      // Load withdrawals when tab is clicked
+      if (tab === 'withdrawals') {
+        loadWithdrawals();
+      }
+      // Load gamification data when tab is clicked
+      if (tab === 'gamification') {
+        loadGamificationData();
+      }
+      // Load reports when tab is clicked
+      if (tab === 'reports') {
+        loadReports();
+      }
+    }
+
+    // ========== GAMIFICATION MANAGEMENT ==========
+    async function loadGamificationData() {
+      try {
+        // Load stats
+        const stats = await fetchWithAuth('/gamification/stats');
+        
+        document.getElementById('gam-total-users').textContent = stats.total_users_with_gamification || 0;
+        document.getElementById('gam-total-xp').textContent = (stats.total_xp_awarded || 0).toLocaleString();
+        document.getElementById('gam-avg-level').textContent = (stats.average_level || 1).toFixed(1);
+        document.getElementById('gam-active-streaks').textContent = stats.users_with_active_streak || 0;
+        
+        // Load Balance Momentum tiers
+        document.getElementById('momentum-tier1').textContent = stats.momentum_tier_bronze || 0;
+        document.getElementById('momentum-tier2').textContent = stats.momentum_tier_silver || 0;
+        document.getElementById('momentum-tier3').textContent = stats.momentum_tier_gold || 0;
+        
+        // Render level distribution
+        const levelDist = stats.level_distribution || {};
+        const levelDistEl = document.getElementById('level-distribution');
+        const levels = Object.keys(levelDist).sort((a, b) => Number(b) - Number(a));
+        
+        if (levels.length === 0) {
+          levelDistEl.innerHTML = '<p class="text-gray-400 text-center py-4">No level data yet</p>';
+        } else {
+          const maxCount = Math.max(...Object.values(levelDist));
+          levelDistEl.innerHTML = levels.slice(0, 10).map(level => {
+            const count = levelDist[level];
+            const pct = maxCount > 0 ? (count / maxCount * 100) : 0;
+            return `
+              <div class="flex items-center gap-2">
+                <span class="w-16 text-sm text-gray-600">Level ${level}</span>
+                <div class="flex-1 bg-gray-200 rounded-full h-4">
+                  <div class="bg-gradient-to-r from-purple-500 to-indigo-500 h-4 rounded-full" style="width: ${pct}%"></div>
+                </div>
+                <span class="w-10 text-sm text-gray-600 text-right">${count}</span>
+              </div>
+            `;
+          }).join('');
+        }
+        
+        // Load user leaderboard
+        const usersData = await fetchWithAuth('/gamification/users?limit=50');
+        const tbody = document.getElementById('gamification-table');
+        
+        if (!usersData.users || usersData.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-400">No gamification data available</td></tr>';
+        } else {
+          tbody.innerHTML = usersData.users.map((user, idx) => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+              <td class="py-3 pr-4 font-bold text-gray-500">#${idx + 1}</td>
+              <td class="py-3 pr-4">
+                <div class="font-medium text-gray-800">${user.name || 'Unknown'}</div>
+                <div class="text-xs text-gray-400">${user.email || ''}</div>
+              </td>
+              <td class="py-3 pr-4">
+                <span class="px-2 py-1 rounded-full text-xs font-bold ${getLevelBadgeClass(user.current_level)}">${user.current_level}</span>
+              </td>
+              <td class="py-3 pr-4 text-gray-700">${user.title || 'Member'}</td>
+              <td class="py-3 pr-4 font-semibold text-purple-600">${(user.total_xp || 0).toLocaleString()}</td>
+              <td class="py-3 pr-4">
+                ${user.current_streak > 0 ? `<span class="text-orange-600">${user.current_streak} days</span>` : '<span class="text-gray-400">-</span>'}
+              </td>
+              <td class="py-3 pr-4 text-gray-600">${user.splits_created || 0}</td>
+              <td class="py-3 text-gray-600">${user.splits_paid || 0}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Gamification error:', err);
+        document.getElementById('gamification-table').innerHTML = 
+          '<tr><td colspan="8" class="py-8 text-center text-red-500">Failed to load gamification data. The gamification tables may not be set up yet.</td></tr>';
+      }
+    }
+
+    function getLevelBadgeClass(level) {
+      if (level >= 40) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
+      if (level >= 25) return 'bg-gradient-to-r from-purple-500 to-purple-700 text-white';
+      if (level >= 15) return 'bg-gradient-to-r from-blue-500 to-blue-700 text-white';
+      if (level >= 10) return 'bg-gradient-to-r from-green-500 to-green-700 text-white';
+      if (level >= 5) return 'bg-blue-100 text-blue-800';
+      return 'bg-gray-100 text-gray-800';
+    }
+
+    async function processBalanceMomentum() {
+      if (!confirm('Process Balance Momentum for all users? This will record daily balance snapshots and award XP to qualifying users.')) {
+        return;
+      }
+      
+      try {
+        const result = await fetchWithAuth('/gamification/process-balance-momentum', {
+          method: 'POST'
+        });
+        
+        if (result.success) {
+          alert(`Balance Momentum processed successfully!\n\nSnapshots recorded: ${result.result?.snapshots_recorded || 0}\nAwards given: ${result.result?.momentum_awards_given || 0}`);
+          loadGamificationData(); // Refresh data
+        } else {
+          alert('Error: ' + (result.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('Balance Momentum error:', err);
+        alert('Error processing Balance Momentum. Make sure the gamification tables are set up by running GAMIFICATION_MIGRATION.sql in Supabase.');
+      }
+    }
+
+    // ========== REPORTS MANAGEMENT ==========
+    async function loadReports() {
+      try {
+        const status = document.getElementById('report-filter').value;
+        const data = await fetchWithAuth(`/reports?status=${status}`);
+        
+        const reports = data.reports || [];
+        
+        // Count by status
+        const openCount = reports.filter(r => r.status === 'open').length;
+        const reviewedCount = reports.filter(r => r.status === 'reviewed').length;
+        const resolvedCount = reports.filter(r => r.status === 'resolved').length;
+        const dismissedCount = reports.filter(r => r.status === 'dismissed').length;
+        
+        // Update counts
+        document.getElementById('reports-open-count').textContent = openCount;
+        document.getElementById('reports-reviewed-count').textContent = reviewedCount;
+        document.getElementById('reports-resolved-count').textContent = resolvedCount;
+        document.getElementById('reports-dismissed-count').textContent = dismissedCount;
+        
+        // Update badge on tab
+        const badge = document.getElementById('reports-badge');
+        if (openCount > 0) {
+          badge.textContent = openCount;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+        
+        // Render report cards
+        const container = document.getElementById('reports-list');
+        
+        if (reports.length === 0) {
+          container.innerHTML = '<p class="text-center text-gray-400 py-8">No reports found</p>';
+        } else {
+          container.innerHTML = reports.map(r => renderReportCard(r)).join('');
+        }
+        
+      } catch (err) {
+        console.error('Reports error:', err);
+        document.getElementById('reports-list').innerHTML = 
+          '<p class="text-center text-red-500 py-8">Failed to load reports. The reports table may not be set up yet.</p>';
+      }
+    }
+
+    function renderReportCard(r) {
+      const statusColors = {
+        open: 'bg-red-100 text-red-800 border-red-200',
+        reviewed: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        resolved: 'bg-green-100 text-green-800 border-green-200',
+        dismissed: 'bg-gray-100 text-gray-800 border-gray-200'
+      };
+      
+      const borderColors = {
+        open: 'border-l-red-500',
+        reviewed: 'border-l-yellow-500',
+        resolved: 'border-l-green-500',
+        dismissed: 'border-l-gray-500'
+      };
+      
+      const reasonLabels = {
+        spam: 'Spam',
+        harassment: 'Harassment',
+        inappropriate_content: 'Inappropriate Content',
+        fraud: 'Fraud / Scam',
+        other: 'Other'
+      };
+      
+      let actionButtons = '';
+      if (r.status === 'open') {
+        actionButtons = `
+          <button onclick="updateReportStatus('${r.id}', 'reviewed')" 
+            class="bg-yellow-600 text-white px-3 py-1.5 rounded text-sm hover:bg-yellow-700">
+            Mark Reviewed
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'resolved')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Resolve
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'dismissed')" 
+            class="bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600">
+            Dismiss
+          </button>
+        `;
+      } else if (r.status === 'reviewed') {
+        actionButtons = `
+          <button onclick="updateReportStatus('${r.id}', 'resolved')" 
+            class="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            Resolve
+          </button>
+          <button onclick="updateReportStatus('${r.id}', 'dismissed')" 
+            class="bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600">
+            Dismiss
+          </button>
+        `;
+      }
+      
+      const reporterName = r.reporter?.first_name ? `${r.reporter.first_name} ${r.reporter.last_name || ''}`.trim() : 'Unknown';
+      const reporterEmail = r.reporter?.email || 'N/A';
+      const reportedName = r.reported_user?.first_name ? `${r.reported_user.first_name} ${r.reported_user.last_name || ''}`.trim() : 'Unknown';
+      const reportedEmail = r.reported_user?.email || 'N/A';
+      
+      return `
+        <div class="glass-card rounded-xl p-5 border-l-4 ${borderColors[r.status] || 'border-l-gray-500'}">
+          <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2 py-1 rounded text-xs font-medium border ${statusColors[r.status]}">${r.status.toUpperCase()}</span>
+                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">${reasonLabels[r.reason] || r.reason}</span>
+              </div>
+              <p class="text-xs text-gray-500">${formatDate(r.created_at)}</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+              <p class="text-xs text-blue-600 font-medium mb-1">Reporter</p>
+              <p class="font-semibold text-gray-800">${reporterName}</p>
+              <p class="text-sm text-gray-600">${reporterEmail}</p>
+            </div>
+            
+            <div class="bg-red-50 rounded-lg p-3 border border-red-200">
+              <p class="text-xs text-red-600 font-medium mb-1">Reported User</p>
+              <p class="font-semibold text-gray-800">${reportedName}</p>
+              <p class="text-sm text-gray-600">${reportedEmail}</p>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Details</p>
+              <p class="text-sm text-gray-700">${r.details || 'No additional details provided'}</p>
+            </div>
+          </div>
+          
+          ${r.admin_notes ? `
+            <div class="bg-yellow-50 rounded-lg p-3 mb-4 border border-yellow-200">
+              <p class="text-xs text-yellow-600 font-medium mb-1">Admin Notes</p>
+              <p class="text-sm text-gray-700">${r.admin_notes}</p>
+            </div>
+          ` : ''}
+          
+          <div class="flex flex-wrap gap-2 items-center justify-between">
+            <div class="flex-1">
+              <input type="text" id="notes-${r.id}" placeholder="Add admin notes..." 
+                class="w-full px-3 py-1.5 rounded border border-gray-300 text-sm" value="${r.admin_notes || ''}">
+            </div>
+            <div class="flex gap-2">
+              <button onclick="saveReportNotes('${r.id}')" 
+                class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+                Save Notes
+              </button>
+              ${actionButtons}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateReportStatus(reportId, newStatus) {
+      const action = newStatus === 'resolved' ? 'resolve' : 
+                     newStatus === 'reviewed' ? 'mark as reviewed' : 
+                     newStatus === 'dismissed' ? 'dismiss' : 'update';
+      
+      if (!confirm(`Are you sure you want to ${action} this report?`)) return;
+      
+      try {
+        const notes = document.getElementById(`notes-${reportId}`)?.value || '';
+        
+        const res = await fetch(`${API_BASE}/reports/${reportId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ status: newStatus, admin_notes: notes })
+        });
+        
+        if (res.ok) {
+          loadReports();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to update report');
+        }
+      } catch (err) {
+        console.error('Update report error:', err);
+        alert('Failed to update report');
+      }
+    }
+
+    async function saveReportNotes(reportId) {
+      try {
+        const notes = document.getElementById(`notes-${reportId}`)?.value || '';
+        
+        const res = await fetch(`${API_BASE}/reports/${reportId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ admin_notes: notes })
+        });
+        
+        if (res.ok) {
+          alert('Notes saved successfully');
+          loadReports();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to save notes');
+        }
+      } catch (err) {
+        console.error('Save notes error:', err);
+        alert('Failed to save notes');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const savedToken = sessionStorage.getItem('adminAccessToken');
+      const savedUser = sessionStorage.getItem('adminUser');
+      const savedExpiry = sessionStorage.getItem('tokenExpiresAt');
+      
+      if (savedToken && savedUser && savedExpiry) {
+        tokenExpiresAt = parseInt(savedExpiry);
+        
+        if (isTokenExpired()) {
+          sessionStorage.clear();
+          return;
+        }
+        
+        accessToken = savedToken;
+        
+        try {
+          const res = await fetch(`${API_BASE}/me`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          if (!res.ok) {
+            sessionStorage.clear();
+            accessToken = '';
+            tokenExpiresAt = null;
+            return;
+          }
+          
+          adminUser = JSON.parse(savedUser);
+          document.getElementById('admin-name').textContent = adminUser.name || adminUser.email;
+          document.getElementById('login-screen').classList.add('hidden');
+          document.getElementById('dashboard').classList.remove('hidden');
+          refreshData();
+          connectSSE(); // Resume live updates
+        } catch (e) {
+          sessionStorage.clear();
+          accessToken = '';
+          tokenExpiresAt = null;
+        }
+      }
+    });
+
+    document.getElementById('admin-email').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('admin-password').focus();
+      }
+    });
+
+    document.getElementById('admin-password').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>
