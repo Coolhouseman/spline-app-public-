@@ -1,10 +1,8 @@
-# Robots.txt for Spline Payment App
-# https://splinepay.replit.app
-
 User-agent: *
 Allow: /
 Allow: /terms
 Allow: /privacy
+Allow: /delete-account
 
 # Disallow admin area from indexing
 Disallow: /admin
@@ -12,7 +10,4 @@ Disallow: /admin/
 Disallow: /api/
 
 # Sitemap location
-Sitemap: https://splinepay.replit.app/sitemap.xml
-
-# Crawl-delay for respectful crawling
-Crawl-delay: 1
+Sitemap: https://spline.nz/sitemap.xml
