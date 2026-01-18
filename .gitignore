@@ -30,3 +30,14 @@ yarn-error.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Expo/React Native
+.expo/
+android/
+ios/
+dist/
+server/dist/
+
+# Service account keys
+*-*.json
+spline-*.json
