@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import nodemailer from 'nodemailer';
 
 import blinkpayRouter from './routes/blinkpay.routes';
@@ -32,43 +33,88 @@ const PORT = parseInt(process.env.PORT || '8081', 10);
 app.use(cors());
 app.use(express.json());
 
-app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
-app.use('/images', express.static(path.join(__dirname, 'public/images')));
+// Static file paths - work in both local and Vercel serverless
+const publicPath = path.join(__dirname, 'public');
+const distPublicPath = path.join(__dirname, '../public'); // For Vercel build output
+const staticPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distPublicPath) ? distPublicPath : path.join(process.cwd(), 'server/public'));
+
+app.use('/admin', express.static(path.join(staticPath, 'admin')));
+app.use('/images', express.static(path.join(staticPath, 'images')));
 
 app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.sendFile(path.join(__dirname, 'public/robots.txt'));
+  const robotsPath = path.join(staticPath, 'robots.txt');
+  if (fs.existsSync(robotsPath)) {
+    res.type('text/plain');
+    res.sendFile(robotsPath);
+  } else {
+    res.status(404).send('robots.txt not found');
+  }
 });
 
 app.get('/sitemap.xml', (req, res) => {
-  res.type('application/xml');
-  res.sendFile(path.join(__dirname, 'public/sitemap.xml'));
+  const sitemapPath = path.join(staticPath, 'sitemap.xml');
+  if (fs.existsSync(sitemapPath)) {
+    res.type('application/xml');
+    res.sendFile(sitemapPath);
+  } else {
+    res.status(404).send('sitemap.xml not found');
+  }
 });
 
 // Google Play Console site verification
 app.get('/google9ae7f141ca49f2ac.html', (req, res) => {
-  res.type('text/html');
-  res.sendFile(path.join(__dirname, 'public/google9ae7f141ca49f2ac.html'));
+  const filePath = path.join(staticPath, 'google9ae7f141ca49f2ac.html');
+  if (fs.existsSync(filePath)) {
+    res.type('text/html');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
+  }
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/index.html'));
+  const indexPath = path.join(staticPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('index.html not found');
+  }
 });
 
 app.get('/terms', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/terms.html'));
+  const termsPath = path.join(staticPath, 'terms.html');
+  if (fs.existsSync(termsPath)) {
+    res.sendFile(termsPath);
+  } else {
+    res.status(404).send('terms.html not found');
+  }
 });
 
 app.get('/privacy', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/privacy.html'));
+  const privacyPath = path.join(staticPath, 'privacy.html');
+  if (fs.existsSync(privacyPath)) {
+    res.sendFile(privacyPath);
+  } else {
+    res.status(404).send('privacy.html not found');
+  }
 });
 
 app.get('/delete-account', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/delete-account.html'));
+  const deletePath = path.join(staticPath, 'delete-account.html');
+  if (fs.existsSync(deletePath)) {
+    res.sendFile(deletePath);
+  } else {
+    res.status(404).send('delete-account.html not found');
+  }
 });
 
 app.get('/card-setup.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/card-setup.html'));
+  const cardPath = path.join(staticPath, 'card-setup.html');
+  if (fs.existsSync(cardPath)) {
+    res.sendFile(cardPath);
+  } else {
+    res.status(404).send('card-setup.html not found');
+  }
 });
 
 // Import Supabase for server-side password operations
