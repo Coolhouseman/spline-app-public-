@@ -3,6 +3,7 @@ Allow: /
 Allow: /terms
 Allow: /privacy
 Allow: /delete-account
+Disallow: /go/
 
 # Disallow admin area from indexing
 Disallow: /admin
@@ -10,4 +11,4 @@ Disallow: /admin/
 Disallow: /api/
 
 # Sitemap location
-Sitemap: https://spline.nz/sitemap.xml
+Sitemap: https://www.spline.nz/sitemap.xml

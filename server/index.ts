@@ -108,6 +108,20 @@ app.get('/delete-account', (req, res) => {
   }
 });
 
+app.get('/go/app-store', (req, res) => {
+  // Trackable redirect endpoint (use for Meta custom conversions / URL rules)
+  // Prevent indexing of redirect endpoints.
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.redirect(302, 'https://apps.apple.com/nz/app/spline/id6756173884');
+});
+
+app.get('/go/google-play', (req, res) => {
+  // Trackable redirect endpoint (use for Meta custom conversions / URL rules)
+  // Prevent indexing of redirect endpoints.
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.redirect(302, 'https://play.google.com/store/apps/details?id=com.splitpaymentapp.split');
+});
+
 app.get('/how-it-works', (req, res) => {
   const pagePath = path.join(staticPath, 'how-it-works.html');
   if (fs.existsSync(pagePath)) {
