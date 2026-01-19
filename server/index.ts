@@ -108,6 +108,33 @@ app.get('/delete-account', (req, res) => {
   }
 });
 
+app.get('/how-it-works', (req, res) => {
+  const pagePath = path.join(staticPath, 'how-it-works.html');
+  if (fs.existsSync(pagePath)) {
+    res.sendFile(pagePath);
+  } else {
+    res.status(404).send('how-it-works.html not found');
+  }
+});
+
+app.get('/split-bills-nz', (req, res) => {
+  const pagePath = path.join(staticPath, 'split-bills-nz.html');
+  if (fs.existsSync(pagePath)) {
+    res.sendFile(pagePath);
+  } else {
+    res.status(404).send('split-bills-nz.html not found');
+  }
+});
+
+app.get('/flatmate-expenses', (req, res) => {
+  const pagePath = path.join(staticPath, 'flatmate-expenses.html');
+  if (fs.existsSync(pagePath)) {
+    res.sendFile(pagePath);
+  } else {
+    res.status(404).send('flatmate-expenses.html not found');
+  }
+});
+
 app.get('/card-setup.html', (req, res) => {
   const cardPath = path.join(staticPath, 'card-setup.html');
   if (fs.existsSync(cardPath)) {
