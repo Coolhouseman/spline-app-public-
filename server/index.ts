@@ -1188,7 +1188,8 @@ app.post('/api/reminders/send-now', async (req, res) => {
 export default app;
 
 // Only listen when running directly (not in Vercel serverless)
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+// But ALWAYS initialize app to prevent 'module not found' errors if something else imports it
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT || '8082', 10);
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
