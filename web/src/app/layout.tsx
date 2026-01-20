@@ -24,6 +24,14 @@ export const metadata: Metadata = {
   keywords: ["hand-painted wallpaper", "bespoke wallpaper", "luxury wall coverings", "silk wallpaper", "gold leaf wallpaper", "mural art", "high-end interior design", "New Zealand luxury"],
   authors: [{ name: "Mundi Collesi" }],
   creator: "Mundi Collesi",
+  icons: {
+    // Google requires a square favicon that is at least 48x48 and crawlable.
+    icon: [
+      { url: "/icon.png", type: "image/png", sizes: "48x48" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+    shortcut: ["/favicon.ico"],
+  },
   openGraph: {
     type: "website",
     locale: "en_NZ",
