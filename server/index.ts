@@ -41,6 +41,16 @@ const staticPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distP
 app.use('/admin', express.static(path.join(staticPath, 'admin')));
 app.use('/images', express.static(path.join(staticPath, 'images')));
 
+app.get(['/icon.png', '/favicon.ico'], (req, res) => {
+  const faviconPath = path.join(staticPath, 'images', 'favicon.png');
+  if (fs.existsSync(faviconPath)) {
+    res.type('image/png');
+    res.sendFile(faviconPath);
+  } else {
+    res.status(404).send('favicon not found');
+  }
+});
+
 app.get('/robots.txt', (req, res) => {
   const robotsPath = path.join(staticPath, 'robots.txt');
   if (fs.existsSync(robotsPath)) {
