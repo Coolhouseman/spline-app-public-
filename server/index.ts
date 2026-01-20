@@ -14,6 +14,8 @@ import gamificationRouter from './routes/gamification.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
 import { sendWithdrawalNotification, sendUserReportNotification } from './services/email.service';
 
+dotenv.config();
+
 // Email transporter for admin notifications
 const emailTransporter = process.env.EMAIL_HOST ? nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -24,8 +26,6 @@ const emailTransporter = process.env.EMAIL_HOST ? nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 }) : null;
-
-dotenv.config();
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8081', 10);
@@ -160,13 +160,28 @@ app.get('/card-setup.html', (req, res) => {
 
 // Import Supabase for server-side password operations
 import { createClient } from '@supabase/supabase-js';
-const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
+function getSupabaseServer() {
+  if (!supabaseUrl || !supabaseServiceKey) return null;
+  try {
+    return createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db: { schema: 'public' },
+    });
+  } catch (err) {
+    console.error('Failed to initialize Supabase admin client:', err);
+    return null;
+  }
+}
 
 // API endpoint for password reset - uses service role key server-side
 app.post('/api/reset-password', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { token_hash, type, new_password } = req.body;
     
     if (!token_hash || !new_password) {
@@ -215,6 +230,10 @@ app.post('/api/reset-password', async (req, res) => {
 // API endpoint for requesting password reset email
 app.post('/api/request-password-reset', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { email } = req.body;
     
     if (!email) {
@@ -838,6 +857,10 @@ app.get('/reset-password', (req, res) => {
 // API endpoint for account deletion - requires authenticated user
 app.delete('/api/delete-account', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -990,6 +1013,10 @@ app.delete('/api/delete-account', async (req, res) => {
 // Block a user
 app.post('/api/friends/block', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { userId, blockedUserId } = req.body;
     
     if (!userId || !blockedUserId) {
@@ -1023,6 +1050,10 @@ app.post('/api/friends/block', async (req, res) => {
 // Unblock a user
 app.delete('/api/friends/block/:blockedUserId', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { blockedUserId } = req.params;
     const userId = req.query.userId as string;
     
@@ -1053,6 +1084,10 @@ app.delete('/api/friends/block/:blockedUserId', async (req, res) => {
 // Get blocked users list
 app.get('/api/friends/blocked', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const userId = req.query.userId as string;
     
     if (!userId) {
@@ -1076,7 +1111,7 @@ app.get('/api/friends/blocked', async (req, res) => {
     }
     
     // Then fetch user details separately
-    const blockedUserIds = blockedData.map(b => b.blocked_user_id);
+    const blockedUserIds = blockedData.map((b: { blocked_user_id: string }) => b.blocked_user_id);
     const { data: usersData, error: usersError } = await supabaseServer
       .from('users')
       .select('id, unique_id, name, email, profile_picture')
@@ -1088,8 +1123,8 @@ app.get('/api/friends/blocked', async (req, res) => {
     }
     
     // Combine the data
-    const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
-    const blockedUsers = blockedData.map(b => ({
+    const usersMap = new Map(usersData?.map((u: { id: string }) => [u.id, u]) || []);
+    const blockedUsers = blockedData.map((b: { blocked_user_id: string }) => ({
       ...b,
       blocked_user: usersMap.get(b.blocked_user_id) || null
     }));
@@ -1105,6 +1140,10 @@ app.get('/api/friends/blocked', async (req, res) => {
 // Check if a user is blocked
 app.get('/api/friends/is-blocked', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const userId = req.query.userId as string;
     const otherUserId = req.query.otherUserId as string;
     
@@ -1137,6 +1176,10 @@ app.get('/api/friends/is-blocked', async (req, res) => {
 // Create a user report - stores in Supabase cloud database
 app.post('/api/reports', async (req, res) => {
   try {
+    const supabaseServer = getSupabaseServer();
+    if (!supabaseServer) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { reporterId, reportedUserId, reason } = req.body;
     
     if (!reporterId || !reportedUserId || !reason) {
@@ -1176,8 +1219,8 @@ app.post('/api/reports', async (req, res) => {
       .select('id, name, email')
       .in('id', [reporterId, reportedUserId]);
     
-    const reporter = users?.find(u => u.id === reporterId);
-    const reportedUser = users?.find(u => u.id === reportedUserId);
+    const reporter = users?.find((u: { id: string }) => u.id === reporterId);
+    const reportedUser = users?.find((u: { id: string }) => u.id === reportedUserId);
     
     // Send email notification to admin
     if (reporter && reportedUser) {

@@ -23,10 +23,12 @@ function getPublishableKey(testMode: boolean): string {
     : (process.env.STRIPE_PUBLISHABLE_KEY || '');
 }
 
-const supabaseAdmin = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'missing-key';
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+  db: { schema: 'public' },
+});
 
 interface AuthenticatedRequest extends express.Request {
   user?: { id: string; email: string };

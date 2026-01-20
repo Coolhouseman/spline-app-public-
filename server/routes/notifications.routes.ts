@@ -3,18 +3,20 @@ import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+const supabaseAdmin = (supabaseUrl && supabaseServiceRoleKey)
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db: { schema: 'public' },
+    })
+  : null;
 
 router.post('/create', async (req, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { user_id, type, title, message, metadata, split_event_id, friendship_id } = req.body;
 
     if (!user_id || !type || !title || !message) {
@@ -50,6 +52,9 @@ router.post('/create', async (req, res) => {
 // Create a test user in Supabase (for testing purposes)
 router.post('/test-user', async (req, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { name, email, unique_id } = req.body;
 
     if (!name || !email || !unique_id) {
@@ -80,6 +85,9 @@ router.post('/test-user', async (req, res) => {
 // Lookup user by unique_id (for testing purposes)
 router.get('/lookup-user/:unique_id', async (req, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Server misconfigured: Supabase admin key not set' });
+    }
     const { unique_id } = req.params;
 
     console.log('Looking up user with unique_id:', unique_id);

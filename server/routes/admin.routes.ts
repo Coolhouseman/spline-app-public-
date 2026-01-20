@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 const router = express.Router();
 
 const supabaseUrl = 'https://vhicohutiocnfjwsofhy.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'missing-key';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzOTcwNTgsImV4cCI6MjA2Mzk3MzA1OH0.EI2qBBfKIoF5HZIFU_Ls62xi5A0EPKwylvKGl9ppwQA';
 
-if (!supabaseServiceKey) {
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.error('FATAL: SUPABASE_SERVICE_ROLE_KEY is not configured');
 }
 
@@ -16,14 +16,9 @@ if (!supabaseAnonKey) {
 }
 
 // Create admin client with explicit db schema options
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '', {
-  db: {
-    schema: 'public'
-  },
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  db: { schema: 'public' },
+  auth: { autoRefreshToken: false, persistSession: false }
 });
 
 interface AuthenticatedRequest extends express.Request {
@@ -48,6 +43,9 @@ async function verifyAuthToken(token: string): Promise<{ id: string; email: stri
 
 async function checkAdminRole(email: string): Promise<{ authorized: boolean; role?: string; name?: string }> {
   try {
+    if (supabaseServiceKey === 'missing-key') {
+      return { authorized: false };
+    }
     console.log('Checking admin role for email:', email.toLowerCase());
     
     const freshClient = createClient(supabaseUrl, supabaseServiceKey || '', {

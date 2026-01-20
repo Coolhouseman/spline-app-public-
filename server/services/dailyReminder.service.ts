@@ -1,14 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+const supabaseAdmin = (supabaseUrl && supabaseServiceRoleKey)
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db: { schema: 'public' },
+    })
+  : null;
 
 interface UnpaidParticipant {
   user_id: string;
@@ -57,6 +56,10 @@ export class DailyReminderService {
 
   static async sendDailyReminders(): Promise<void> {
     try {
+      if (!supabaseAdmin) {
+        console.error('Daily reminders skipped: Supabase admin key not configured');
+        return;
+      }
       console.log('Fetching users with unpaid splits...');
 
       const { data: unpaidParticipants, error } = await supabaseAdmin
@@ -167,6 +170,10 @@ export class DailyReminderService {
       : `Hi ${userName}, you have $${totalAmount.toFixed(2)} pending across ${eventCount} splits (${eventList}). Tap to settle up!`;
 
     try {
+      if (!supabaseAdmin) {
+        console.error('Cannot create reminders: Supabase admin key not configured');
+        return;
+      }
       // Check if user already received a payment reminder today (regardless of read status)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
