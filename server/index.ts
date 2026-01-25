@@ -33,10 +33,47 @@ const PORT = parseInt(process.env.PORT || '8081', 10);
 app.use(cors());
 app.use(express.json());
 
+const CANONICAL_HOST = process.env.CANONICAL_HOST || 'spline.nz';
+
 // Static file paths - work in both local and Vercel serverless
 const publicPath = path.join(__dirname, 'public');
 const distPublicPath = path.join(__dirname, '../public'); // For Vercel build output
 const staticPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distPublicPath) ? distPublicPath : path.join(process.cwd(), 'server/public'));
+
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').split(':')[0];
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+  if (!isLocalhost && host && host !== CANONICAL_HOST) {
+    res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
+    return;
+  }
+
+  const redirectMap: Record<string, string> = {
+    '/privacy.html': '/privacy',
+    '/terms.html': '/terms',
+    '/delete-account.html': '/delete-account',
+    '/how-it-works.html': '/how-it-works',
+    '/split-bills-nz.html': '/split-bills-nz',
+    '/flatmate-expenses.html': '/flatmate-expenses',
+  };
+
+  const redirectTarget = redirectMap[req.path];
+  if (redirectTarget) {
+    const queryString = req.originalUrl.includes('?') ? `?${req.originalUrl.split('?')[1]}` : '';
+    res.redirect(301, `${redirectTarget}${queryString}`);
+    return;
+  }
+
+  if (req.path.length > 1 && req.path.endsWith('/')) {
+    const [pathOnly, query] = req.originalUrl.split('?');
+    const trimmedPath = pathOnly.replace(/\/+$/, '');
+    const queryString = query ? `?${query}` : '';
+    res.redirect(301, `${trimmedPath}${queryString}`);
+    return;
+  }
+
+  next();
+});
 
 app.use('/admin', express.static(path.join(staticPath, 'admin')));
 app.use('/images', express.static(path.join(staticPath, 'images')));
