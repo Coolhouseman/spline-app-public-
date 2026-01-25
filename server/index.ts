@@ -33,7 +33,7 @@ const PORT = parseInt(process.env.PORT || '8081', 10);
 app.use(cors());
 app.use(express.json());
 
-const CANONICAL_HOST = process.env.CANONICAL_HOST || 'spline.nz';
+const CANONICAL_HOST = process.env.CANONICAL_HOST || 'www.spline.nz';
 
 // Static file paths - work in both local and Vercel serverless
 const publicPath = path.join(__dirname, 'public');

@@ -6,7 +6,7 @@
   
   <!-- Homepage -->
   <url>
-    <loc>https://spline.nz/</loc>
+    <loc>https://www.spline.nz/</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
@@ -14,7 +14,7 @@
   
   <!-- Terms and Conditions -->
   <url>
-    <loc>https://spline.nz/terms</loc>
+    <loc>https://www.spline.nz/terms</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
@@ -22,7 +22,7 @@
   
   <!-- Privacy Policy -->
   <url>
-    <loc>https://spline.nz/privacy</loc>
+    <loc>https://www.spline.nz/privacy</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
@@ -30,7 +30,7 @@
 
   <!-- How it works -->
   <url>
-    <loc>https://spline.nz/how-it-works</loc>
+    <loc>https://www.spline.nz/how-it-works</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -38,7 +38,7 @@
 
   <!-- Split bills NZ -->
   <url>
-    <loc>https://spline.nz/split-bills-nz</loc>
+    <loc>https://www.spline.nz/split-bills-nz</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -46,7 +46,7 @@
 
   <!-- Flatmate expenses -->
   <url>
-    <loc>https://spline.nz/flatmate-expenses</loc>
+    <loc>https://www.spline.nz/flatmate-expenses</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -54,7 +54,7 @@
   
   <!-- Account Deletion (Google Play compliance) -->
   <url>
-    <loc>https://spline.nz/delete-account</loc>
+    <loc>https://www.spline.nz/delete-account</loc>
     <lastmod>2026-01-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>

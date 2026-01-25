@@ -11,4 +11,4 @@ Disallow: /admin/
 Disallow: /api/
 
 # Sitemap location
-Sitemap: https://spline.nz/sitemap.xml
+Sitemap: https://www.spline.nz/sitemap.xml
