@@ -39,6 +39,7 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST || 'www.spline.nz';
 const publicPath = path.join(__dirname, 'public');
 const distPublicPath = path.join(__dirname, '../public'); // For Vercel build output
 const staticPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distPublicPath) ? distPublicPath : path.join(process.cwd(), 'server/public'));
+const adminIndexPath = path.join(staticPath, 'admin', 'index.html');
 
 app.use((req, res, next) => {
   const forwardedHost = (req.headers['x-forwarded-host'] || '').toString().split(',')[0].trim();
@@ -77,6 +78,13 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/admin', (req, res) => {
+  if (fs.existsSync(adminIndexPath)) {
+    res.sendFile(adminIndexPath);
+  } else {
+    res.status(404).send('admin index not found');
+  }
+});
 app.use('/admin', express.static(path.join(staticPath, 'admin')));
 app.use('/images', express.static(path.join(staticPath, 'images')));
 
