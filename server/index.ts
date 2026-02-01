@@ -41,7 +41,9 @@ const distPublicPath = path.join(__dirname, '../public'); // For Vercel build ou
 const staticPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distPublicPath) ? distPublicPath : path.join(process.cwd(), 'server/public'));
 
 app.use((req, res, next) => {
-  const host = (req.headers.host || '').split(':')[0];
+  const forwardedHost = (req.headers['x-forwarded-host'] || '').toString().split(',')[0].trim();
+  const hostHeader = forwardedHost || (req.headers.host || '');
+  const host = hostHeader.split(':')[0];
   const isLocalhost = host === 'localhost' || host === '127.0.0.1';
   if (!isLocalhost && host && host !== CANONICAL_HOST) {
     res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
