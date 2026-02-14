@@ -15,7 +15,7 @@ export default function SignupPasswordScreen({ navigation, route }: Props) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const params = route.params as { firstName: string; lastName: string; email: string };
+  const params = route.params as { firstName: string; lastName: string; email: string; referralCode?: string };
 
   const getPasswordStrength = (pwd: string) => {
     if (pwd.length < 6) return { text: 'Too short', color: theme.danger };

@@ -293,6 +293,20 @@ export default function WalletScreen({ navigation }: Props) {
     }
   };
 
+  const handleWithdrawPress = () => {
+    Alert.alert(
+      'Confirm Withdrawal',
+      'Withdrawing money from Spline wallet will deduct your account experience, are you sure you want to continue?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: () => navigation.navigate('Withdrawal'),
+        },
+      ]
+    );
+  };
+
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case 'deposit':
@@ -429,7 +443,7 @@ export default function WalletScreen({ navigation }: Props) {
                 styles.actionButton,
                 { backgroundColor: 'rgba(255,255,255,0.2)', opacity: pressed ? 0.7 : 1 }
               ]}
-              onPress={() => navigation.navigate('Withdrawal')}
+              onPress={handleWithdrawPress}
             >
               <Feather name="arrow-up-circle" size={20} color="#FFFFFF" />
               <ThemedText style={[Typography.body, { color: '#FFFFFF', marginLeft: Spacing.sm }]}>
@@ -491,7 +505,7 @@ export default function WalletScreen({ navigation }: Props) {
           </ThemedText>
           <Pressable
             style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, marginTop: Spacing.sm }]}
-            onPress={() => navigation.navigate('Withdrawal')}
+            onPress={handleWithdrawPress}
           >
             <ThemedText style={[Typography.small, { color: theme.primary, fontWeight: '600' }]}>
               Update Bank Details
@@ -504,7 +518,7 @@ export default function WalletScreen({ navigation }: Props) {
             styles.addBankButton,
             { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
           ]}
-          onPress={() => navigation.navigate('Withdrawal')}
+          onPress={handleWithdrawPress}
         >
           <Feather name="briefcase" size={18} color={theme.textSecondary} />
           <View style={{ marginLeft: Spacing.md, flex: 1 }}>

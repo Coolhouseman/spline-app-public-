@@ -14,10 +14,21 @@ export default function SignupDOBScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [date, setDate] = useState(new Date(2000, 0, 1));
   const [dateText, setDateText] = useState('2000-01-01');
-  const params = route.params as { firstName: string; lastName: string; email: string; password: string; phone: string };
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+  const params = route.params as { firstName: string; lastName: string; email: string; password: string; phone: string; referralCode?: string };
+
+  const formatDateForStorage = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const handleContinue = () => {
-    navigation.navigate('SignupProfilePicture', { ...params, dateOfBirth: date.toISOString() });
+    navigation.navigate('SignupProfilePicture', {
+      ...params,
+      dateOfBirth: formatDateForStorage(date),
+    });
   };
 
   const handleDateTextChange = (text: string) => {
@@ -61,11 +72,43 @@ export default function SignupDOBScreen({ navigation, route }: Props) {
                 autoCapitalize="none"
               />
             </View>
+          ) : Platform.OS === 'android' ? (
+            <>
+              <Pressable
+                style={[
+                  styles.androidDateButton,
+                  {
+                    backgroundColor: theme.backgroundSecondary,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setShowAndroidPicker(true)}
+              >
+                <ThemedText style={[Typography.body, { color: theme.text }]}>
+                  {formatDateForStorage(date)}
+                </ThemedText>
+              </Pressable>
+              {showAndroidPicker ? (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event, selectedDate) => {
+                    setShowAndroidPicker(false);
+                    if (event.type === 'set' && selectedDate) {
+                      setDate(selectedDate);
+                    }
+                  }}
+                  maximumDate={new Date()}
+                  minimumDate={new Date(1900, 0, 1)}
+                />
+              ) : null}
+            </>
           ) : (
             <DateTimePicker
               value={date}
               mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display="spinner"
               onChange={(event, selectedDate) => {
                 if (selectedDate) {
                   setDate(selectedDate);
@@ -110,6 +153,15 @@ const styles = StyleSheet.create({
   },
   webInputContainer: {
     width: '100%',
+  },
+  androidDateButton: {
+    width: '100%',
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
   },
   webInput: {
     height: Spacing.buttonHeight,

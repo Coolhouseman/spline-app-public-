@@ -18,6 +18,7 @@ export default function SignupPhoneOTPScreen({ navigation, route }: Props) {
     email: string; 
     password: string;
     phone: string;
+    referralCode?: string;
   };
   
   const [code, setCode] = useState(['', '', '', '', '', '']);

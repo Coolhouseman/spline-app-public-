@@ -7,6 +7,11 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
+import {
+  getTrackingPermissionsAsync,
+  requestTrackingPermissionsAsync,
+} from "expo-tracking-transparency";
+import { Settings } from "react-native-fbsdk-next";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import AuthStackNavigator from "@/navigation/AuthStackNavigator";
@@ -200,6 +205,31 @@ function AppContent() {
 export default function App() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+
+  useEffect(() => {
+    const initializeFacebookSdk = async () => {
+      try {
+        Settings.setAutoLogAppEventsEnabled(true);
+
+        if (Platform.OS === "ios") {
+          let { status } = await getTrackingPermissionsAsync();
+
+          if (status === "undetermined") {
+            const result = await requestTrackingPermissionsAsync();
+            status = result.status;
+          }
+
+          Settings.setAdvertiserTrackingEnabled(status === "granted");
+        }
+
+        Settings.initializeSDK();
+      } catch (error) {
+        console.error("Facebook SDK initialization failed:", error);
+      }
+    };
+
+    void initializeFacebookSdk();
+  }, []);
 
   return (
     <ErrorBoundary>

@@ -12,7 +12,7 @@ import adminRouter from './routes/admin.routes';
 import stripeRouter from './routes/stripe.routes';
 import gamificationRouter from './routes/gamification.routes';
 import { DailyReminderService } from './services/dailyReminder.service';
-import { sendWithdrawalNotification, sendUserReportNotification } from './services/email.service';
+import { sendWithdrawalNotification, sendUserReportNotification, sendReferralInviteEmail } from './services/email.service';
 
 dotenv.config();
 
@@ -230,6 +230,23 @@ function getSupabaseServer() {
     console.error('Failed to initialize Supabase admin client:', err);
     return null;
   }
+}
+
+async function getAuthenticatedUser(req: express.Request) {
+  const supabaseServer = getSupabaseServer();
+  if (!supabaseServer) {
+    return { error: 'Server misconfigured: Supabase admin key not set', status: 500 as const, user: null as any, supabaseServer: null as any };
+  }
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { error: 'Authentication required', status: 401 as const, user: null as any, supabaseServer };
+  }
+  const token = authHeader.replace('Bearer ', '');
+  const { data: authData, error: authError } = await supabaseServer.auth.getUser(token);
+  if (authError || !authData.user) {
+    return { error: 'Invalid or expired token', status: 401 as const, user: null as any, supabaseServer };
+  }
+  return { error: null, status: 200 as const, user: authData.user, supabaseServer };
 }
 
 // API endpoint for password reset - uses service role key server-side
@@ -1023,6 +1040,25 @@ app.delete('/api/delete-account', async (req, res) => {
     }
     
     // 7. Delete user profile
+    const { error: referralsAsInviterError } = await supabaseServer
+      .from('referrals')
+      .delete()
+      .eq('inviter_id', userId);
+    if (referralsAsInviterError && referralsAsInviterError.code !== 'PGRST116') {
+      console.error('Referrals (inviter) delete error:', referralsAsInviterError.message);
+      deletionErrors.push(`referrals_inviter: ${referralsAsInviterError.message}`);
+    }
+
+    const { error: referralsAsInviteeError } = await supabaseServer
+      .from('referrals')
+      .delete()
+      .eq('invitee_user_id', userId);
+    if (referralsAsInviteeError && referralsAsInviteeError.code !== 'PGRST116') {
+      console.error('Referrals (invitee) delete error:', referralsAsInviteeError.message);
+      deletionErrors.push(`referrals_invitee: ${referralsAsInviteeError.message}`);
+    }
+
+    // 7. Delete user profile
     const { error: profileError } = await supabaseServer
       .from('users')
       .delete()
@@ -1300,6 +1336,206 @@ app.post('/api/reports', async (req, res) => {
   } catch (error: any) {
     console.error('Create report error:', error);
     res.status(500).json({ error: 'An error occurred while creating report' });
+  }
+});
+
+// =============================================
+// REFERRAL ENDPOINTS
+// =============================================
+app.post('/api/referrals/send-invite', async (req, res) => {
+  try {
+    const auth = await getAuthenticatedUser(req);
+    if (auth.error || !auth.user || !auth.supabaseServer) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    const supabaseServer = auth.supabaseServer;
+    const inviterId = auth.user.id;
+    const inviteeEmail = String(req.body?.inviteeEmail || '').trim().toLowerCase();
+    if (!inviteeEmail || !inviteeEmail.includes('@')) {
+      return res.status(400).json({ error: 'Valid invitee email is required' });
+    }
+
+    const { data: inviter, error: inviterError } = await supabaseServer
+      .from('users')
+      .select('id, name, unique_id, email')
+      .eq('id', inviterId)
+      .single();
+    if (inviterError || !inviter) {
+      return res.status(404).json({ error: 'Inviter profile not found' });
+    }
+    if ((inviter.email || '').toLowerCase() === inviteeEmail) {
+      return res.status(400).json({ error: 'You cannot refer your own email' });
+    }
+
+    const referralCode = inviter.unique_id;
+    const appUrl = process.env.APP_WEBSITE_URL || 'https://splinepay.replit.app';
+    const inviteLink = `${appUrl}/go/app-store?ref=${encodeURIComponent(referralCode)}`;
+
+    const { error: referralError } = await supabaseServer
+      .from('referrals')
+      .upsert(
+        {
+          inviter_id: inviter.id,
+          invitee_email: inviteeEmail,
+          referral_code: referralCode,
+          status: 'pending',
+          email_sent_at: new Date().toISOString(),
+        },
+        { onConflict: 'inviter_id,invitee_email' }
+      );
+    if (referralError) {
+      return res.status(500).json({ error: 'Failed to store referral invite' });
+    }
+
+    await sendReferralInviteEmail({
+      inviterName: inviter.name || 'Your friend',
+      inviterUniqueId: inviter.unique_id,
+      inviteeEmail,
+      referralCode,
+      inviteLink,
+    });
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('Referral invite error:', error);
+    return res.status(500).json({ error: 'Failed to send referral invite' });
+  }
+});
+
+app.post('/api/referrals/register', async (req, res) => {
+  try {
+    const auth = await getAuthenticatedUser(req);
+    if (auth.error || !auth.user || !auth.supabaseServer) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    const supabaseServer = auth.supabaseServer;
+    const inviteeUserId = auth.user.id;
+    const referralCode = String(req.body?.referralCode || '').trim();
+    if (!referralCode) {
+      return res.status(400).json({ error: 'Referral code is required' });
+    }
+
+    const [{ data: invitee }, { data: inviter }] = await Promise.all([
+      supabaseServer.from('users').select('id, email').eq('id', inviteeUserId).single(),
+      supabaseServer.from('users').select('id, unique_id').eq('unique_id', referralCode).maybeSingle(),
+    ]);
+
+    if (!invitee || !inviter) {
+      return res.status(404).json({ error: 'Invalid referral code' });
+    }
+    if (invitee.id === inviter.id) {
+      return res.status(400).json({ error: 'You cannot refer yourself' });
+    }
+
+    const inviteeEmail = (invitee.email || '').toLowerCase();
+    const now = new Date().toISOString();
+    const { data: existing } = await supabaseServer
+      .from('referrals')
+      .select('id, status')
+      .eq('invitee_user_id', invitee.id)
+      .maybeSingle();
+
+    if (existing && existing.status === 'card_bound') {
+      return res.json({ success: true, status: 'already_completed' });
+    }
+
+    if (existing?.id) {
+      await supabaseServer
+        .from('referrals')
+        .update({
+          inviter_id: inviter.id,
+          referral_code: referralCode,
+          status: 'registered',
+          registered_at: now,
+        })
+        .eq('id', existing.id);
+    } else {
+      await supabaseServer
+        .from('referrals')
+        .upsert(
+          {
+            inviter_id: inviter.id,
+            invitee_email: inviteeEmail,
+            invitee_user_id: invitee.id,
+            referral_code: referralCode,
+            status: 'registered',
+            registered_at: now,
+          },
+          { onConflict: 'inviter_id,invitee_email' }
+        );
+    }
+
+    return res.json({ success: true, status: 'registered' });
+  } catch (error: any) {
+    console.error('Referral register error:', error);
+    return res.status(500).json({ error: 'Failed to register referral code' });
+  }
+});
+
+app.post('/api/referrals/complete-card-bind', async (req, res) => {
+  try {
+    const auth = await getAuthenticatedUser(req);
+    if (auth.error || !auth.user || !auth.supabaseServer) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    const supabaseServer = auth.supabaseServer;
+    const inviteeUserId = auth.user.id;
+
+    const { data: referral } = await supabaseServer
+      .from('referrals')
+      .select('*')
+      .eq('invitee_user_id', inviteeUserId)
+      .in('status', ['pending', 'registered'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!referral) {
+      return res.json({ success: true, status: 'no_referral' });
+    }
+
+    const now = new Date().toISOString();
+    await supabaseServer
+      .from('referrals')
+      .update({
+        status: 'card_bound',
+        card_bound_at: now,
+        invitee_user_id: inviteeUserId,
+      })
+      .eq('id', referral.id);
+
+    const inviterId = referral.inviter_id as string;
+    const rewardXP = Number(referral.reward_xp || 40);
+
+    // Increment referred count on inviter profile
+    await supabaseServer.rpc('update_gamification_stats', {
+      p_user_id: inviterId,
+      p_stat_type: 'friends_referred',
+      p_amount: 1,
+    });
+
+    // Award XP to inviter and invitee (non-blocking)
+    await Promise.allSettled([
+      supabaseServer.rpc('award_xp', {
+        p_user_id: inviterId,
+        p_xp_amount: rewardXP,
+        p_action_type: 'friend_referral',
+        p_description: `Referral completed: +${rewardXP} XP`,
+        p_split_event_id: null,
+      }),
+      supabaseServer.rpc('award_xp', {
+        p_user_id: inviteeUserId,
+        p_xp_amount: rewardXP,
+        p_action_type: 'referred_signup',
+        p_description: `Joined with referral and added a card: +${rewardXP} XP`,
+        p_split_event_id: null,
+      }),
+    ]);
+
+    return res.json({ success: true, status: 'completed' });
+  } catch (error: any) {
+    console.error('Referral completion error:', error);
+    return res.status(500).json({ error: 'Failed to complete referral reward' });
   }
 });
 

@@ -4,6 +4,7 @@ import { GamificationService } from './gamification.service';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
+import { ReferralsService } from './referrals.service';
 
 export interface SignupData {
   name: string;
@@ -14,6 +15,7 @@ export interface SignupData {
   bio?: string;
   uniqueId: string;
   profilePicture?: string;
+  referralCode?: string;
 }
 
 export class AuthService {
@@ -101,6 +103,11 @@ export class AuthService {
       console.log('Gamification profile initialized');
     } catch (gamificationError) {
       console.error('Failed to initialize gamification (non-blocking):', gamificationError);
+    }
+
+    // Register referral code (non-blocking)
+    if (data.referralCode) {
+      await ReferralsService.registerOnSignup(data.referralCode);
     }
 
     return { user: profile as User, session: authData.session };

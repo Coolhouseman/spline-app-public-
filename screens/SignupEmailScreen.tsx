@@ -12,7 +12,14 @@ type Props = NativeStackScreenProps<any, 'SignupEmail'>;
 export default function SignupEmailScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [email, setEmail] = useState('');
-  const params = route.params as { firstName: string; lastName: string };
+  const [referralCode, setReferralCode] = useState('');
+  const params = route.params as { firstName: string; lastName: string; referralCode?: string };
+
+  React.useEffect(() => {
+    if (params.referralCode) {
+      setReferralCode(params.referralCode);
+    }
+  }, [params.referralCode]);
 
   const isValidEmail = (email: string) => {
     return email.includes('@') && email.includes('.');
@@ -20,7 +27,7 @@ export default function SignupEmailScreen({ navigation, route }: Props) {
 
   const handleContinue = () => {
     if (email.trim() && isValidEmail(email)) {
-      navigation.navigate('SignupPassword', { ...params, email });
+      navigation.navigate('SignupPassword', { ...params, email, referralCode: referralCode.trim() || undefined });
     }
   };
 
@@ -48,6 +55,23 @@ export default function SignupEmailScreen({ navigation, route }: Props) {
           keyboardType="email-address"
           autoFocus
           autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.lg, marginBottom: Spacing.xs }]}>
+          Referral code (optional)
+        </ThemedText>
+        <TextInput
+          style={[styles.input, {
+            backgroundColor: theme.surface,
+            color: theme.text,
+            borderColor: theme.border
+          }]}
+          placeholder="Enter referral code"
+          placeholderTextColor={theme.textSecondary}
+          value={referralCode}
+          onChangeText={setReferralCode}
+          autoCapitalize="characters"
           autoCorrect={false}
         />
       </ThemedView>

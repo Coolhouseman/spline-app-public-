@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { FriendsService } from '@/services/friends.service';
 import { GamificationService } from '@/services/gamification.service';
+import { ReferralsService } from '@/services/referrals.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 import type { BlockedUser } from '@/shared/types';
@@ -102,6 +103,10 @@ export default function FriendsScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<SelectedFriend | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [referralEmail, setReferralEmail] = useState('');
+  const [sendingReferral, setSendingReferral] = useState(false);
+  const [referredCount, setReferredCount] = useState(0);
+  const [showReferralHelp, setShowReferralHelp] = useState(false);
 
   const handleFriendPress = (details: FriendWithDetails['friend_details']) => {
     if (!details) return;
@@ -156,6 +161,8 @@ export default function FriendsScreen({ navigation }: Props) {
       setFriends(friendsWithGamification);
       setPendingRequests(requestsData as unknown as PendingRequest[]);
       setSentRequests(sentData as unknown as SentRequest[]);
+      const myProfile = await GamificationService.getProfile(user.id);
+      setReferredCount(myProfile?.friends_referred || 0);
     } catch (error) {
       console.error('Failed to load friends:', error);
     } finally {
@@ -264,6 +271,25 @@ export default function FriendsScreen({ navigation }: Props) {
     return name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       uniqueId.includes(searchQuery);
   });
+
+  const handleSendReferral = async () => {
+    const email = referralEmail.trim().toLowerCase();
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    setSendingReferral(true);
+    try {
+      await ReferralsService.sendInvite(email);
+      setReferralEmail('');
+      Alert.alert('Invite Sent', 'Your referral invite has been sent successfully.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to send referral invite.');
+    } finally {
+      setSendingReferral(false);
+    }
+  };
 
   const filteredPendingRequests = pendingRequests.filter(r => {
     return !blockedUserIds.has(r.requester?.id || '');
@@ -436,6 +462,51 @@ export default function FriendsScreen({ navigation }: Props) {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+      </View>
+
+      <View style={[styles.referralCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.referralHeader}>
+          <ThemedText style={[Typography.h2, { color: theme.text }]}>Refer a friend</ThemedText>
+          <Pressable
+            style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => setShowReferralHelp((prev) => !prev)}
+          >
+            <View style={[styles.helpIcon, { borderColor: theme.border }]}>
+              <ThemedText style={[Typography.small, { color: theme.textSecondary, fontWeight: '700' }]}>?</ThemedText>
+            </View>
+          </Pressable>
+        </View>
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+          Successful referrals: {referredCount}
+        </ThemedText>
+        {showReferralHelp ? (
+          <ThemedText style={[Typography.small, { color: theme.textSecondary, marginTop: Spacing.sm }]}>
+            Earn +40 XP for both of you when your invited friend signs up and successfully binds their payment card.
+          </ThemedText>
+        ) : null}
+        <View style={styles.referralInputRow}>
+          <TextInput
+            style={[styles.referralInput, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border, color: theme.text }]}
+            placeholder="Friend's email"
+            placeholderTextColor={theme.textSecondary}
+            value={referralEmail}
+            onChangeText={setReferralEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <Pressable
+            style={({ pressed }) => [
+              styles.referralButton,
+              { backgroundColor: theme.primary, opacity: pressed || sendingReferral ? 0.7 : 1 },
+            ]}
+            onPress={handleSendReferral}
+            disabled={sendingReferral}
+          >
+            <ThemedText style={[Typography.caption, { color: '#FFFFFF', fontWeight: '600' }]}>
+              {sendingReferral ? 'Sending...' : 'Invite'}
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -631,6 +702,48 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: Spacing.md,
     fontSize: 16,
+  },
+  referralCard: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    padding: Spacing.md,
+  },
+  referralHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  helpIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  referralInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    fontSize: 14,
+  },
+  referralButton: {
+    height: 42,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
     paddingHorizontal: Spacing.xl,

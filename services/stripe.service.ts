@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { resolveBackendOrigin } from '../utils/backend';
+import { ReferralsService } from './referrals.service';
 
 // Use centralized backend URL resolution that handles all platforms properly
 const SERVER_URL = resolveBackendOrigin();
@@ -395,6 +396,8 @@ export class StripeService {
       throw new Error('Failed to save card details. Please try again.');
     }
 
+    await ReferralsService.completeCardBindingReward();
+
     return { brand: card.brand, last4: card.last4 };
   }
 
@@ -427,6 +430,8 @@ export class StripeService {
         bank_connected: true,
       })
       .eq('user_id', userId);
+
+    await ReferralsService.completeCardBindingReward();
   }
 
   /**

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Spline",
     "slug": "spline",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "splitpaymentapp",
@@ -20,8 +20,19 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
-      "buildNumber": "23",
+      "buildNumber": "28",
       "infoPlist": {
+        "FacebookAppID": "933543809238060",
+        "FacebookClientToken": "8d6c6f52607a2af2a6f592c09c3475ff",
+        "FacebookDisplayName": "Spline",
+        "FacebookAutoLogAppEventsEnabled": true,
+        "FacebookAdvertiserIDCollectionEnabled": true,
+        "NSUserTrackingUsageDescription": "Spline uses your device identifier to measure install attribution and improve ad relevance.",
+        "SKAdNetworkItems": [
+          {
+            "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork"
+          }
+        ],
         "NSCameraUsageDescription": "Spline needs camera access to capture receipt photos and profile pictures.",
         "NSPhotoLibraryUsageDescription": "Spline needs photo library access to upload receipt images and profile pictures.",
         "NSFaceIDUsageDescription": "Spline uses Face ID for secure authentication."
@@ -42,7 +53,7 @@
     },
     "android": {
       "package": "com.splitpaymentapp.split",
-      "versionCode": 4,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -67,6 +78,17 @@
     "plugins": [
       "expo-web-browser",
       [
+        "react-native-fbsdk-next",
+        {
+          "appID": "933543809238060",
+          "clientToken": "8d6c6f52607a2af2a6f592c09c3475ff",
+          "displayName": "Spline",
+          "scheme": "fb933543809238060",
+          "advertiserIDCollectionEnabled": true,
+          "autoLogAppEventsEnabled": true
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Spline needs access to your photos to upload receipts and profile pictures.",
@@ -79,7 +101,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#2563EB"
         }
-      ]
+      ],
+      "expo-tracking-transparency"
     ],
     "experiments": {
       "reactCompiler": true

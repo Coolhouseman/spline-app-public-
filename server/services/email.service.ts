@@ -1,6 +1,8 @@
 import nodemailer from 'nodemailer';
 
 const ADMIN_EMAIL = 'hzeng1217@gmail.com';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || '';
 
 interface WithdrawalEmailData {
   userId: string;
@@ -21,6 +23,14 @@ interface WithdrawalEmailData {
   remainingBalance: number;   // User's remaining wallet balance after withdrawal
 }
 
+interface ReferralInviteEmailData {
+  inviterName: string;
+  inviterUniqueId: string;
+  inviteeEmail: string;
+  referralCode: string;
+  inviteLink: string;
+}
+
 const createTransporter = () => {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '587');
@@ -39,6 +49,45 @@ const createTransporter = () => {
     auth: { user, pass }
   });
 };
+
+async function sendWithResend(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<boolean> {
+  if (!RESEND_API_KEY || !RESEND_FROM_EMAIL) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM_EMAIL,
+        to: [params.to],
+        subject: params.subject,
+        html: params.html,
+        text: params.text || '',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Resend API error:', response.status, errorBody);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Resend request failed:', error);
+    return false;
+  }
+}
 
 export async function sendWithdrawalNotification(data: WithdrawalEmailData): Promise<boolean> {
   const transporter = createTransporter();
@@ -173,6 +222,72 @@ This is an automated notification from Spline Pay.
     console.error('Failed to send withdrawal notification email:', error);
     // Log minimal info without PII on failure
     console.log(`[Email] FALLBACK - Transaction ${data.transactionId}, Amount: $${data.netAmount.toFixed(2)}`);
+    return false;
+  }
+}
+
+export async function sendReferralInviteEmail(data: ReferralInviteEmailData): Promise<boolean> {
+  const subject = `${data.inviterName} invited you to join Spline`;
+  const textContent = `
+${data.inviterName} has invited you to join Spline.
+
+Use this referral code during signup: ${data.referralCode}
+
+Or open this invite link:
+${data.inviteLink}
+
+When you sign up and add your payment card, both of you receive +40 XP.
+`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1f2937;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
+    <h2 style="margin: 0 0 12px;">You're invited to Spline</h2>
+    <p style="margin: 0 0 12px;"><strong>${data.inviterName}</strong> invited you to join Spline and split bills with friends.</p>
+    <p style="margin: 0 0 8px;">Your referral code:</p>
+    <div style="display:inline-block; padding:8px 12px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe; font-weight:700;">
+      ${data.referralCode}
+    </div>
+    <p style="margin: 16px 0;">When you sign up and bind your payment card, both of you get <strong>+40 XP</strong>.</p>
+    <a href="${data.inviteLink}" style="display:inline-block; background:#2563eb; color:#fff; text-decoration:none; padding:10px 16px; border-radius:8px; font-weight:600;">
+      Open Invitation
+    </a>
+  </div>
+</body>
+</html>
+`;
+
+  // Prefer Resend for referral invites
+  const sentViaResend = await sendWithResend({
+    to: data.inviteeEmail,
+    subject,
+    html: htmlContent,
+    text: textContent,
+  });
+  if (sentViaResend) {
+    return true;
+  }
+
+  // Fallback to SMTP transport if Resend is not configured or fails
+  const transporter = createTransporter();
+  if (!transporter) {
+    console.log(`[Email] Referral invite for ${data.inviteeEmail} (no Resend/SMTP configured)`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: data.inviteeEmail,
+      subject,
+      text: textContent,
+      html: htmlContent,
+    });
+    return true;
+  } catch (error) {
+    console.error('Failed to send referral invite email via SMTP fallback:', error);
     return false;
   }
 }

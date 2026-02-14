@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -34,8 +34,10 @@ export default function NotificationsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [isClearingAll, setIsClearingAll] = useState(false);
   const [friendshipStatuses, setFriendshipStatuses] = useState<FriendshipStatus>({});
   const [splitParticipantStatuses, setSplitParticipantStatuses] = useState<SplitParticipantStatus>({});
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   const loadFriendshipStatuses = useCallback(async (notifs: Notification[]) => {
     const friendRequestNotifs = notifs.filter(n => n.type === 'friend_request');
@@ -256,6 +258,35 @@ export default function NotificationsScreen({ navigation }: Props) {
     }
   };
 
+  const clearAllNotifications = async () => {
+    if (!user || unreadCount === 0 || isClearingAll) return;
+
+    setIsClearingAll(true);
+    try {
+      await NotificationsService.markAllAsRead(user.id);
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, read: true })));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to clear all notifications:', error);
+      Alert.alert('Error', 'Failed to clear notifications. Please try again.');
+    } finally {
+      setIsClearingAll(false);
+    }
+  };
+
+  const handleClearAllPress = () => {
+    if (unreadCount === 0 || isClearingAll) return;
+
+    Alert.alert(
+      'Clear all notifications?',
+      'This will mark all notifications as read.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear all', style: 'destructive', onPress: clearAllNotifications },
+      ]
+    );
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'split_invite':
@@ -455,7 +486,25 @@ export default function NotificationsScreen({ navigation }: Props) {
           <Feather name="arrow-left" size={24} color={theme.text} />
         </Pressable>
         <ThemedText style={[Typography.h1, { color: theme.text }]}>Notifications</ThemedText>
-        <View style={{ width: 40 }} />
+        <Pressable
+          style={({ pressed }) => [
+            styles.clearAllButton,
+            {
+              opacity: pressed ? 0.7 : unreadCount > 0 && !isClearingAll ? 1 : 0.4,
+              borderColor: theme.border,
+            },
+          ]}
+          onPress={handleClearAllPress}
+          disabled={unreadCount === 0 || isClearingAll}
+        >
+          {isClearingAll ? (
+            <ActivityIndicator size="small" color={theme.textSecondary} />
+          ) : (
+            <ThemedText style={[Typography.small, { color: theme.textSecondary, fontWeight: '600' }]}>
+              Clear all
+            </ThemedText>
+          )}
+        </Pressable>
       </View>
 
       <FlatList
@@ -494,6 +543,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     justifyContent: 'center',
+  },
+  clearAllButton: {
+    minWidth: 72,
+    height: 32,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
   },
   listContent: {
     paddingHorizontal: Spacing.xl,

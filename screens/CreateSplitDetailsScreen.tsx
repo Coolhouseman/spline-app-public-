@@ -50,7 +50,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
     return total - calculateTotalShares();
   };
 
-  const pickImage = async () => {
+  const pickImageFromLibrary = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Please grant camera roll permission');
@@ -59,13 +59,39 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
 
     if (!result.canceled) {
       setReceiptImage(result.assets[0].uri);
     }
+  };
+
+  const captureImageWithCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant camera permission');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setReceiptImage(result.assets[0].uri);
+    }
+  };
+
+  const showReceiptSourceOptions = () => {
+    Alert.alert('Add Receipt', 'Choose how you want to add your receipt', [
+      { text: 'Take Photo', onPress: captureImageWithCamera },
+      { text: 'Choose from Library', onPress: pickImageFromLibrary },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handleCreateEvent = async () => {
@@ -217,36 +243,39 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           keyboardType="decimal-pad"
         />
 
+        <Pressable
+          style={[styles.uploadButton, { 
+            backgroundColor: receiptImage ? theme.success + '20' : theme.surface,
+            borderColor: theme.border,
+            marginTop: Spacing.lg
+          }]}
+          onPress={showReceiptSourceOptions}
+        >
+          <Feather 
+            name={receiptImage ? 'check-circle' : 'upload'} 
+            size={24} 
+            color={receiptImage ? theme.success : theme.textSecondary} 
+          />
+          <ThemedText style={[Typography.body, { color: theme.text, marginLeft: Spacing.md }]}>
+            {receiptImage ? 'Receipt added' : 'Add Receipt'}
+          </ThemedText>
+        </Pressable>
+
+        {receiptImage ? (
+          <Image source={{ uri: receiptImage }} style={styles.receiptPreview} resizeMode="contain" />
+        ) : null}
+
         {splitType === 'equal' ? (
           <View style={[styles.infoBox, { backgroundColor: theme.primary + '20', marginTop: Spacing.lg }]}>
             <ThemedText style={[Typography.caption, { color: theme.text }]}>
               Each person pays: ${calculatedShare}
             </ThemedText>
+            <ThemedText style={[Typography.small, { color: theme.textSecondary, marginTop: Spacing.xs }]}>
+              Receipt is optional for equal splits.
+            </ThemedText>
           </View>
         ) : (
           <>
-            <Pressable
-              style={[styles.uploadButton, { 
-                backgroundColor: receiptImage ? theme.success + '20' : theme.surface,
-                borderColor: theme.border,
-                marginTop: Spacing.lg
-              }]}
-              onPress={pickImage}
-            >
-              <Feather 
-                name={receiptImage ? 'check-circle' : 'upload'} 
-                size={24} 
-                color={receiptImage ? theme.success : theme.textSecondary} 
-              />
-              <ThemedText style={[Typography.body, { color: theme.text, marginLeft: Spacing.md }]}>
-                {receiptImage ? 'Receipt uploaded' : 'Upload Receipt'}
-              </ThemedText>
-            </Pressable>
-
-            {receiptImage ? (
-              <Image source={{ uri: receiptImage }} style={styles.receiptPreview} />
-            ) : null}
-
             <ThemedText style={[Typography.h2, { color: theme.text, marginTop: Spacing.xl, marginBottom: Spacing.md }]}>
               Your Share
             </ThemedText>
@@ -341,6 +370,7 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: BorderRadius.sm,
     marginTop: Spacing.lg,
+    backgroundColor: '#00000010',
   },
   participantRow: {
     flexDirection: 'row',

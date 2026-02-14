@@ -12,11 +12,11 @@ type Props = NativeStackScreenProps<any, 'SignupLastName'>;
 export default function SignupLastNameScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [lastName, setLastName] = useState('');
-  const { firstName } = route.params as { firstName: string };
+  const { firstName, referralCode } = route.params as { firstName: string; referralCode?: string };
 
   const handleContinue = () => {
     if (lastName.trim()) {
-      navigation.navigate('SignupEmail', { firstName, lastName });
+      navigation.navigate('SignupEmail', { firstName, lastName, referralCode });
     }
   };
 

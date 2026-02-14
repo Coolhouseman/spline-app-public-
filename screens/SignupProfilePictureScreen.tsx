@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<any, 'SignupProfilePicture'>;
 export default function SignupProfilePictureScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const [profilePicture, setProfilePicture] = useState<string | undefined>();
-  const params = route.params as { firstName: string; lastName: string; email: string; password: string; phone: string; dateOfBirth: string };
+  const params = route.params as { firstName: string; lastName: string; email: string; password: string; phone: string; dateOfBirth: string; referralCode?: string };
 
   const pickImage = async () => {
     // Check current permission status first

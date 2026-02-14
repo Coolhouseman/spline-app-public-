@@ -15,7 +15,7 @@ export default function SignupPhoneScreen({ navigation, route }: Props) {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const params = route.params as { firstName: string; lastName: string; email: string; password: string };
+  const params = route.params as { firstName: string; lastName: string; email: string; password: string; referralCode?: string };
 
   const formatPhoneDisplay = (value: string) => {
     const digits = value.replace(/\D/g, '');

@@ -67,6 +67,105 @@ interface BlinkPayBankDetails {
 }
 
 export class WalletService {
+  private static getEventNameFromDescription(description: string): string | null {
+    const match = description.match(/for\s+(.+)$/i);
+    return match?.[1]?.trim() || null;
+  }
+
+  private static async enrichSplitReceivedDescriptions(
+    transactions: Transaction[]
+  ): Promise<Transaction[]> {
+    const splitReceived = transactions.filter(
+      (tx) => tx.type === 'split_received' && tx.split_event_id
+    );
+
+    if (splitReceived.length === 0) {
+      return transactions;
+    }
+
+    const splitEventIds = Array.from(
+      new Set(splitReceived.map((tx) => tx.split_event_id).filter(Boolean) as string[])
+    );
+
+    const [participantsRes, eventsRes] = await Promise.all([
+      supabase
+        .from('split_participants')
+        .select('split_event_id, amount, updated_at, user:user_id(name)')
+        .in('split_event_id', splitEventIds)
+        .eq('status', 'paid')
+        .eq('is_creator', false),
+      supabase
+        .from('split_events')
+        .select('id, name')
+        .in('id', splitEventIds),
+    ]);
+
+    if (participantsRes.error || eventsRes.error) {
+      return transactions;
+    }
+
+    const participants = (participantsRes.data || []) as Array<{
+      split_event_id: string;
+      amount: number;
+      updated_at: string;
+      user?: { name?: string } | null;
+    }>;
+
+    const eventNameById = new Map(
+      ((eventsRes.data || []) as Array<{ id: string; name: string }>).map((event) => [
+        event.id,
+        event.name,
+      ])
+    );
+
+    const updated = transactions.map((tx) => {
+      if (tx.type !== 'split_received' || !tx.split_event_id) {
+        return tx;
+      }
+
+      const txAmount = Number(tx.amount);
+      const txTime = new Date(tx.created_at).getTime();
+
+      const candidates = participants.filter((p) => {
+        if (p.split_event_id !== tx.split_event_id) return false;
+        const amountMatches = Math.abs(Number(p.amount) - txAmount) < 0.01;
+        if (!amountMatches) return false;
+
+        const participantTime = new Date(p.updated_at).getTime();
+        const timeDiffMs = Math.abs(participantTime - txTime);
+        return Number.isFinite(timeDiffMs) && timeDiffMs <= 30 * 60 * 1000;
+      });
+
+      const bestMatch = candidates.sort((a, b) => {
+        const aDiff = Math.abs(new Date(a.updated_at).getTime() - txTime);
+        const bDiff = Math.abs(new Date(b.updated_at).getTime() - txTime);
+        return aDiff - bDiff;
+      })[0];
+
+      const payerName = bestMatch?.user?.name?.trim();
+      if (!payerName) {
+        return tx;
+      }
+
+      const eventName =
+        eventNameById.get(tx.split_event_id) || this.getEventNameFromDescription(tx.description);
+
+      if (!eventName) {
+        return {
+          ...tx,
+          description: `Received payment from ${payerName}`,
+        };
+      }
+
+      return {
+        ...tx,
+        description: `Received payment from ${payerName} for ${eventName}`,
+      };
+    });
+
+    return updated;
+  }
+
   /**
    * Safely get current balance with fresh data
    * Always call this before any balance-modifying operation
@@ -1096,6 +1195,13 @@ export class WalletService {
 
     console.log(`${withdrawalType === 'fast' ? 'Fast' : 'Standard'} withdrawal completed atomically: wallet deducted $${amount.toFixed(2)}, user receives $${netAmount.toFixed(2)}. New balance: $${result.new_balance}`);
     
+    // Apply XP penalty for withdrawals (non-blocking)
+    try {
+      await GamificationService.onWithdrawal(userId, amount, withdrawalType);
+    } catch (gamificationError) {
+      console.error('Gamification withdrawal penalty error (non-blocking):', gamificationError);
+    }
+
     // Send email notification to admin (fire and forget - don't block on this)
     this.sendWithdrawalNotification(
       userId,
@@ -1621,8 +1727,12 @@ export class WalletService {
       }
       return tx;
     });
-    
-    return sanitizedData as Transaction[];
+
+    const enriched = await this.enrichSplitReceivedDescriptions(
+      sanitizedData as Transaction[]
+    );
+
+    return enriched;
   }
 
   static async getWithdrawalBankAccount(userId: string, transactionId: string): Promise<string | null> {

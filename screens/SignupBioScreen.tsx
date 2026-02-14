@@ -24,6 +24,7 @@ export default function SignupBioScreen({ navigation, route }: Props) {
     phone: string; 
     dateOfBirth: string;
     profilePicture?: string;
+    referralCode?: string;
   };
 
   const MAX_LENGTH = 200;
@@ -43,6 +44,7 @@ export default function SignupBioScreen({ navigation, route }: Props) {
         bio: bio.trim(),
         uniqueId: uniqueId,
         profilePicture: params.profilePicture,
+        referralCode: params.referralCode,
       });
       
     } catch (error: any) {

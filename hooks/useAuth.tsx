@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const userSetBySignup = useRef(false);
   const instanceId = useRef(Date.now());
+  const STARTUP_AUTH_TIMEOUT_MS = 8000;
 
   useEffect(() => {
     console.log(`[AuthProvider ${instanceId.current}] Mounted`);
@@ -103,16 +104,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUser = async () => {
     try {
       console.log(`[AuthProvider ${instanceId.current}] Loading user...`);
-      const session = await AuthService.restoreSession();
+      const restorePromise = AuthService.restoreSession();
+      const session = await Promise.race([
+        restorePromise,
+        new Promise<null>((resolve) =>
+          setTimeout(() => {
+            console.warn(
+              `[AuthProvider ${instanceId.current}] Startup auth timed out after ${STARTUP_AUTH_TIMEOUT_MS}ms`
+            );
+            resolve(null);
+          }, STARTUP_AUTH_TIMEOUT_MS)
+        ),
+      ]);
+
       if (session) {
         console.log(`[AuthProvider ${instanceId.current}] Restored user:`, session.user.id);
         setUser(session.user);
       } else {
-        console.log(`[AuthProvider ${instanceId.current}] No session found`);
+        console.log(`[AuthProvider ${instanceId.current}] No session restored during startup`);
+        // Keep listening for a late session resolution after initial UI unlock.
+        void restorePromise
+          .then((lateSession) => {
+            if (lateSession?.user) {
+              console.log(
+                `[AuthProvider ${instanceId.current}] Restored user after timeout:`,
+                lateSession.user.id
+              );
+              setUser(lateSession.user);
+            }
+          })
+          .catch((lateError) => {
+            console.error('[Auth] Late session restore failed:', lateError);
+          });
       }
     } catch (error) {
       console.error('Failed to load user:', error);
     } finally {
+      // Never block first paint forever waiting on auth/network.
       setIsLoading(false);
     }
   };

@@ -93,6 +93,16 @@ export class NotificationsService {
     if (error) throw error;
   }
 
+  static async markAllAsRead(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', userId)
+      .eq('read', false);
+
+    if (error) throw error;
+  }
+
   static async deleteNotification(notificationId: string): Promise<void> {
     const { error } = await supabase
       .from('notifications')

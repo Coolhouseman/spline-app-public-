@@ -17,6 +17,7 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
   const { clearSignupOverlay } = useAuth();
   const [date, setDate] = useState(new Date(2000, 0, 1));
   const [dateText, setDateText] = useState('2000-01-01');
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -53,10 +54,13 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
     setError('');
 
     try {
+      const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+        date.getDate()
+      ).padStart(2, '0')}`;
       const { error: updateError } = await supabase
         .from('users')
         .update({ 
-          date_of_birth: date.toISOString().split('T')[0],
+          date_of_birth: formattedDate,
           updated_at: new Date().toISOString()
         })
         .eq('id', params.userId);
@@ -131,11 +135,46 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
                 autoCapitalize="none"
               />
             </View>
+          ) : Platform.OS === 'android' ? (
+            <>
+              <Pressable
+                style={[
+                  styles.androidDateButton,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: error ? Colors.light.danger : theme.border,
+                  },
+                ]}
+                onPress={() => setShowAndroidPicker(true)}
+              >
+                <ThemedText style={[Typography.body, { color: theme.text }]}>
+                  {`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+                    date.getDate()
+                  ).padStart(2, '0')}`}
+                </ThemedText>
+              </Pressable>
+              {showAndroidPicker ? (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event, selectedDate) => {
+                    setShowAndroidPicker(false);
+                    if (event.type === 'set' && selectedDate) {
+                      setDate(selectedDate);
+                      setError('');
+                    }
+                  }}
+                  maximumDate={new Date()}
+                  minimumDate={new Date(1900, 0, 1)}
+                />
+              ) : null}
+            </>
           ) : (
             <DateTimePicker
               value={date}
               mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display="spinner"
               onChange={(event, selectedDate) => {
                 if (selectedDate) {
                   setDate(selectedDate);
@@ -192,6 +231,15 @@ const styles = StyleSheet.create({
   },
   webInputContainer: {
     width: '100%',
+  },
+  androidDateButton: {
+    width: '100%',
+    height: Spacing.buttonHeight,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
   },
   webInput: {
     height: Spacing.buttonHeight,

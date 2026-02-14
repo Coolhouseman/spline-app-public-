@@ -74,6 +74,11 @@ export const XP_VALUES = {
   SPLITS_25_CREATED: 250,
   SPLITS_50_CREATED: 500,
   SPLITS_100_CREATED: 1000,
+  
+  // Withdrawal penalty (retention mechanic)
+  WITHDRAWAL_XP_PENALTY_PERCENT: 0.03, // 3% of current XP
+  WITHDRAWAL_XP_PENALTY_MIN: 5,
+  WITHDRAWAL_XP_PENALTY_MAX: 60,
 };
 
 // Level titles and their perks
@@ -814,6 +819,48 @@ export class GamificationService {
 
     // Check badges for creator
     await this.checkAndAwardBadges(creatorId);
+  }
+
+  /**
+   * Handle wallet withdrawal - apply XP penalty
+   * Penalty is intentionally moderate: 3% of current XP (min 5, max 60)
+   */
+  static async onWithdrawal(
+    userId: string,
+    amount: number,
+    withdrawalType: 'fast' | 'normal'
+  ): Promise<XPAwardResult | null> {
+    try {
+      const profile = await this.getProfile(userId);
+      const currentXP = Math.max(0, profile?.total_xp || 0);
+
+      if (currentXP <= 0) {
+        return null;
+      }
+
+      const rawPenalty = Math.round(currentXP * XP_VALUES.WITHDRAWAL_XP_PENALTY_PERCENT);
+      const penalty = Math.min(
+        currentXP,
+        Math.max(
+          XP_VALUES.WITHDRAWAL_XP_PENALTY_MIN,
+          Math.min(rawPenalty, XP_VALUES.WITHDRAWAL_XP_PENALTY_MAX)
+        )
+      );
+
+      if (penalty <= 0) {
+        return null;
+      }
+
+      return await this.awardXP(
+        userId,
+        -penalty,
+        'withdrawal_penalty',
+        `Withdrawal (${withdrawalType}) of $${amount.toFixed(2)}: -${penalty} XP`
+      );
+    } catch (error) {
+      console.log('Gamification: Withdrawal penalty skipped (error)');
+      return null;
+    }
   }
 
   /**

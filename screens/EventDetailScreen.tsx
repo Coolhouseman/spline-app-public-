@@ -574,6 +574,7 @@ export default function EventDetailScreen({ route, navigation }: Props) {
               <Image 
                 source={{ uri: event.receipt_image }} 
                 style={[styles.receiptImage, { borderColor: theme.border }]}
+                resizeMode="contain"
               />
               <View style={styles.zoomHint}>
                 <Feather name="maximize-2" size={16} color={theme.textSecondary} />
@@ -917,6 +918,7 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
+    backgroundColor: '#00000010',
   },
   zoomHint: {
     flexDirection: 'row',

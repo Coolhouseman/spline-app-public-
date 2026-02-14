@@ -371,21 +371,31 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
             <ThemedText style={[styles.recentXPTitle, { color: colors.text }]}>
               Recent Activity
             </ThemedText>
-            {profile.recent_xp.slice(0, 3).map((item, index) => (
-              <View key={index} style={styles.recentXPItem}>
-                <View style={[styles.xpBadge, { backgroundColor: colors.primary + '20' }]}>
-                  <ThemedText style={[styles.xpBadgeText, { color: colors.primary }]}>
-                    +{item.xp_amount}
+            {profile.recent_xp.slice(0, 3).map((item, index) => {
+              const isPenalty = item.xp_amount < 0;
+              return (
+                <View key={index} style={styles.recentXPItem}>
+                  <View
+                    style={[
+                      styles.xpBadge,
+                      { backgroundColor: isPenalty ? colors.danger + '20' : colors.primary + '20' },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[styles.xpBadgeText, { color: isPenalty ? colors.danger : colors.primary }]}
+                    >
+                      {isPenalty ? item.xp_amount : `+${item.xp_amount}`}
+                    </ThemedText>
+                  </View>
+                  <ThemedText
+                    style={[styles.recentXPDescription, { color: colors.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {item.description}
                   </ThemedText>
                 </View>
-                <ThemedText
-                  style={[styles.recentXPDescription, { color: colors.textSecondary }]}
-                  numberOfLines={1}
-                >
-                  {item.description}
-                </ThemedText>
-              </View>
-            ))}
+              );
+            })}
           </View>
         ) : null}
       </Animated.View>
