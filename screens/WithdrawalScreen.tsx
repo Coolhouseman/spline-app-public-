@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareScrollView';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { useLevelUp } from '@/contexts/LevelUpContext';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { WalletService, NZ_BANKS } from '@/services/wallet.service';
 import { Wallet } from '@/shared/types';
@@ -16,6 +17,7 @@ type Props = NativeStackScreenProps<any, 'Withdrawal'>;
 export default function WithdrawalScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { triggerXPRefresh } = useLevelUp();
   const [amount, setAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'fast' | 'normal' | null>(null);
   const [loading, setLoading] = useState(false);
@@ -172,6 +174,7 @@ export default function WithdrawalScreen({ navigation }: Props) {
             setLoading(true);
             try {
               await WalletService.withdrawWithType(user.id, withdrawAmount, selectedMethod);
+              triggerXPRefresh();
               
               Alert.alert(
                 'Withdrawal Initiated',

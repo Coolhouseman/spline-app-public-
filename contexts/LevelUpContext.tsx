@@ -47,7 +47,7 @@ export function LevelUpProvider({ children }: { children: ReactNode }) {
   const checkLevelUp = useCallback((result: XPAwardResult) => {
     if (result.leveled_up) {
       showLevelUp(result);
-    } else if (result.xp_awarded > 0) {
+    } else if (result.xp_awarded !== 0) {
       triggerXPRefresh();
     }
   }, [showLevelUp, triggerXPRefresh]);

@@ -851,14 +851,67 @@ export class GamificationService {
         return null;
       }
 
-      return await this.awardXP(
+      const description = `Withdrawal (${withdrawalType}) of $${amount.toFixed(2)}: -${penalty} XP`;
+      const rpcResult = await this.awardXP(
         userId,
         -penalty,
         'withdrawal_penalty',
-        `Withdrawal (${withdrawalType}) of $${amount.toFixed(2)}: -${penalty} XP`
+        description
       );
+      if (rpcResult) {
+        return rpcResult;
+      }
+
+      // Fallback path when RPC is unavailable: persist penalty directly.
+      const oldLevel = profile?.current_level || calculateLevel(currentXP);
+      const newTotalXP = Math.max(0, currentXP - penalty);
+      const newLevel = calculateLevel(newTotalXP);
+      const xpToNextLevel = calculateXPToNextLevel(newTotalXP, newLevel);
+      const newTitle = getTitleForLevel(newLevel);
+
+      const { error: upsertError } = await supabase
+        .from('user_gamification')
+        .upsert(
+          {
+            user_id: userId,
+            total_xp: newTotalXP,
+            current_level: newLevel,
+            xp_to_next_level: xpToNextLevel,
+            title: newTitle,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (upsertError) {
+        console.error('Gamification: Withdrawal penalty fallback upsert failed:', upsertError);
+        return null;
+      }
+
+      const { error: historyError } = await supabase.from('xp_history').insert({
+        user_id: userId,
+        xp_amount: -penalty,
+        action_type: 'withdrawal_penalty',
+        description,
+        level_at_award: newLevel,
+      });
+
+      if (historyError) {
+        console.error('Gamification: Withdrawal penalty fallback history insert failed:', historyError);
+      }
+
+      return {
+        success: true,
+        xp_awarded: -penalty,
+        new_total_xp: newTotalXP,
+        new_level: newLevel,
+        xp_to_next_level: xpToNextLevel,
+        leveled_up: false,
+        old_level: oldLevel,
+        new_title: newTitle,
+      };
     } catch (error) {
-      console.log('Gamification: Withdrawal penalty skipped (error)');
+      console.error('Gamification: Withdrawal penalty skipped (error):', error);
       return null;
     }
   }

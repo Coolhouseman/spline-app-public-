@@ -14,6 +14,9 @@ export interface CreateSplitData {
   creatorId: string;
   participants: { userId: string; amount: number }[];
   receiptUri?: string;
+  receiptBase64?: string;
+  receiptMimeType?: string;
+  receiptFileName?: string;
 }
 
 export interface CreateSplitResult {
@@ -30,6 +33,50 @@ const SPLIT_RATE_LIMITS = {
   MAX_SPLITS_PER_DAY: 5,
   ONE_HOUR_MS: 60 * 60 * 1000,
   ONE_DAY_MS: 24 * 60 * 60 * 1000,
+};
+
+const mimeTypeFromExtension = (ext: string): string => {
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    default:
+      return 'image/jpeg';
+  }
+};
+
+const extensionFromMimeType = (mimeType?: string): string | undefined => {
+  if (!mimeType) return undefined;
+  switch (mimeType.toLowerCase()) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/heic':
+      return 'heic';
+    case 'image/heif':
+      return 'heif';
+    default:
+      return undefined;
+  }
+};
+
+const extensionFromPath = (path?: string): string | undefined => {
+  if (!path) return undefined;
+  const cleanPath = path.split('?')[0].split('#')[0];
+  const match = cleanPath.match(/\.([a-zA-Z0-9]+)$/);
+  if (!match) return undefined;
+  return match[1].toLowerCase();
 };
 
 export class SplitsService {
@@ -69,22 +116,36 @@ export class SplitsService {
     
     let receiptUrl: string | undefined;
 
-    if (data.receiptUri) {
-      const fileExt = data.receiptUri.split('.').pop()?.toLowerCase() || 'jpg';
+    if (data.receiptUri || data.receiptBase64) {
+      const fileExt = (
+        extensionFromPath(data.receiptFileName) ||
+        extensionFromMimeType(data.receiptMimeType) ||
+        extensionFromPath(data.receiptUri) ||
+        'jpg'
+      );
       const fileName = `receipt-${Date.now()}.${fileExt}`;
       const filePath = `receipts/${fileName}`;
-      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+      const contentType = data.receiptMimeType || mimeTypeFromExtension(fileExt);
 
       let uploadData: ArrayBuffer | Blob;
 
-      if (Platform.OS === 'web') {
+      if (data.receiptBase64) {
+        uploadData = decode(data.receiptBase64);
+      } else if (Platform.OS === 'web') {
+        if (!data.receiptUri) throw new Error('Missing receipt image data');
         const response = await fetch(data.receiptUri);
         uploadData = await response.blob();
       } else {
-        const base64 = await FileSystem.readAsStringAsync(data.receiptUri, {
-          encoding: 'base64',
-        });
-        uploadData = decode(base64);
+        if (!data.receiptUri) throw new Error('Missing receipt image data');
+        try {
+          const response = await fetch(data.receiptUri);
+          uploadData = await response.arrayBuffer();
+        } catch {
+          const base64 = await FileSystem.readAsStringAsync(data.receiptUri, {
+            encoding: 'base64',
+          });
+          uploadData = decode(base64);
+        }
       }
 
       const { error: uploadError } = await supabase.storage

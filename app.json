@@ -12,7 +12,7 @@
     "extra": {
       "supabaseUrl": "https://vhicohutiocnfjwsofhy.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoaWNvaHV0aW9jbmZqd3NvZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTQ2NjksImV4cCI6MjA3OTUzMDY2OX0.KJuLMgwy2Dfu5amY0VN4KfPemfsJcRB3EI0AxZQpOb8",
-      "backendUrl": "https://splinepay.replit.app",
+      "backendUrl": "https://www.spline.nz",
       "eas": {
         "projectId": "01cd5886-e4f7-44e0-a739-12e90948f1fe"
       }

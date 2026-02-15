@@ -33,6 +33,9 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
   const [myShare, setMyShare] = useState('');
   const [friendShares, setFriendShares] = useState<{ [key: string]: string }>({});
   const [receiptImage, setReceiptImage] = useState<string | undefined>();
+  const [receiptBase64, setReceiptBase64] = useState<string | undefined>();
+  const [receiptMimeType, setReceiptMimeType] = useState<string | undefined>();
+  const [receiptFileName, setReceiptFileName] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
 
   const updateFriendShare = (odooUserId: string, value: string) => {
@@ -61,10 +64,15 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
       mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.8,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setReceiptImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setReceiptImage(asset.uri);
+      setReceiptBase64(asset.base64 ?? undefined);
+      setReceiptMimeType(asset.mimeType ?? undefined);
+      setReceiptFileName(asset.fileName ?? undefined);
     }
   };
 
@@ -79,10 +87,15 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
       mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.8,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setReceiptImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setReceiptImage(asset.uri);
+      setReceiptBase64(asset.base64 ?? undefined);
+      setReceiptMimeType(asset.mimeType ?? undefined);
+      setReceiptFileName(asset.fileName ?? undefined);
     }
   };
 
@@ -158,6 +171,9 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           creatorId: user.id,
           participants,
           receiptUri: receiptImage,
+          receiptBase64,
+          receiptMimeType,
+          receiptFileName,
         });
         
         if (result.xpResult) {
@@ -181,6 +197,9 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
           creatorId: user.id,
           participants,
           receiptUri: receiptImage,
+          receiptBase64,
+          receiptMimeType,
+          receiptFileName,
         });
         
         if (result.xpResult) {
@@ -195,7 +214,8 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
       });
     } catch (error) {
       console.error('Failed to create split:', error);
-      Alert.alert('Error', 'Failed to create split. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to create split. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

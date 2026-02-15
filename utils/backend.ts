@@ -4,21 +4,31 @@ import * as Constants from 'expo-constants';
  * Resolves the backend API origin for BlinkPay operations.
  * 
  * Environment support:
- * - Web/Replit: Uses EXPO_PUBLIC_BACKEND_URL (HTTPS)
+ * - Production/staging: Uses EXPO_PUBLIC_BACKEND_URL or app config `extra.backendUrl`
  * - Expo Go on LAN: Auto-detects from hostUri (HTTP)
  * - Expo Go tunnel (exp.host/u.expo.dev): Requires EXPO_PUBLIC_BACKEND_URL
  * - Localhost web: Falls back to http://localhost:8082
  * 
  * Note: Expo tunnel mode cannot reach local backends.
- * Set EXPO_PUBLIC_BACKEND_URL to your Replit domain for tunnel testing.
+ * Set EXPO_PUBLIC_BACKEND_URL to your deployed backend URL for tunnel testing.
  */
-const PRODUCTION_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
+const APP_CONFIG_BACKEND_URL =
+  (Constants.default.expoConfig?.extra as { backendUrl?: string } | undefined)?.backendUrl;
+const PRODUCTION_BACKEND_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  APP_CONFIG_BACKEND_URL ||
+  'https://www.spline.nz';
 
 export const resolveBackendOrigin = (): string => {
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
     const url = process.env.EXPO_PUBLIC_BACKEND_URL;
     console.log('Using EXPO_PUBLIC_BACKEND_URL:', url);
     return url;
+  }
+
+  if (APP_CONFIG_BACKEND_URL) {
+    console.log('Using app config backendUrl:', APP_CONFIG_BACKEND_URL);
+    return APP_CONFIG_BACKEND_URL;
   }
   
   const isDev = __DEV__;

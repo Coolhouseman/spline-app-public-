@@ -4,6 +4,24 @@ import { resolveBackendOrigin } from '@/utils/backend';
 const SERVER_URL = resolveBackendOrigin();
 
 export class ReferralsService {
+  private static async parseResponse(response: Response): Promise<any> {
+    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
+
+    if (contentType.includes('application/json')) {
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error('Server returned invalid JSON. Please try again.');
+      }
+    }
+
+    return {
+      error: `Unexpected server response from ${SERVER_URL} (HTTP ${response.status}).`,
+      raw: text,
+    };
+  }
+
   private static async getAuthToken(): Promise<string> {
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
@@ -24,7 +42,7 @@ export class ReferralsService {
       body: JSON.stringify({ inviteeEmail }),
     });
 
-    const result = await response.json();
+    const result = await this.parseResponse(response);
     if (!response.ok) {
       throw new Error(result.error || 'Failed to send referral invite');
     }
