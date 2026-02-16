@@ -165,18 +165,34 @@ app.get('/delete-account', (req, res) => {
   }
 });
 
+const APP_STORE_URL = 'https://apps.apple.com/nz/app/spline/id6756173884';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.splitpaymentapp.split';
+
 app.get('/go/app-store', (req, res) => {
-  // Trackable redirect endpoint (use for Meta custom conversions / URL rules)
-  // Prevent indexing of redirect endpoints.
   res.set('X-Robots-Tag', 'noindex, nofollow');
-  res.redirect(302, 'https://apps.apple.com/nz/app/spline/id6756173884');
+  res.redirect(302, APP_STORE_URL);
 });
 
 app.get('/go/google-play', (req, res) => {
-  // Trackable redirect endpoint (use for Meta custom conversions / URL rules)
-  // Prevent indexing of redirect endpoints.
   res.set('X-Robots-Tag', 'noindex, nofollow');
-  res.redirect(302, 'https://play.google.com/store/apps/details?id=com.splitpaymentapp.split');
+  res.redirect(302, PLAY_STORE_URL);
+});
+
+// Smart invite link: detects iOS vs Android and redirects to the right store.
+// Used in referral emails so "Open Invitation" sends users to the correct store.
+app.get('/go/invite', (req, res) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  const ua = (req.headers['user-agent'] || '').toLowerCase();
+  const isIos = /iphone|ipad|ipod/.test(ua);
+  const isAndroid = /android/.test(ua);
+  if (isIos) {
+    return res.redirect(302, APP_STORE_URL);
+  }
+  if (isAndroid) {
+    return res.redirect(302, PLAY_STORE_URL);
+  }
+  // Desktop / unknown: redirect to App Store (fallback)
+  res.redirect(302, APP_STORE_URL);
 });
 
 app.get('/how-it-works', (req, res) => {
@@ -1368,8 +1384,8 @@ app.post('/api/referrals/send-invite', async (req, res) => {
     }
 
     const referralCode = inviter.unique_id;
-    const appUrl = process.env.APP_WEBSITE_URL || 'https://splinepay.replit.app';
-    const inviteLink = `${appUrl}/go/app-store?ref=${encodeURIComponent(referralCode)}`;
+    const appUrl = process.env.APP_WEBSITE_URL || 'https://www.spline.nz';
+    const inviteLink = `${appUrl}/go/invite?ref=${encodeURIComponent(referralCode)}`;
 
     const { error: referralError } = await supabaseServer
       .from('referrals')
