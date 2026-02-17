@@ -15,6 +15,7 @@ export default function SocialSignupBioScreen({ navigation, route }: Props) {
   const { theme } = useTheme();
   const { clearSignupOverlay } = useAuth();
   const [bio, setBio] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
   
   const params = route.params as { 
@@ -54,7 +55,8 @@ export default function SocialSignupBioScreen({ navigation, route }: Props) {
       navigation.navigate('SocialSignupComplete', { 
         userId: params.userId,
         fullName: params.fullName,
-        provider: params.provider
+        provider: params.provider,
+        referralCode: referralCode.trim() || undefined,
       });
     } catch (error: any) {
       Alert.alert('Error', 'Failed to save bio. Please try again.');
@@ -104,6 +106,23 @@ export default function SocialSignupBioScreen({ navigation, route }: Props) {
         <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.sm }]}>
           {bio.length}/{MAX_LENGTH} characters
         </ThemedText>
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.lg, marginBottom: Spacing.xs }]}>
+          Referral code (optional)
+        </ThemedText>
+        <TextInput
+          style={[styles.referralInput, {
+            backgroundColor: theme.surface,
+            color: theme.text,
+            borderColor: theme.border
+          }]}
+          placeholder="Enter referral code"
+          placeholderTextColor={theme.textSecondary}
+          value={referralCode}
+          onChangeText={setReferralCode}
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
       </ThemedView>
 
       <View style={styles.footer}>
@@ -146,6 +165,13 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
+    fontSize: 16,
+  },
+  referralInput: {
+    height: Spacing.inputHeight,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: Spacing.lg,
     fontSize: 16,
   },
   footer: {

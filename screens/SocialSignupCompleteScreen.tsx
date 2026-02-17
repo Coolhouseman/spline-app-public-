@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/hooks/useTheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { ReferralsService } from '@/services/referrals.service';
 
 type Props = NativeStackScreenProps<any, 'SocialSignupComplete'>;
 
@@ -27,6 +28,7 @@ export default function SocialSignupCompleteScreen({ route }: Props) {
     userId: string;
     fullName?: string;
     provider: 'apple' | 'google';
+    referralCode?: string;
   };
 
   const checkmarkScale = useSharedValue(0);
@@ -58,6 +60,9 @@ export default function SocialSignupCompleteScreen({ route }: Props) {
   }));
 
   const handleGetStarted = async () => {
+    if (params.referralCode?.trim()) {
+      await ReferralsService.registerOnSignup(params.referralCode);
+    }
     await refreshUser();
   };
 
