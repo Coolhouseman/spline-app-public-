@@ -283,7 +283,10 @@ export default function FriendsScreen({ navigation }: Props) {
     try {
       await ReferralsService.sendInvite(email);
       setReferralEmail('');
-      Alert.alert('Invite Sent', 'Your referral invite has been sent successfully.');
+      Alert.alert(
+        'Invite Sent',
+        'Your referral invite has been sent successfully.\n\nIf they have not received it, please ask them to check their Spam or Junk folder.'
+      );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to send referral invite.');
     } finally {

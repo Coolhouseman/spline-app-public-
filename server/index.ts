@@ -328,6 +328,65 @@ async function logReferralRiskEvent(
   }
 }
 
+async function ensureMutualReferralFriendship(
+  supabaseServer: any,
+  userAId: string,
+  userBId: string
+): Promise<{ linked: boolean; blocked: boolean }> {
+  if (!userAId || !userBId || userAId === userBId) {
+    return { linked: false, blocked: false };
+  }
+
+  try {
+    const { data: blockedRelation } = await supabaseServer
+      .from('blocked_users')
+      .select('id')
+      .or(`and(user_id.eq.${userAId},blocked_user_id.eq.${userBId}),and(user_id.eq.${userBId},blocked_user_id.eq.${userAId})`)
+      .limit(1)
+      .maybeSingle();
+
+    if (blockedRelation?.id) {
+      return { linked: false, blocked: true };
+    }
+  } catch (err) {
+    // Non-blocking: if blocked_users table/query fails, still attempt linking.
+    console.warn('Blocked-user check failed during referral friend linking:', err);
+  }
+
+  const pairs: Array<[string, string]> = [
+    [userAId, userBId],
+    [userBId, userAId],
+  ];
+
+  for (const [sourceId, targetId] of pairs) {
+    const { data: existing } = await supabaseServer
+      .from('friends')
+      .select('id, status')
+      .eq('user_id', sourceId)
+      .eq('friend_id', targetId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      if (existing.status !== 'accepted') {
+        await supabaseServer
+          .from('friends')
+          .update({ status: 'accepted' })
+          .eq('id', existing.id);
+      }
+    } else {
+      await supabaseServer
+        .from('friends')
+        .insert({
+          user_id: sourceId,
+          friend_id: targetId,
+          status: 'accepted',
+        });
+    }
+  }
+
+  return { linked: true, blocked: false };
+}
+
 // API endpoint for password reset - uses service role key server-side
 app.post('/api/reset-password', async (req, res) => {
   try {
@@ -1699,7 +1758,22 @@ app.post('/api/referrals/register', async (req, res) => {
       metadata: { isAdminBypass },
     });
 
-    return res.json({ success: true, status: 'registered' });
+    let friendshipLinked = false;
+    let friendshipBlocked = false;
+    try {
+      const friendshipResult = await ensureMutualReferralFriendship(supabaseServer, inviter.id, invitee.id);
+      friendshipLinked = friendshipResult.linked;
+      friendshipBlocked = friendshipResult.blocked;
+    } catch (friendshipError) {
+      console.error('Referral friendship linking failed (non-blocking):', friendshipError);
+    }
+
+    return res.json({
+      success: true,
+      status: 'registered',
+      friendshipLinked,
+      friendshipBlocked,
+    });
   } catch (error: any) {
     console.error('Referral register error:', error);
     return res.status(500).json({ error: 'Failed to register referral code' });
