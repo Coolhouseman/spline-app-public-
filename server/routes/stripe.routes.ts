@@ -471,6 +471,7 @@ router.post('/verify-native-setup', userAuthMiddleware, async (req: Authenticate
         last4: paymentMethod.card.last4 || '****',
         exp_month: paymentMethod.card.exp_month,
         exp_year: paymentMethod.card.exp_year,
+        fingerprint: paymentMethod.card.fingerprint || null,
       },
       testMode,
     });

@@ -387,6 +387,7 @@ export class StripeService {
         stripe_payment_method_id: paymentMethodId,
         card_brand: card.brand,
         card_last4: card.last4,
+        card_fingerprint: card.fingerprint || null,
         bank_connected: true,
       })
       .eq('user_id', userId);
@@ -427,6 +428,7 @@ export class StripeService {
         stripe_payment_method_id: paymentMethodId,
         card_brand: card.brand,
         card_last4: card.last4,
+        card_fingerprint: card.fingerprint || null,
         bank_connected: true,
       })
       .eq('user_id', userId);

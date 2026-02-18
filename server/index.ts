@@ -4,10 +4,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 import blinkpayRouter from './routes/blinkpay.routes';
 import notificationsRouter from './routes/notifications.routes';
-import twilioRouter from './routes/twilio.routes';
+import twilioRouter, { lookupPhoneRisk, normalizeE164Phone } from './routes/twilio.routes';
 import adminRouter from './routes/admin.routes';
 import stripeRouter from './routes/stripe.routes';
 import gamificationRouter from './routes/gamification.routes';
@@ -263,6 +264,68 @@ async function getAuthenticatedUser(req: express.Request) {
     return { error: 'Invalid or expired token', status: 401 as const, user: null as any, supabaseServer };
   }
   return { error: null, status: 200 as const, user: authData.user, supabaseServer };
+}
+
+const ADMIN_REFERRAL_BYPASS_PHONE = '+64278877007';
+const FRAUD_WINDOW_HOURS = Number(process.env.REFERRAL_FRAUD_WINDOW_HOURS || 24);
+const MAX_REFERRALS_PER_IP_WINDOW = Number(process.env.REFERRAL_MAX_IP_PER_WINDOW || 3);
+const MAX_REFERRALS_PER_DEVICE_WINDOW = Number(process.env.REFERRAL_MAX_DEVICE_PER_WINDOW || 3);
+const MAX_REFERRALS_PER_INVITER_WINDOW = Number(process.env.REFERRAL_MAX_INVITER_PER_WINDOW || 10);
+
+const sha256Hex = (input: string): string =>
+  crypto.createHash('sha256').update(input).digest('hex');
+
+const getClientIp = (req: express.Request): string => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  if (Array.isArray(forwarded) && forwarded[0]) {
+    return forwarded[0];
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+};
+
+const normalizeBankAccount = (input?: string | null): string => {
+  if (!input) return '';
+  return String(input).replace(/\D/g, '');
+};
+
+const extractBankAccountFromWallet = (wallet: any): string => {
+  const bankDetails = wallet?.bank_details as Record<string, any> | null | undefined;
+  const direct = bankDetails?.account_number || wallet?.bank_account || '';
+  return normalizeBankAccount(direct);
+};
+
+async function logReferralRiskEvent(
+  supabaseServer: any,
+  payload: {
+    referralId?: string | null;
+    inviterId?: string | null;
+    inviteeUserId?: string | null;
+    phoneHash?: string | null;
+    ipHash?: string | null;
+    deviceHash?: string | null;
+    decision: 'allow' | 'block' | 'review';
+    reasons: string[];
+    metadata?: Record<string, any>;
+  }
+) {
+  try {
+    await supabaseServer.from('referral_risk_events').insert({
+      referral_id: payload.referralId || null,
+      inviter_id: payload.inviterId || null,
+      invitee_user_id: payload.inviteeUserId || null,
+      phone_hash: payload.phoneHash || null,
+      ip_hash: payload.ipHash || null,
+      device_hash: payload.deviceHash || null,
+      decision: payload.decision,
+      reasons: payload.reasons || [],
+      metadata: payload.metadata || {},
+    });
+  } catch (err) {
+    console.error('Failed to log referral risk event:', err);
+  }
 }
 
 // API endpoint for password reset - uses service role key server-side
@@ -1432,7 +1495,7 @@ app.post('/api/referrals/register', async (req, res) => {
     }
 
     const [{ data: invitee }, { data: inviter }] = await Promise.all([
-      supabaseServer.from('users').select('id, email').eq('id', inviteeUserId).single(),
+      supabaseServer.from('users').select('id, email, phone').eq('id', inviteeUserId).single(),
       supabaseServer.from('users').select('id, unique_id').eq('unique_id', referralCode).maybeSingle(),
     ]);
 
@@ -1441,6 +1504,150 @@ app.post('/api/referrals/register', async (req, res) => {
     }
     if (invitee.id === inviter.id) {
       return res.status(400).json({ error: 'You cannot refer yourself' });
+    }
+
+    const normalizedPhone = normalizeE164Phone(invitee.phone || '');
+    const isAdminBypass = normalizedPhone === ADMIN_REFERRAL_BYPASS_PHONE;
+    const clientIp = getClientIp(req);
+    const deviceSignatureRaw = String(req.headers['x-device-signature'] || '').trim();
+    const phoneHash = normalizedPhone ? sha256Hex(normalizedPhone) : null;
+    const ipHash = clientIp ? sha256Hex(clientIp) : null;
+    const deviceHash = deviceSignatureRaw ? sha256Hex(deviceSignatureRaw) : null;
+
+    if (!isAdminBypass && !normalizedPhone) {
+      await logReferralRiskEvent(supabaseServer, {
+        inviterId: inviter.id,
+        inviteeUserId: invitee.id,
+        ipHash,
+        deviceHash,
+        decision: 'block',
+        reasons: ['missing_phone'],
+      });
+      return res.status(400).json({ error: 'A verified phone number is required before using referral codes.' });
+    }
+
+    if (!isAdminBypass) {
+      const { data: phoneOwner } = await supabaseServer
+        .from('users')
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .neq('id', invitee.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (phoneOwner?.id) {
+        await logReferralRiskEvent(supabaseServer, {
+          inviterId: inviter.id,
+          inviteeUserId: invitee.id,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['duplicate_phone'],
+        });
+        return res.status(400).json({
+          error: 'This phone number has already been used for another account.',
+          status: 'blocked_duplicate_phone',
+        });
+      }
+
+      const phoneRisk = await lookupPhoneRisk(normalizedPhone);
+      if (phoneRisk.isRisky) {
+        await supabaseServer
+          .from('referrals')
+          .upsert(
+            {
+              inviter_id: inviter.id,
+              invitee_email: (invitee.email || '').toLowerCase(),
+              invitee_user_id: invitee.id,
+              referral_code: referralCode,
+              status: 'blocked_risky_number',
+            },
+            { onConflict: 'inviter_id,invitee_email' }
+          );
+        await logReferralRiskEvent(supabaseServer, {
+          inviterId: inviter.id,
+          inviteeUserId: invitee.id,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['risky_number', phoneRisk.reason || 'line_type_unknown'],
+          metadata: { lineType: phoneRisk.lineType },
+        });
+        return res.status(400).json({
+          error: 'This phone number is not eligible for referrals.',
+          status: 'blocked_risky_number',
+        });
+      }
+
+      const windowStart = new Date(Date.now() - FRAUD_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+      const [{ data: inviterReferrals }, { data: ipEvents }, { data: deviceEvents }] = await Promise.all([
+        supabaseServer
+          .from('referrals')
+          .select('id')
+          .eq('inviter_id', inviter.id)
+          .gte('created_at', windowStart),
+        ipHash
+          ? supabaseServer
+              .from('referral_risk_events')
+              .select('id')
+              .eq('ip_hash', ipHash)
+              .eq('decision', 'allow')
+              .gte('created_at', windowStart)
+          : Promise.resolve({ data: [] as any[] }),
+        deviceHash
+          ? supabaseServer
+              .from('referral_risk_events')
+              .select('id')
+              .eq('device_hash', deviceHash)
+              .eq('decision', 'allow')
+              .gte('created_at', windowStart)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const inviterWindowCount = Array.isArray(inviterReferrals) ? inviterReferrals.length : 0;
+      const ipWindowCount = Array.isArray(ipEvents) ? ipEvents.length : 0;
+      const deviceWindowCount = Array.isArray(deviceEvents) ? deviceEvents.length : 0;
+
+      const fraudReasons: string[] = [];
+      if (inviterWindowCount >= MAX_REFERRALS_PER_INVITER_WINDOW) fraudReasons.push('inviter_velocity_exceeded');
+      if (ipWindowCount >= MAX_REFERRALS_PER_IP_WINDOW) fraudReasons.push('ip_cluster_velocity_exceeded');
+      if (deviceWindowCount >= MAX_REFERRALS_PER_DEVICE_WINDOW) fraudReasons.push('device_cluster_velocity_exceeded');
+
+      if (fraudReasons.length > 0) {
+        await supabaseServer
+          .from('referrals')
+          .upsert(
+            {
+              inviter_id: inviter.id,
+              invitee_email: (invitee.email || '').toLowerCase(),
+              invitee_user_id: invitee.id,
+              referral_code: referralCode,
+              status: 'blocked_fraud_pattern',
+            },
+            { onConflict: 'inviter_id,invitee_email' }
+          );
+        await logReferralRiskEvent(supabaseServer, {
+          inviterId: inviter.id,
+          inviteeUserId: invitee.id,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: fraudReasons,
+          metadata: {
+            inviterWindowCount,
+            ipWindowCount,
+            deviceWindowCount,
+            windowHours: FRAUD_WINDOW_HOURS,
+          },
+        });
+        return res.status(429).json({
+          error: 'Referral registration is temporarily blocked due to suspicious activity.',
+          status: 'blocked_fraud_pattern',
+        });
+      }
     }
 
     const inviteeEmail = (invitee.email || '').toLowerCase();
@@ -1481,6 +1688,17 @@ app.post('/api/referrals/register', async (req, res) => {
         );
     }
 
+    await logReferralRiskEvent(supabaseServer, {
+      inviterId: inviter.id,
+      inviteeUserId: invitee.id,
+      phoneHash,
+      ipHash,
+      deviceHash,
+      decision: 'allow',
+      reasons: ['referral_registered'],
+      metadata: { isAdminBypass },
+    });
+
     return res.json({ success: true, status: 'registered' });
   } catch (error: any) {
     console.error('Referral register error:', error);
@@ -1508,6 +1726,179 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
     if (!referral) {
       return res.json({ success: true, status: 'no_referral' });
+    }
+
+    const clientIp = getClientIp(req);
+    const deviceSignatureRaw = String(req.headers['x-device-signature'] || '').trim();
+    const ipHash = clientIp ? sha256Hex(clientIp) : null;
+    const deviceHash = deviceSignatureRaw ? sha256Hex(deviceSignatureRaw) : null;
+
+    const { data: inviteeUser } = await supabaseServer
+      .from('users')
+      .select('phone')
+      .eq('id', inviteeUserId)
+      .maybeSingle();
+    const normalizedPhone = normalizeE164Phone(inviteeUser?.phone || '');
+    const phoneHash = normalizedPhone ? sha256Hex(normalizedPhone) : null;
+    const isAdminBypass = normalizedPhone === ADMIN_REFERRAL_BYPASS_PHONE;
+
+    if (!isAdminBypass && normalizedPhone) {
+      const { data: phoneOwner } = await supabaseServer
+        .from('users')
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .neq('id', inviteeUserId)
+        .limit(1)
+        .maybeSingle();
+      if (phoneOwner?.id) {
+        await supabaseServer
+          .from('referrals')
+          .update({
+            status: 'blocked_fraud_pattern',
+            invitee_user_id: inviteeUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referral.id);
+        await logReferralRiskEvent(supabaseServer, {
+          referralId: referral.id,
+          inviterId: referral.inviter_id,
+          inviteeUserId,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['duplicate_phone_on_completion'],
+        });
+        return res.json({ success: true, status: 'blocked_fraud_pattern' });
+      }
+    }
+
+    if (!isAdminBypass) {
+      const inviterId = referral.inviter_id as string;
+      const [{ data: inviteeWallet }, { data: inviterWallet }] = await Promise.all([
+        supabaseServer
+          .from('wallets')
+          .select('user_id, card_fingerprint, bank_account_hash, bank_details')
+          .eq('user_id', inviteeUserId)
+          .maybeSingle(),
+        supabaseServer
+          .from('wallets')
+          .select('user_id, card_fingerprint, bank_account_hash, bank_details')
+          .eq('user_id', inviterId)
+          .maybeSingle(),
+      ]);
+
+      const inviteeCardFingerprint = (inviteeWallet?.card_fingerprint || '').trim();
+      const inviterCardFingerprint = (inviterWallet?.card_fingerprint || '').trim();
+
+      const inviteeBankNormalized = extractBankAccountFromWallet(inviteeWallet);
+      const inviterBankNormalized = extractBankAccountFromWallet(inviterWallet);
+
+      const inviteeBankHash =
+        (inviteeWallet?.bank_account_hash || '').trim() ||
+        (inviteeBankNormalized ? sha256Hex(inviteeBankNormalized) : '');
+      const inviterBankHash =
+        (inviterWallet?.bank_account_hash || '').trim() ||
+        (inviterBankNormalized ? sha256Hex(inviterBankNormalized) : '');
+
+      if (inviteeWallet?.user_id && inviteeBankHash && !inviteeWallet?.bank_account_hash) {
+        await supabaseServer.from('wallets').update({ bank_account_hash: inviteeBankHash }).eq('user_id', inviteeUserId);
+      }
+      if (inviterWallet?.user_id && inviterBankHash && !inviterWallet?.bank_account_hash) {
+        await supabaseServer.from('wallets').update({ bank_account_hash: inviterBankHash }).eq('user_id', inviterId);
+      }
+
+      const sharedCard = Boolean(
+        inviteeCardFingerprint && inviterCardFingerprint && inviteeCardFingerprint === inviterCardFingerprint
+      );
+      const sharedBank = Boolean(inviteeBankHash && inviterBankHash && inviteeBankHash === inviterBankHash);
+
+      if (sharedCard || sharedBank) {
+        await supabaseServer
+          .from('referrals')
+          .update({
+            status: 'blocked_shared_instrument',
+            invitee_user_id: inviteeUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referral.id);
+        await logReferralRiskEvent(supabaseServer, {
+          referralId: referral.id,
+          inviterId,
+          inviteeUserId,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: [
+            ...(sharedCard ? ['shared_card_fingerprint'] : []),
+            ...(sharedBank ? ['shared_bank_account'] : []),
+          ],
+        });
+        return res.json({ success: true, status: 'blocked_shared_instrument' });
+      }
+
+      const windowStart = new Date(Date.now() - FRAUD_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+      const [{ data: inviterRecent }, { data: ipEvents }, { data: deviceEvents }] = await Promise.all([
+        supabaseServer
+          .from('referrals')
+          .select('id')
+          .eq('inviter_id', inviterId)
+          .gte('created_at', windowStart),
+        ipHash
+          ? supabaseServer
+              .from('referral_risk_events')
+              .select('id')
+              .eq('ip_hash', ipHash)
+              .eq('decision', 'allow')
+              .gte('created_at', windowStart)
+          : Promise.resolve({ data: [] as any[] }),
+        deviceHash
+          ? supabaseServer
+              .from('referral_risk_events')
+              .select('id')
+              .eq('device_hash', deviceHash)
+              .eq('decision', 'allow')
+              .gte('created_at', windowStart)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const inviterWindowCount = Array.isArray(inviterRecent) ? inviterRecent.length : 0;
+      const ipWindowCount = Array.isArray(ipEvents) ? ipEvents.length : 0;
+      const deviceWindowCount = Array.isArray(deviceEvents) ? deviceEvents.length : 0;
+
+      const fraudReasons: string[] = [];
+      if (inviterWindowCount >= MAX_REFERRALS_PER_INVITER_WINDOW) fraudReasons.push('inviter_velocity_exceeded');
+      if (ipWindowCount >= MAX_REFERRALS_PER_IP_WINDOW) fraudReasons.push('ip_cluster_velocity_exceeded');
+      if (deviceWindowCount >= MAX_REFERRALS_PER_DEVICE_WINDOW) fraudReasons.push('device_cluster_velocity_exceeded');
+
+      if (fraudReasons.length > 0) {
+        await supabaseServer
+          .from('referrals')
+          .update({
+            status: 'blocked_fraud_pattern',
+            invitee_user_id: inviteeUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referral.id);
+        await logReferralRiskEvent(supabaseServer, {
+          referralId: referral.id,
+          inviterId,
+          inviteeUserId,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: fraudReasons,
+          metadata: {
+            inviterWindowCount,
+            ipWindowCount,
+            deviceWindowCount,
+            windowHours: FRAUD_WINDOW_HOURS,
+          },
+        });
+        return res.json({ success: true, status: 'blocked_fraud_pattern' });
+      }
     }
 
     const now = new Date().toISOString();
@@ -1547,6 +1938,18 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
         p_split_event_id: null,
       }),
     ]);
+
+    await logReferralRiskEvent(supabaseServer, {
+      referralId: referral.id,
+      inviterId,
+      inviteeUserId,
+      phoneHash,
+      ipHash,
+      deviceHash,
+      decision: 'allow',
+      reasons: ['reward_granted'],
+      metadata: { isAdminBypass },
+    });
 
     return res.json({ success: true, status: 'completed' });
   } catch (error: any) {

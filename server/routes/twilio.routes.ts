@@ -1,12 +1,29 @@
 import { Router, Request, Response } from 'express';
+import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const serviceSid = process.env.TWILIO_SERVICE_SID;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vhicohutiocnfjwsofhy.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const ADMIN_REFERRAL_BYPASS_PHONE = '+64278877007';
 
 let twilioClient: any = null;
+
+const getSupabaseServer = () => {
+  if (!supabaseUrl || !supabaseServiceKey) return null;
+  try {
+    return createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db: { schema: 'public' },
+    });
+  } catch (error) {
+    console.error('Failed to initialize Supabase server client in Twilio routes:', error);
+    return null;
+  }
+};
 
 const getTwilioClient = () => {
   if (!twilioClient && accountSid && authToken) {
@@ -19,6 +36,57 @@ const getTwilioClient = () => {
   }
   return twilioClient;
 };
+
+export const normalizeE164Phone = (input: string): string => {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const keepPlusAndDigits = raw.replace(/[^\d+]/g, '');
+  if (keepPlusAndDigits.startsWith('+')) return keepPlusAndDigits;
+  if (keepPlusAndDigits.startsWith('64')) return `+${keepPlusAndDigits}`;
+  return `+${keepPlusAndDigits}`;
+};
+
+export interface PhoneRiskResult {
+  isRisky: boolean;
+  lineType: string;
+  reason?: string;
+}
+
+export async function lookupPhoneRisk(phoneNumber: string): Promise<PhoneRiskResult> {
+  const normalized = normalizeE164Phone(phoneNumber);
+  const client = getTwilioClient();
+  if (!normalized) {
+    return { isRisky: true, lineType: 'unknown', reason: 'invalid_phone' };
+  }
+  if (!client) {
+    return { isRisky: true, lineType: 'unknown', reason: 'lookup_unavailable' };
+  }
+
+  try {
+    const lookup = await client.lookups.v2
+      .phoneNumbers(normalized)
+      .fetch({ fields: 'line_type_intelligence' });
+
+    const lineType = (
+      lookup?.lineTypeIntelligence?.type ||
+      lookup?.line_type_intelligence?.type ||
+      lookup?.carrier?.type ||
+      'unknown'
+    ).toString().toLowerCase();
+
+    const safeTypes = new Set(['mobile']);
+    const isRisky = !safeTypes.has(lineType);
+
+    return {
+      isRisky,
+      lineType,
+      reason: isRisky ? `line_type_${lineType}` : undefined,
+    };
+  } catch (error: any) {
+    console.error('Twilio Lookup failed:', error?.message || error);
+    return { isRisky: true, lineType: 'unknown', reason: 'lookup_failed' };
+  }
+}
 
 interface RateLimitEntry {
   count: number;
@@ -230,6 +298,30 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
     console.log('Twilio verification status:', verificationCheck.status);
     
     const isValid = verificationCheck.status === 'approved';
+
+    if (isValid) {
+      const normalizedPhone = normalizeE164Phone(phoneNumber);
+      if (normalizedPhone && normalizedPhone !== ADMIN_REFERRAL_BYPASS_PHONE) {
+        const supabaseServer = getSupabaseServer();
+        if (supabaseServer) {
+          const { data: existingUser } = await supabaseServer
+            .from('users')
+            .select('id')
+            .eq('phone', normalizedPhone)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingUser?.id) {
+            return res.status(409).json({
+              success: false,
+              valid: false,
+              error: 'This phone number is already linked to an account.',
+              status: 'duplicate_phone',
+            });
+          }
+        }
+      }
+    }
     
     res.status(200).json({ 
       success: true, 
