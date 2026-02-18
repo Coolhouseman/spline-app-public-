@@ -14,15 +14,21 @@ import * as Constants from 'expo-constants';
  */
 const APP_CONFIG_BACKEND_URL =
   (Constants.default.expoConfig?.extra as { backendUrl?: string } | undefined)?.backendUrl;
-const PRODUCTION_BACKEND_URL =
-  process.env.EXPO_PUBLIC_BACKEND_URL ||
-  APP_CONFIG_BACKEND_URL ||
-  'https://www.spline.nz';
+const PRODUCTION_BACKEND_URL = APP_CONFIG_BACKEND_URL || 'https://www.spline.nz';
 
 export const resolveBackendOrigin = (): string => {
+  const isDev = __DEV__;
+
+  // In production builds (TestFlight, App Store), always honor app config backend
+  // to avoid stale CI/local EXPO_PUBLIC_BACKEND_URL values pointing to old hosts.
+  if (!isDev) {
+    console.log('Using production backend URL:', PRODUCTION_BACKEND_URL);
+    return PRODUCTION_BACKEND_URL;
+  }
+
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
     const url = process.env.EXPO_PUBLIC_BACKEND_URL;
-    console.log('Using EXPO_PUBLIC_BACKEND_URL:', url);
+    console.log('Using EXPO_PUBLIC_BACKEND_URL (dev):', url);
     return url;
   }
 
@@ -30,15 +36,6 @@ export const resolveBackendOrigin = (): string => {
     console.log('Using app config backendUrl:', APP_CONFIG_BACKEND_URL);
     return APP_CONFIG_BACKEND_URL;
   }
-  
-  const isDev = __DEV__;
-  
-  // In production builds (TestFlight, App Store), use the production backend
-  if (!isDev) {
-    console.log('Using production backend URL:', PRODUCTION_BACKEND_URL);
-    return PRODUCTION_BACKEND_URL;
-  }
-  
   
   if (Constants.default.expoConfig?.hostUri) {
     const fullHostUri = Constants.default.expoConfig.hostUri;

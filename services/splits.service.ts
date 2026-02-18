@@ -45,9 +45,10 @@ const mimeTypeFromExtension = (ext: string): string => {
     case 'webp':
       return 'image/webp';
     case 'heic':
-      return 'image/heic';
     case 'heif':
-      return 'image/heif';
+      // Supabase storage commonly rejects HEIC/HEIF mime uploads.
+      // Use JPEG content type for compatibility.
+      return 'image/jpeg';
     default:
       return 'image/jpeg';
   }
@@ -63,9 +64,8 @@ const extensionFromMimeType = (mimeType?: string): string | undefined => {
     case 'image/webp':
       return 'webp';
     case 'image/heic':
-      return 'heic';
     case 'image/heif':
-      return 'heif';
+      return 'jpg';
     default:
       return undefined;
   }

@@ -65,6 +65,7 @@ export default function CreateSplitDetailsScreen({ navigation, route }: Props) {
       allowsEditing: false,
       quality: 0.8,
       base64: true,
+      preferredAssetRepresentationMode: 'compatible',
     });
 
     if (!result.canceled) {
