@@ -16,12 +16,14 @@ import { supabase } from '@/services/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 import { CardInputModal } from '@/components/CardInputModal';
+import { useLevelUp } from '@/contexts/LevelUpContext';
 
 type Props = NativeStackScreenProps<any, 'Wallet'>;
 
 export default function WalletScreen({ navigation }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { triggerXPRefresh } = useLevelUp();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -183,6 +185,7 @@ export default function WalletScreen({ navigation }: Props) {
               paymentMethodId,
               customerId
             );
+            triggerXPRefresh();
             await loadWalletData();
             Alert.alert('Success', 'Card added successfully! You can now make payments.');
           } else if (url.searchParams.get('cancelled') === 'true') {
@@ -224,6 +227,7 @@ export default function WalletScreen({ navigation }: Props) {
         cardSetupData.customerId,
         cardSetupData.setupIntentId
       );
+      triggerXPRefresh();
       await loadWalletData();
       setShowCardInputModal(false);
       setCardSetupData(null);

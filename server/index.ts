@@ -275,6 +275,9 @@ const MAX_REFERRALS_PER_INVITER_WINDOW = Number(process.env.REFERRAL_MAX_INVITER
 const sha256Hex = (input: string): string =>
   crypto.createHash('sha256').update(input).digest('hex');
 
+const normalizeEmail = (input?: string | null): string =>
+  String(input || '').trim().toLowerCase();
+
 const getClientIp = (req: express.Request): string => {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.trim()) {
@@ -296,6 +299,85 @@ const extractBankAccountFromWallet = (wallet: any): string => {
   const direct = bankDetails?.account_number || wallet?.bank_account || '';
   return normalizeBankAccount(direct);
 };
+
+async function hasReferralIdentityLock(
+  supabaseServer: any,
+  inviterId: string,
+  emailHash?: string | null,
+  phoneHash?: string | null
+): Promise<boolean> {
+  if (!inviterId || (!emailHash && !phoneHash)) {
+    return false;
+  }
+
+  let query = supabaseServer
+    .from('referral_identity_locks')
+    .select('id')
+    .eq('inviter_id', inviterId)
+    .limit(1);
+
+  if (emailHash && phoneHash) {
+    query = query.or(`email_hash.eq.${emailHash},phone_hash.eq.${phoneHash}`);
+  } else if (emailHash) {
+    query = query.eq('email_hash', emailHash);
+  } else if (phoneHash) {
+    query = query.eq('phone_hash', phoneHash);
+  }
+
+  const { data } = await query.maybeSingle();
+  return Boolean(data?.id);
+}
+
+async function persistReferralIdentityLock(
+  supabaseServer: any,
+  payload: {
+    inviterId: string;
+    emailHash?: string | null;
+    phoneHash?: string | null;
+    referralId?: string | null;
+  }
+) {
+  const inviterId = payload.inviterId;
+  const emailHash = payload.emailHash || null;
+  const phoneHash = payload.phoneHash || null;
+  const referralId = payload.referralId || null;
+
+  if (!inviterId || (!emailHash && !phoneHash)) {
+    return;
+  }
+
+  try {
+    if (emailHash) {
+      await supabaseServer
+        .from('referral_identity_locks')
+        .upsert(
+          {
+            inviter_id: inviterId,
+            email_hash: emailHash,
+            phone_hash: phoneHash,
+            source_referral_id: referralId,
+          },
+          { onConflict: 'inviter_id,email_hash' }
+        );
+    }
+
+    if (phoneHash) {
+      await supabaseServer
+        .from('referral_identity_locks')
+        .upsert(
+          {
+            inviter_id: inviterId,
+            email_hash: emailHash,
+            phone_hash: phoneHash,
+            source_referral_id: referralId,
+          },
+          { onConflict: 'inviter_id,phone_hash' }
+        );
+    }
+  } catch (err) {
+    console.error('Failed to persist referral identity lock:', err);
+  }
+}
 
 async function logReferralRiskEvent(
   supabaseServer: any,
@@ -1565,10 +1647,12 @@ app.post('/api/referrals/register', async (req, res) => {
       return res.status(400).json({ error: 'You cannot refer yourself' });
     }
 
+    const inviteeEmail = normalizeEmail(invitee.email || '');
     const normalizedPhone = normalizeE164Phone(invitee.phone || '');
     const isAdminBypass = normalizedPhone === ADMIN_REFERRAL_BYPASS_PHONE;
     const clientIp = getClientIp(req);
     const deviceSignatureRaw = String(req.headers['x-device-signature'] || '').trim();
+    const emailHash = inviteeEmail ? sha256Hex(inviteeEmail) : null;
     const phoneHash = normalizedPhone ? sha256Hex(normalizedPhone) : null;
     const ipHash = clientIp ? sha256Hex(clientIp) : null;
     const deviceHash = deviceSignatureRaw ? sha256Hex(deviceSignatureRaw) : null;
@@ -1586,6 +1670,38 @@ app.post('/api/referrals/register', async (req, res) => {
     }
 
     if (!isAdminBypass) {
+      const isRepeatIdentityForInviter = await hasReferralIdentityLock(
+        supabaseServer,
+        inviter.id,
+        emailHash,
+        phoneHash
+      );
+      if (isRepeatIdentityForInviter) {
+        await supabaseServer
+          .from('referrals')
+          .upsert(
+            {
+              inviter_id: inviter.id,
+              invitee_email: inviteeEmail,
+              invitee_user_id: invitee.id,
+              referral_code: referralCode,
+              status: 'blocked_repeat_referral',
+            },
+            { onConflict: 'inviter_id,invitee_email' }
+          );
+        await logReferralRiskEvent(supabaseServer, {
+          inviterId: inviter.id,
+          inviteeUserId: invitee.id,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['repeat_identity_for_inviter'],
+          metadata: { emailHash, hasPhoneHash: Boolean(phoneHash) },
+        });
+        return res.json({ success: true, status: 'blocked_repeat_referral' });
+      }
+
       const { data: phoneOwner } = await supabaseServer
         .from('users')
         .select('id')
@@ -1709,7 +1825,6 @@ app.post('/api/referrals/register', async (req, res) => {
       }
     }
 
-    const inviteeEmail = (invitee.email || '').toLowerCase();
     const now = new Date().toISOString();
     const { data: existing } = await supabaseServer
       .from('referrals')
@@ -1809,9 +1924,11 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
     const { data: inviteeUser } = await supabaseServer
       .from('users')
-      .select('phone')
+      .select('email, phone')
       .eq('id', inviteeUserId)
       .maybeSingle();
+    const inviteeEmail = normalizeEmail(inviteeUser?.email || referral.invitee_email || '');
+    const emailHash = inviteeEmail ? sha256Hex(inviteeEmail) : null;
     const normalizedPhone = normalizeE164Phone(inviteeUser?.phone || '');
     const phoneHash = normalizedPhone ? sha256Hex(normalizedPhone) : null;
     const isAdminBypass = normalizedPhone === ADMIN_REFERRAL_BYPASS_PHONE;
@@ -1849,6 +1966,35 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
     if (!isAdminBypass) {
       const inviterId = referral.inviter_id as string;
+      const isRepeatIdentityForInviter = await hasReferralIdentityLock(
+        supabaseServer,
+        inviterId,
+        emailHash,
+        phoneHash
+      );
+      if (isRepeatIdentityForInviter) {
+        await supabaseServer
+          .from('referrals')
+          .update({
+            status: 'blocked_repeat_referral',
+            invitee_user_id: inviteeUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referral.id);
+        await logReferralRiskEvent(supabaseServer, {
+          referralId: referral.id,
+          inviterId,
+          inviteeUserId,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['repeat_identity_for_inviter'],
+          metadata: { emailHash, hasPhoneHash: Boolean(phoneHash) },
+        });
+        return res.json({ success: true, status: 'blocked_repeat_referral' });
+      }
+
       const [{ data: inviteeWallet }, { data: inviterWallet }] = await Promise.all([
         supabaseServer
           .from('wallets')
@@ -2012,6 +2158,13 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
         p_split_event_id: null,
       }),
     ]);
+
+    await persistReferralIdentityLock(supabaseServer, {
+      inviterId,
+      emailHash,
+      phoneHash,
+      referralId: referral.id,
+    });
 
     await logReferralRiskEvent(supabaseServer, {
       referralId: referral.id,

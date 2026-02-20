@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Pressable, TextInput } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -30,7 +30,6 @@ export default function SocialSignupCompleteScreen({ route }: Props) {
     provider: 'apple' | 'google';
     referralCode?: string;
   };
-  const [referralCode, setReferralCode] = useState(params.referralCode || '');
 
   const checkmarkScale = useSharedValue(0);
   const contentOpacity = useSharedValue(0);
@@ -61,8 +60,8 @@ export default function SocialSignupCompleteScreen({ route }: Props) {
   }));
 
   const handleGetStarted = async () => {
-    if (referralCode.trim()) {
-      await ReferralsService.registerOnSignup(referralCode);
+    if (params.referralCode?.trim()) {
+      await ReferralsService.registerOnSignup(params.referralCode);
     }
     await refreshUser();
   };
@@ -102,25 +101,6 @@ export default function SocialSignupCompleteScreen({ route }: Props) {
             Your account is all set up and ready to go.
           </ThemedText>
 
-          <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.xl, marginBottom: Spacing.xs, alignSelf: 'flex-start', width: '100%' }]}>
-            Referral code (optional)
-          </ThemedText>
-          <TextInput
-            style={[
-              styles.referralInput,
-              {
-                backgroundColor: theme.surface,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
-            placeholder="Enter referral code"
-            placeholderTextColor={theme.textSecondary}
-            value={referralCode}
-            onChangeText={setReferralCode}
-            autoCapitalize="characters"
-            autoCorrect={false}
-          />
         </Animated.View>
       </View>
 
@@ -163,16 +143,6 @@ const styles = StyleSheet.create({
   },
   textContainer: {
     alignItems: 'center',
-    width: '100%',
-  },
-  referralInput: {
-    width: '100%',
-    height: Spacing.inputHeight,
-    borderWidth: 1,
-    borderRadius: BorderRadius.xs,
-    paddingHorizontal: Spacing.lg,
-    fontSize: 16,
-    marginTop: 2,
   },
   footer: {
     paddingHorizontal: Spacing.xl,

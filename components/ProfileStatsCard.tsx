@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   interpolate,
 } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
@@ -72,6 +73,7 @@ const STAT_HELP_INFO = {
 export function ProfileStatsCard({ userId, compact = false, showBadges = true, onPress }: ProfileStatsCardProps) {
   const { theme: colors, isDark } = useTheme();
   const { xpRefreshTrigger } = useLevelUp();
+  const isFocused = useIsFocused();
   const [profile, setProfile] = useState<GamificationProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -85,8 +87,10 @@ export function ProfileStatsCard({ userId, compact = false, showBadges = true, o
   const expandHeight = useSharedValue(0);
 
   useEffect(() => {
-    loadProfile();
-  }, [userId, xpRefreshTrigger]);
+    if (isFocused) {
+      loadProfile();
+    }
+  }, [userId, xpRefreshTrigger, isFocused]);
 
   useEffect(() => {
     if (profile) {

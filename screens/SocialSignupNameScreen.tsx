@@ -16,6 +16,7 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
   const { clearSignupOverlay } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -26,11 +27,15 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
     needsPhone?: boolean;
     needsDOB?: boolean;
     existingPhone?: string;
+    referralCode?: string;
   };
 
   // Clear the loading overlay once this screen mounts (navigation is complete)
   useEffect(() => {
     clearSignupOverlay();
+    if (params.referralCode) {
+      setReferralCode(params.referralCode);
+    }
   }, []);
 
   if (!params?.userId) {
@@ -83,6 +88,7 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
           email: params.email,
           fullName: fullName,
           provider: params.provider,
+          referralCode: referralCode.trim() || undefined,
         });
       } else if (params.needsDOB) {
         navigation.navigate('SocialSignupDOB', { 
@@ -90,12 +96,14 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
           fullName: fullName,
           provider: params.provider,
           phone: params.existingPhone,
+          referralCode: referralCode.trim() || undefined,
         });
       } else {
         navigation.navigate('SocialSignupComplete', { 
           userId: params.userId,
           fullName: fullName,
-          provider: params.provider
+          provider: params.provider,
+          referralCode: referralCode.trim() || undefined,
         });
       }
     } catch (err: any) {
@@ -151,6 +159,23 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
             if (error) setError('');
           }}
           autoCapitalize="words"
+        />
+
+        <ThemedText style={[Typography.caption, { color: theme.textSecondary, marginTop: Spacing.sm, marginBottom: Spacing.xs }]}>
+          Referral code (optional)
+        </ThemedText>
+        <TextInput
+          style={[styles.input, {
+            backgroundColor: theme.surface,
+            color: theme.text,
+            borderColor: theme.border
+          }]}
+          placeholder="Enter referral code"
+          placeholderTextColor={theme.textSecondary}
+          value={referralCode}
+          onChangeText={setReferralCode}
+          autoCapitalize="characters"
+          autoCorrect={false}
         />
 
         {error ? (

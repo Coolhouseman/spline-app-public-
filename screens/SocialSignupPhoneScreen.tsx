@@ -23,6 +23,7 @@ export default function SocialSignupPhoneScreen({ navigation, route }: Props) {
     email?: string;
     fullName?: string;
     provider: 'apple' | 'google';
+    referralCode?: string;
   };
 
   // Clear the loading overlay once this screen mounts (navigation is complete)

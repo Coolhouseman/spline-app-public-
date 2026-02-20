@@ -19,6 +19,7 @@ export default function SocialSignupPhoneOTPScreen({ navigation, route }: Props)
     fullName?: string;
     provider: 'apple' | 'google';
     phone: string;
+    referralCode?: string;
   };
 
   if (!params?.userId || !params?.phone) {
@@ -153,7 +154,8 @@ export default function SocialSignupPhoneOTPScreen({ navigation, route }: Props)
           userId: params.userId,
           fullName: params.fullName,
           provider: params.provider,
-          phone: params.phone
+          phone: params.phone,
+          referralCode: params.referralCode,
         });
       } else {
         setError(result.error || 'Invalid verification code. Please try again.');

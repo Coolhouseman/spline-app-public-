@@ -23,6 +23,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
     userId: string;
     fullName?: string;
     provider: 'apple' | 'google';
+    referralCode?: string;
   };
 
   useEffect(() => {
@@ -104,6 +105,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
                   fullName: params.fullName,
                   provider: params.provider,
                   avatarUrl: null,
+                  referralCode: params.referralCode,
                 });
               },
             },
@@ -118,6 +120,7 @@ export default function SocialSignupProfilePictureScreen({ navigation, route }: 
         fullName: params.fullName,
         provider: params.provider,
         avatarUrl: avatarUrl,
+        referralCode: params.referralCode,
       });
     } catch (error: any) {
       console.error('[SocialSignupProfilePicture] handleContinue error:', error);

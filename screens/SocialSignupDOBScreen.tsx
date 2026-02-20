@@ -26,6 +26,7 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
     fullName?: string;
     provider: 'apple' | 'google';
     phone: string;
+    referralCode?: string;
   };
 
   // Clear the loading overlay once this screen mounts (navigation is complete)
@@ -73,7 +74,8 @@ export default function SocialSignupDOBScreen({ navigation, route }: Props) {
       navigation.navigate('SocialSignupProfilePicture', { 
         userId: params.userId,
         fullName: params.fullName,
-        provider: params.provider
+        provider: params.provider,
+        referralCode: params.referralCode,
       });
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
