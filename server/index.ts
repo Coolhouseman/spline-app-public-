@@ -278,6 +278,22 @@ const sha256Hex = (input: string): string =>
 const normalizeEmail = (input?: string | null): string =>
   String(input || '').trim().toLowerCase();
 
+async function generateUniqueReferralCode(supabaseServer: any): Promise<string> {
+  for (let i = 0; i < 8; i++) {
+    const code = `RF${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+    const { data: existing } = await supabaseServer
+      .from('referrals')
+      .select('id')
+      .eq('referral_code', code)
+      .limit(1)
+      .maybeSingle();
+    if (!existing?.id) {
+      return code;
+    }
+  }
+  throw new Error('Failed to generate unique referral code');
+}
+
 const getClientIp = (req: express.Request): string => {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.trim()) {
@@ -326,6 +342,55 @@ async function hasReferralIdentityLock(
 
   const { data } = await query.maybeSingle();
   return Boolean(data?.id);
+}
+
+async function hasHistoricalReferralReward(
+  supabaseServer: any,
+  inviterId: string,
+  emailHash?: string | null,
+  phoneHash?: string | null
+): Promise<boolean> {
+  if (!inviterId || (!emailHash && !phoneHash)) {
+    return false;
+  }
+
+  try {
+    const checks: Array<Promise<any>> = [];
+
+    if (phoneHash) {
+      checks.push(
+        supabaseServer
+          .from('referral_risk_events')
+          .select('id')
+          .eq('inviter_id', inviterId)
+          .eq('decision', 'allow')
+          .eq('phone_hash', phoneHash)
+          .contains('reasons', ['reward_granted'])
+          .limit(1)
+          .maybeSingle()
+      );
+    }
+
+    if (emailHash) {
+      checks.push(
+        supabaseServer
+          .from('referral_risk_events')
+          .select('id')
+          .eq('inviter_id', inviterId)
+          .eq('decision', 'allow')
+          .contains('reasons', ['reward_granted'])
+          .contains('metadata', { emailHash })
+          .limit(1)
+          .maybeSingle()
+      );
+    }
+
+    const results = await Promise.all(checks);
+    return results.some((result) => Boolean(result?.data?.id));
+  } catch (err) {
+    console.error('Failed checking historical referral reward lock:', err);
+    return false;
+  }
 }
 
 async function persistReferralIdentityLock(
@@ -1587,7 +1652,7 @@ app.post('/api/referrals/send-invite', async (req, res) => {
       return res.status(400).json({ error: 'You cannot refer your own email' });
     }
 
-    const referralCode = inviter.unique_id;
+    const referralCode = await generateUniqueReferralCode(supabaseServer);
     const appUrl = process.env.APP_WEBSITE_URL || 'https://www.spline.nz';
     const inviteLink = `${appUrl}/go/invite?ref=${encodeURIComponent(referralCode)}`;
 
@@ -1635,19 +1700,45 @@ app.post('/api/referrals/register', async (req, res) => {
       return res.status(400).json({ error: 'Referral code is required' });
     }
 
-    const [{ data: invitee }, { data: inviter }] = await Promise.all([
-      supabaseServer.from('users').select('id, email, phone').eq('id', inviteeUserId).single(),
-      supabaseServer.from('users').select('id, unique_id').eq('unique_id', referralCode).maybeSingle(),
-    ]);
+    const { data: invitee } = await supabaseServer
+      .from('users')
+      .select('id, email, phone')
+      .eq('id', inviteeUserId)
+      .single();
+    if (!invitee) {
+      return res.status(404).json({ error: 'Invitee profile not found' });
+    }
 
-    if (!invitee || !inviter) {
+    const { data: referralInvite } = await supabaseServer
+      .from('referrals')
+      .select('id, inviter_id, invitee_email, referral_code, status')
+      .eq('referral_code', referralCode)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!referralInvite?.id || !referralInvite?.inviter_id) {
       return res.status(404).json({ error: 'Invalid referral code' });
     }
+
+    const inviteeEmail = normalizeEmail(invitee.email || '');
+    if (!inviteeEmail || inviteeEmail !== normalizeEmail(referralInvite.invitee_email || '')) {
+      return res.status(400).json({ error: 'This referral code is not valid for your email address.' });
+    }
+
+    const { data: inviter } = await supabaseServer
+      .from('users')
+      .select('id, unique_id')
+      .eq('id', referralInvite.inviter_id)
+      .maybeSingle();
+    if (!inviter?.id) {
+      return res.status(404).json({ error: 'Invalid referral code' });
+    }
+
     if (invitee.id === inviter.id) {
       return res.status(400).json({ error: 'You cannot refer yourself' });
     }
 
-    const inviteeEmail = normalizeEmail(invitee.email || '');
+    const matchedReferralCode = String(referralInvite.referral_code || referralCode);
     const normalizedPhone = normalizeE164Phone(invitee.phone || '');
     const isAdminBypass = normalizedPhone === ADMIN_REFERRAL_BYPASS_PHONE;
     const clientIp = getClientIp(req);
@@ -1670,26 +1761,22 @@ app.post('/api/referrals/register', async (req, res) => {
     }
 
     if (!isAdminBypass) {
-      const isRepeatIdentityForInviter = await hasReferralIdentityLock(
-        supabaseServer,
-        inviter.id,
-        emailHash,
-        phoneHash
-      );
+      const [hasLock, hasHistoricalReward] = await Promise.all([
+        hasReferralIdentityLock(supabaseServer, inviter.id, emailHash, phoneHash),
+        hasHistoricalReferralReward(supabaseServer, inviter.id, emailHash, phoneHash),
+      ]);
+      const isRepeatIdentityForInviter = hasLock || hasHistoricalReward;
       if (isRepeatIdentityForInviter) {
         await supabaseServer
           .from('referrals')
-          .upsert(
-            {
-              inviter_id: inviter.id,
-              invitee_email: inviteeEmail,
-              invitee_user_id: invitee.id,
-              referral_code: referralCode,
-              status: 'blocked_repeat_referral',
-            },
-            { onConflict: 'inviter_id,invitee_email' }
-          );
+          .update({
+            status: 'blocked_repeat_referral',
+            invitee_user_id: invitee.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referralInvite.id);
         await logReferralRiskEvent(supabaseServer, {
+          referralId: referralInvite.id,
           inviterId: inviter.id,
           inviteeUserId: invitee.id,
           phoneHash,
@@ -1730,17 +1817,14 @@ app.post('/api/referrals/register', async (req, res) => {
       if (phoneRisk.isRisky) {
         await supabaseServer
           .from('referrals')
-          .upsert(
-            {
-              inviter_id: inviter.id,
-              invitee_email: (invitee.email || '').toLowerCase(),
-              invitee_user_id: invitee.id,
-              referral_code: referralCode,
-              status: 'blocked_risky_number',
-            },
-            { onConflict: 'inviter_id,invitee_email' }
-          );
+          .update({
+            status: 'blocked_risky_number',
+            invitee_user_id: invitee.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referralInvite.id);
         await logReferralRiskEvent(supabaseServer, {
+          referralId: referralInvite.id,
           inviterId: inviter.id,
           inviteeUserId: invitee.id,
           phoneHash,
@@ -1793,17 +1877,14 @@ app.post('/api/referrals/register', async (req, res) => {
       if (fraudReasons.length > 0) {
         await supabaseServer
           .from('referrals')
-          .upsert(
-            {
-              inviter_id: inviter.id,
-              invitee_email: (invitee.email || '').toLowerCase(),
-              invitee_user_id: invitee.id,
-              referral_code: referralCode,
-              status: 'blocked_fraud_pattern',
-            },
-            { onConflict: 'inviter_id,invitee_email' }
-          );
+          .update({
+            status: 'blocked_fraud_pattern',
+            invitee_user_id: invitee.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referralInvite.id);
         await logReferralRiskEvent(supabaseServer, {
+          referralId: referralInvite.id,
           inviterId: inviter.id,
           inviteeUserId: invitee.id,
           phoneHash,
@@ -1826,41 +1907,19 @@ app.post('/api/referrals/register', async (req, res) => {
     }
 
     const now = new Date().toISOString();
-    const { data: existing } = await supabaseServer
-      .from('referrals')
-      .select('id, status')
-      .eq('invitee_user_id', invitee.id)
-      .maybeSingle();
-
-    if (existing && existing.status === 'card_bound') {
+    if (referralInvite.status === 'card_bound') {
       return res.json({ success: true, status: 'already_completed' });
     }
-
-    if (existing?.id) {
-      await supabaseServer
-        .from('referrals')
-        .update({
-          inviter_id: inviter.id,
-          referral_code: referralCode,
-          status: 'registered',
-          registered_at: now,
-        })
-        .eq('id', existing.id);
-    } else {
-      await supabaseServer
-        .from('referrals')
-        .upsert(
-          {
-            inviter_id: inviter.id,
-            invitee_email: inviteeEmail,
-            invitee_user_id: invitee.id,
-            referral_code: referralCode,
-            status: 'registered',
-            registered_at: now,
-          },
-          { onConflict: 'inviter_id,invitee_email' }
-        );
-    }
+    await supabaseServer
+      .from('referrals')
+      .update({
+        invitee_user_id: invitee.id,
+        referral_code: matchedReferralCode,
+        status: 'registered',
+        registered_at: now,
+        updated_at: now,
+      })
+      .eq('id', referralInvite.id);
 
     await logReferralRiskEvent(supabaseServer, {
       inviterId: inviter.id,
@@ -1966,12 +2025,11 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
     if (!isAdminBypass) {
       const inviterId = referral.inviter_id as string;
-      const isRepeatIdentityForInviter = await hasReferralIdentityLock(
-        supabaseServer,
-        inviterId,
-        emailHash,
-        phoneHash
-      );
+      const [hasLock, hasHistoricalReward] = await Promise.all([
+        hasReferralIdentityLock(supabaseServer, inviterId, emailHash, phoneHash),
+        hasHistoricalReferralReward(supabaseServer, inviterId, emailHash, phoneHash),
+      ]);
+      const isRepeatIdentityForInviter = hasLock || hasHistoricalReward;
       if (isRepeatIdentityForInviter) {
         await supabaseServer
           .from('referrals')
@@ -2175,7 +2233,7 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
       deviceHash,
       decision: 'allow',
       reasons: ['reward_granted'],
-      metadata: { isAdminBypass },
+      metadata: { isAdminBypass, emailHash, hasPhoneHash: Boolean(phoneHash) },
     });
 
     return res.json({ success: true, status: 'completed' });

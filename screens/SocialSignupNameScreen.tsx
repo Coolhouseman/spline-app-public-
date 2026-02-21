@@ -24,6 +24,7 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
     userId: string;
     email?: string;
     provider: 'apple' | 'google';
+    fullName?: string;
     needsPhone?: boolean;
     needsDOB?: boolean;
     existingPhone?: string;
@@ -35,6 +36,13 @@ export default function SocialSignupNameScreen({ navigation, route }: Props) {
     clearSignupOverlay();
     if (params.referralCode) {
       setReferralCode(params.referralCode);
+    }
+    if (params.fullName) {
+      const tokens = params.fullName.trim().split(/\s+/);
+      if (tokens.length > 0) {
+        setFirstName(tokens[0]);
+        setLastName(tokens.slice(1).join(' '));
+      }
     }
   }, []);
 

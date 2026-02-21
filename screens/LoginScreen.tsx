@@ -45,31 +45,17 @@ export default function LoginScreen({ navigation }: Props) {
 
   const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
     if (result.success && result.userId) {
-      if (result.needsName) {
+      const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
+      if (requiresOnboarding) {
         clearSignupOverlay();
         navigation.navigate('SocialSignupName', {
           userId: result.userId,
           email: result.email,
           provider,
+          fullName: result.fullName,
           needsPhone: result.needsPhoneVerification,
           needsDOB: result.needsDOB,
           existingPhone: result.existingPhone,
-        });
-      } else if (result.needsPhoneVerification) {
-        clearSignupOverlay();
-        navigation.navigate('SocialSignupPhone', {
-          userId: result.userId,
-          email: result.email,
-          fullName: result.fullName,
-          provider,
-        });
-      } else if (result.needsDOB) {
-        clearSignupOverlay();
-        navigation.navigate('SocialSignupDOB', {
-          userId: result.userId,
-          fullName: result.fullName,
-          provider,
-          phone: result.existingPhone,
         });
       } else {
         await refreshUser();

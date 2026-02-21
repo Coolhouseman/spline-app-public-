@@ -194,35 +194,17 @@ export default function WelcomeScreen({ navigation }: Props) {
       // Use RootNavigation (app-level navigation ref) for reliable navigation after OAuth browser return
       // This is the standard pattern for navigating from OAuth callbacks
       
-      if (result.needsName) {
+      const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
+      if (requiresOnboarding) {
         console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupName');
         RootNavigation.navigate('SocialSignupName', {
           userId: result.userId,
           email: result.email,
           provider,
+          fullName: result.fullName,
           needsPhone: result.needsPhoneVerification,
           needsDOB: result.needsDOB,
           existingPhone: result.existingPhone,
-        });
-        // Clear overlay after navigation
-        setTimeout(() => clearSignupOverlay(), 100);
-      } else if (result.needsPhoneVerification) {
-        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupPhone');
-        RootNavigation.navigate('SocialSignupPhone', {
-          userId: result.userId,
-          email: result.email,
-          fullName: result.fullName,
-          provider,
-        });
-        // Clear overlay after navigation
-        setTimeout(() => clearSignupOverlay(), 100);
-      } else if (result.needsDOB) {
-        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupDOB');
-        RootNavigation.navigate('SocialSignupDOB', {
-          userId: result.userId,
-          fullName: result.fullName,
-          provider,
-          phone: result.existingPhone,
         });
         // Clear overlay after navigation
         setTimeout(() => clearSignupOverlay(), 100);
