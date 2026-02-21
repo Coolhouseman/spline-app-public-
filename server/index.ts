@@ -346,11 +346,11 @@ async function hasReferralIdentityLock(
 
 async function hasHistoricalReferralReward(
   supabaseServer: any,
-  inviterId: string,
   emailHash?: string | null,
-  phoneHash?: string | null
+  phoneHash?: string | null,
+  cardFingerprintHash?: string | null
 ): Promise<boolean> {
-  if (!inviterId || (!emailHash && !phoneHash)) {
+  if (!emailHash && !phoneHash && !cardFingerprintHash) {
     return false;
   }
 
@@ -362,7 +362,6 @@ async function hasHistoricalReferralReward(
         supabaseServer
           .from('referral_risk_events')
           .select('id')
-          .eq('inviter_id', inviterId)
           .eq('decision', 'allow')
           .eq('phone_hash', phoneHash)
           .contains('reasons', ['reward_granted'])
@@ -376,10 +375,22 @@ async function hasHistoricalReferralReward(
         supabaseServer
           .from('referral_risk_events')
           .select('id')
-          .eq('inviter_id', inviterId)
           .eq('decision', 'allow')
           .contains('reasons', ['reward_granted'])
           .contains('metadata', { emailHash })
+          .limit(1)
+          .maybeSingle()
+      );
+    }
+
+    if (cardFingerprintHash) {
+      checks.push(
+        supabaseServer
+          .from('referral_risk_events')
+          .select('id')
+          .eq('decision', 'allow')
+          .contains('reasons', ['reward_granted'])
+          .contains('metadata', { cardFingerprintHash })
           .limit(1)
           .maybeSingle()
       );
@@ -390,6 +401,80 @@ async function hasHistoricalReferralReward(
   } catch (err) {
     console.error('Failed checking historical referral reward lock:', err);
     return false;
+  }
+}
+
+async function hasGlobalIdentityLock(
+  supabaseServer: any,
+  identityHashes: string[]
+): Promise<boolean> {
+  if (!identityHashes.length) return false;
+
+  try {
+    const { data } = await supabaseServer
+      .from('referral_global_identity_locks')
+      .select('id')
+      .in('identity_hash', identityHashes)
+      .limit(1)
+      .maybeSingle();
+    return Boolean(data?.id);
+  } catch (err) {
+    console.error('Failed checking global identity lock:', err);
+    return false;
+  }
+}
+
+async function persistGlobalIdentityLocks(
+  supabaseServer: any,
+  payload: {
+    emailHash?: string | null;
+    phoneHash?: string | null;
+    cardFingerprintHash?: string | null;
+    referralId?: string | null;
+    inviterId?: string | null;
+    inviteeUserId?: string | null;
+  }
+) {
+  const rows = [
+    payload.emailHash
+      ? {
+          identity_type: 'email',
+          identity_hash: payload.emailHash,
+          first_referral_id: payload.referralId || null,
+          first_inviter_id: payload.inviterId || null,
+          first_invitee_user_id: payload.inviteeUserId || null,
+        }
+      : null,
+    payload.phoneHash
+      ? {
+          identity_type: 'phone',
+          identity_hash: payload.phoneHash,
+          first_referral_id: payload.referralId || null,
+          first_inviter_id: payload.inviterId || null,
+          first_invitee_user_id: payload.inviteeUserId || null,
+        }
+      : null,
+    payload.cardFingerprintHash
+      ? {
+          identity_type: 'card',
+          identity_hash: payload.cardFingerprintHash,
+          first_referral_id: payload.referralId || null,
+          first_inviter_id: payload.inviterId || null,
+          first_invitee_user_id: payload.inviteeUserId || null,
+        }
+      : null,
+  ].filter(Boolean);
+
+  if (!rows.length) return;
+
+  try {
+    for (const row of rows as any[]) {
+      await supabaseServer
+        .from('referral_global_identity_locks')
+        .upsert(row, { onConflict: 'identity_hash' });
+    }
+  } catch (err) {
+    console.error('Failed persisting global identity lock:', err);
   }
 }
 
@@ -1760,13 +1845,15 @@ app.post('/api/referrals/register', async (req, res) => {
       return res.status(400).json({ error: 'A verified phone number is required before using referral codes.' });
     }
 
-    if (!isAdminBypass) {
-      const [hasLock, hasHistoricalReward] = await Promise.all([
+    {
+      const identityHashes = [emailHash, phoneHash].filter(Boolean) as string[];
+      const [hasPairLock, hasGlobalLock, hasHistoricalReward] = await Promise.all([
         hasReferralIdentityLock(supabaseServer, inviter.id, emailHash, phoneHash),
-        hasHistoricalReferralReward(supabaseServer, inviter.id, emailHash, phoneHash),
+        hasGlobalIdentityLock(supabaseServer, identityHashes),
+        hasHistoricalReferralReward(supabaseServer, emailHash, phoneHash),
       ]);
-      const isRepeatIdentityForInviter = hasLock || hasHistoricalReward;
-      if (isRepeatIdentityForInviter) {
+      const hasRepeatedIdentity = hasPairLock || hasGlobalLock || hasHistoricalReward;
+      if (hasRepeatedIdentity) {
         await supabaseServer
           .from('referrals')
           .update({
@@ -1775,6 +1862,17 @@ app.post('/api/referrals/register', async (req, res) => {
             updated_at: new Date().toISOString(),
           })
           .eq('id', referralInvite.id);
+
+        let friendshipLinked = false;
+        let friendshipBlocked = false;
+        try {
+          const friendshipResult = await ensureMutualReferralFriendship(supabaseServer, inviter.id, invitee.id);
+          friendshipLinked = friendshipResult.linked;
+          friendshipBlocked = friendshipResult.blocked;
+        } catch (friendshipError) {
+          console.error('Referral friendship linking failed for blocked repeat referral (non-blocking):', friendshipError);
+        }
+
         await logReferralRiskEvent(supabaseServer, {
           referralId: referralInvite.id,
           inviterId: inviter.id,
@@ -1783,12 +1881,25 @@ app.post('/api/referrals/register', async (req, res) => {
           ipHash,
           deviceHash,
           decision: 'block',
-          reasons: ['repeat_identity_for_inviter'],
-          metadata: { emailHash, hasPhoneHash: Boolean(phoneHash) },
+          reasons: ['repeat_identity_global_or_pair'],
+          metadata: {
+            emailHash,
+            hasPhoneHash: Boolean(phoneHash),
+            hasPairLock,
+            hasGlobalLock,
+            hasHistoricalReward,
+          },
         });
-        return res.json({ success: true, status: 'blocked_repeat_referral' });
+        return res.json({
+          success: true,
+          status: 'blocked_repeat_referral',
+          friendshipLinked,
+          friendshipBlocked,
+        });
       }
+    }
 
+    if (!isAdminBypass) {
       const { data: phoneOwner } = await supabaseServer
         .from('users')
         .select('id')
@@ -2025,12 +2136,14 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
     if (!isAdminBypass) {
       const inviterId = referral.inviter_id as string;
-      const [hasLock, hasHistoricalReward] = await Promise.all([
+      const baseIdentityHashes = [emailHash, phoneHash].filter(Boolean) as string[];
+      const [hasPairLock, hasGlobalLock, hasHistoricalReward] = await Promise.all([
         hasReferralIdentityLock(supabaseServer, inviterId, emailHash, phoneHash),
-        hasHistoricalReferralReward(supabaseServer, inviterId, emailHash, phoneHash),
+        hasGlobalIdentityLock(supabaseServer, baseIdentityHashes),
+        hasHistoricalReferralReward(supabaseServer, emailHash, phoneHash),
       ]);
-      const isRepeatIdentityForInviter = hasLock || hasHistoricalReward;
-      if (isRepeatIdentityForInviter) {
+      const hasRepeatedIdentity = hasPairLock || hasGlobalLock || hasHistoricalReward;
+      if (hasRepeatedIdentity) {
         await supabaseServer
           .from('referrals')
           .update({
@@ -2047,8 +2160,14 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
           ipHash,
           deviceHash,
           decision: 'block',
-          reasons: ['repeat_identity_for_inviter'],
-          metadata: { emailHash, hasPhoneHash: Boolean(phoneHash) },
+          reasons: ['repeat_identity_global_or_pair'],
+          metadata: {
+            emailHash,
+            hasPhoneHash: Boolean(phoneHash),
+            hasPairLock,
+            hasGlobalLock,
+            hasHistoricalReward,
+          },
         });
         return res.json({ success: true, status: 'blocked_repeat_referral' });
       }
@@ -2068,6 +2187,7 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
 
       const inviteeCardFingerprint = (inviteeWallet?.card_fingerprint || '').trim();
       const inviterCardFingerprint = (inviterWallet?.card_fingerprint || '').trim();
+      const inviteeCardFingerprintHash = inviteeCardFingerprint ? sha256Hex(inviteeCardFingerprint) : '';
 
       const inviteeBankNormalized = extractBankAccountFromWallet(inviteeWallet);
       const inviterBankNormalized = extractBankAccountFromWallet(inviterWallet);
@@ -2090,6 +2210,40 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
         inviteeCardFingerprint && inviterCardFingerprint && inviteeCardFingerprint === inviterCardFingerprint
       );
       const sharedBank = Boolean(inviteeBankHash && inviterBankHash && inviteeBankHash === inviterBankHash);
+
+      const cardIdentityHashes = [emailHash, phoneHash, inviteeCardFingerprintHash].filter(Boolean) as string[];
+      const [hasGlobalCardLock, hasHistoricalCardReward] = await Promise.all([
+        hasGlobalIdentityLock(supabaseServer, cardIdentityHashes),
+        hasHistoricalReferralReward(supabaseServer, null, null, inviteeCardFingerprintHash || null),
+      ]);
+      if (hasGlobalCardLock || hasHistoricalCardReward) {
+        await supabaseServer
+          .from('referrals')
+          .update({
+            status: 'blocked_repeat_referral',
+            invitee_user_id: inviteeUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', referral.id);
+        await logReferralRiskEvent(supabaseServer, {
+          referralId: referral.id,
+          inviterId,
+          inviteeUserId,
+          phoneHash,
+          ipHash,
+          deviceHash,
+          decision: 'block',
+          reasons: ['reused_global_identity_card_or_contact'],
+          metadata: {
+            emailHash,
+            hasPhoneHash: Boolean(phoneHash),
+            cardFingerprintHash: inviteeCardFingerprintHash || null,
+            hasGlobalCardLock,
+            hasHistoricalCardReward,
+          },
+        });
+        return res.json({ success: true, status: 'blocked_repeat_referral' });
+      }
 
       if (sharedCard || sharedBank) {
         await supabaseServer
@@ -2223,6 +2377,20 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
       phoneHash,
       referralId: referral.id,
     });
+    const inviteeCardFingerprint = String((await supabaseServer
+      .from('wallets')
+      .select('card_fingerprint')
+      .eq('user_id', inviteeUserId)
+      .maybeSingle()).data?.card_fingerprint || '').trim();
+    const cardFingerprintHash = inviteeCardFingerprint ? sha256Hex(inviteeCardFingerprint) : null;
+    await persistGlobalIdentityLocks(supabaseServer, {
+      emailHash,
+      phoneHash,
+      cardFingerprintHash,
+      referralId: referral.id,
+      inviterId,
+      inviteeUserId,
+    });
 
     await logReferralRiskEvent(supabaseServer, {
       referralId: referral.id,
@@ -2233,7 +2401,12 @@ app.post('/api/referrals/complete-card-bind', async (req, res) => {
       deviceHash,
       decision: 'allow',
       reasons: ['reward_granted'],
-      metadata: { isAdminBypass, emailHash, hasPhoneHash: Boolean(phoneHash) },
+      metadata: {
+        isAdminBypass,
+        emailHash,
+        hasPhoneHash: Boolean(phoneHash),
+        cardFingerprintHash,
+      },
     });
 
     return res.json({ success: true, status: 'completed' });
