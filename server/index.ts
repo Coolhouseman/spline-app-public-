@@ -1763,6 +1763,8 @@ app.post('/api/referrals/send-invite', async (req, res) => {
       inviteeEmail,
       referralCode,
       inviteLink,
+      appStoreUrl: APP_STORE_URL,
+      playStoreUrl: PLAY_STORE_URL,
     });
 
     return res.json({ success: true });

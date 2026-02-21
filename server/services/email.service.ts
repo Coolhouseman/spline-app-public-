@@ -29,6 +29,8 @@ interface ReferralInviteEmailData {
   inviteeEmail: string;
   referralCode: string;
   inviteLink: string;
+  appStoreUrl?: string;
+  playStoreUrl?: string;
 }
 
 const createTransporter = () => {
@@ -55,6 +57,8 @@ async function sendWithResend(params: {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
 }): Promise<boolean> {
   if (!RESEND_API_KEY || !RESEND_FROM_EMAIL) {
     return false;
@@ -73,6 +77,8 @@ async function sendWithResend(params: {
         subject: params.subject,
         html: params.html,
         text: params.text || '',
+        reply_to: params.replyTo,
+        headers: params.headers || {},
       }),
     });
 
@@ -227,16 +233,24 @@ This is an automated notification from Spline Pay.
 }
 
 export async function sendReferralInviteEmail(data: ReferralInviteEmailData): Promise<boolean> {
-  const subject = `${data.inviterName} invited you to join Spline`;
+  const appStoreUrl = data.appStoreUrl || 'https://apps.apple.com/nz/app/spline/id6756173884';
+  const playStoreUrl = data.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.splitpaymentapp.split';
+  const supportEmail = process.env.SUPPORT_EMAIL || 'support@spline.nz';
+  const subject = `${data.inviterName} invited you to Spline`;
   const textContent = `
-${data.inviterName} has invited you to join Spline.
+You have been invited to join Spline by ${data.inviterName} (ID: ${data.inviterUniqueId}).
 
-Use this referral code during signup: ${data.referralCode}
+Referral code: ${data.referralCode}
 
-Or open this invite link:
+Open invitation link:
 ${data.inviteLink}
 
+Direct app links:
+- iOS App Store: ${appStoreUrl}
+- Google Play: ${playStoreUrl}
+
 When you sign up and add your payment card, both of you receive +40 XP.
+If you did not expect this invite, you can ignore this email.
 `;
 
   const htmlContent = `
@@ -245,7 +259,7 @@ When you sign up and add your payment card, both of you receive +40 XP.
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1f2937;">
   <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
     <h2 style="margin: 0 0 12px;">You're invited to Spline</h2>
-    <p style="margin: 0 0 12px;"><strong>${data.inviterName}</strong> invited you to join Spline and split bills with friends.</p>
+    <p style="margin: 0 0 12px;"><strong>${data.inviterName}</strong> (ID: ${data.inviterUniqueId}) invited you to join Spline and split bills with friends.</p>
     <p style="margin: 0 0 8px;">Your referral code:</p>
     <div style="display:inline-block; padding:8px 12px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe; font-weight:700;">
       ${data.referralCode}
@@ -254,6 +268,14 @@ When you sign up and add your payment card, both of you receive +40 XP.
     <a href="${data.inviteLink}" style="display:inline-block; background:#2563eb; color:#fff; text-decoration:none; padding:10px 16px; border-radius:8px; font-weight:600;">
       Open Invitation
     </a>
+    <div style="margin-top: 12px;">
+      <a href="${appStoreUrl}" style="display:inline-block; margin-right:8px; text-decoration:none; color:#2563eb;">Open in App Store</a>
+      <a href="${playStoreUrl}" style="display:inline-block; text-decoration:none; color:#2563eb;">Open in Google Play</a>
+    </div>
+    <p style="margin-top: 16px; color:#6b7280; font-size:12px;">
+      You received this because this email address was entered for a Spline invitation.
+      If this was not intended for you, you can ignore this email or contact ${supportEmail}.
+    </p>
   </div>
 </body>
 </html>
@@ -265,6 +287,11 @@ When you sign up and add your payment card, both of you receive +40 XP.
     subject,
     html: htmlContent,
     text: textContent,
+    replyTo: supportEmail,
+    headers: {
+      'X-Email-Type': 'referral-invite',
+      'X-Referral-Code': data.referralCode,
+    },
   });
   if (sentViaResend) {
     return true;
