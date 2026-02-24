@@ -102,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadUser = async () => {
+    const startupStartedAt = Date.now();
     try {
       console.log(`[AuthProvider ${instanceId.current}] Loading user...`);
       const restorePromise = AuthService.restoreSession();
@@ -118,16 +119,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
 
       if (session) {
-        console.log(`[AuthProvider ${instanceId.current}] Restored user:`, session.user.id);
+        console.log(
+          `[AuthProvider ${instanceId.current}] Restored user in ${Date.now() - startupStartedAt}ms:`,
+          session.user.id
+        );
         setUser(session.user);
       } else {
-        console.log(`[AuthProvider ${instanceId.current}] No session restored during startup`);
+        console.log(
+          `[AuthProvider ${instanceId.current}] No session restored during startup after ${Date.now() - startupStartedAt}ms`
+        );
         // Keep listening for a late session resolution after initial UI unlock.
         void restorePromise
           .then((lateSession) => {
             if (lateSession?.user) {
               console.log(
-                `[AuthProvider ${instanceId.current}] Restored user after timeout:`,
+                `[AuthProvider ${instanceId.current}] Restored user after timeout in ${Date.now() - startupStartedAt}ms:`,
                 lateSession.user.id
               );
               setUser(lateSession.user);
@@ -141,6 +147,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Failed to load user:', error);
     } finally {
       // Never block first paint forever waiting on auth/network.
+      console.log(
+        `[AuthProvider ${instanceId.current}] Startup auth path finished in ${Date.now() - startupStartedAt}ms`
+      );
       setIsLoading(false);
     }
   };

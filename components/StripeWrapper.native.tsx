@@ -1,19 +1,24 @@
-import React, { ReactElement, useEffect, useState, useCallback } from 'react';
+import React, { ReactElement, useEffect, useState, useCallback, useRef } from 'react';
 import { StripeProvider } from '@stripe/stripe-react-native';
-import { Platform, View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/services/supabase';
+import { resolveBackendOrigin } from '@/utils/backend';
 
-const getServerUrl = () => {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      const origin = window.location.origin;
-      if (origin.includes('replit') || origin.includes('localhost')) {
-        return origin;
-      }
-    }
-    return 'http://localhost:8082';
+const STRIPE_KEY_CACHE_KEY = '@spline_stripe_publishable_key';
+const STRIPE_TEST_MODE_CACHE_KEY = '@spline_stripe_test_mode';
+const STRIPE_FETCH_TIMEOUT_MS = 7000;
+const FALLBACK_BACKEND_URL = 'https://www.spline.nz';
+
+let stripeProviderReady = false;
+export const isStripeProviderReady = () => stripeProviderReady;
+const resolveBackendOriginSafe = () => {
+  try {
+    return resolveBackendOrigin();
+  } catch (resolveError) {
+    console.warn('[StripeWrapper] Failed to resolve backend origin, using fallback:', resolveError);
+    return FALLBACK_BACKEND_URL;
   }
-  return 'https://splinepay.replit.app';
 };
 
 interface StripeWrapperProps {
@@ -23,17 +28,56 @@ interface StripeWrapperProps {
 export function StripeWrapper({ children }: StripeWrapperProps) {
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
   const [testMode, setTestMode] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isBootstrapped, setIsBootstrapped] = useState(false);
+  const authStateRef = useRef<boolean | null>(null);
+  const backendOriginRef = useRef<string>(resolveBackendOriginSafe());
+
+  const withTimeout = useCallback(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), STRIPE_FETCH_TIMEOUT_MS);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }, []);
+
+  const cacheKey = useCallback(async (key: string, mode: boolean) => {
+    try {
+      await AsyncStorage.multiSet([
+        [STRIPE_KEY_CACHE_KEY, key],
+        [STRIPE_TEST_MODE_CACHE_KEY, mode ? '1' : '0'],
+      ]);
+    } catch (cacheError) {
+      console.warn('[StripeWrapper] Failed to cache publishable key:', cacheError);
+    }
+  }, []);
+
+  const hydrateCachedKey = useCallback(async () => {
+    try {
+      const cached = await AsyncStorage.multiGet([STRIPE_KEY_CACHE_KEY, STRIPE_TEST_MODE_CACHE_KEY]);
+      const cachedKey = cached.find(([k]) => k === STRIPE_KEY_CACHE_KEY)?.[1];
+      const cachedMode = cached.find(([k]) => k === STRIPE_TEST_MODE_CACHE_KEY)?.[1];
+      if (cachedKey) {
+        setPublishableKey(cachedKey);
+        setTestMode(cachedMode === '1');
+        setError(null);
+        console.log('[StripeWrapper] Loaded cached Stripe publishable key');
+      }
+    } catch (cacheError) {
+      console.warn('[StripeWrapper] Failed to load cached key:', cacheError);
+    }
+  }, []);
 
   const fetchUserSpecificKey = useCallback(async () => {
+    const startedAt = Date.now();
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
       
       if (accessToken) {
-        const response = await fetch(`${getServerUrl()}/api/stripe/user-publishable-key`, {
+        const response = await withTimeout(`${backendOriginRef.current}/api/stripe/user-publishable-key`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
           },
@@ -45,68 +89,80 @@ export function StripeWrapper({ children }: StripeWrapperProps) {
             setPublishableKey(data.publishableKey);
             setTestMode(data.testMode || false);
             setError(null);
+            await cacheKey(data.publishableKey, Boolean(data.testMode));
+            console.log('[StripeWrapper] User-specific Stripe key loaded in', Date.now() - startedAt, 'ms');
             return;
           }
         }
       }
       
-      const response = await fetch(`${getServerUrl()}/api/stripe/publishable-key`);
+      const response = await withTimeout(`${backendOriginRef.current}/api/stripe/publishable-key`);
       if (response.ok) {
         const data = await response.json();
         if (data.publishableKey) {
           setPublishableKey(data.publishableKey);
-          setTestMode(false);
+          const mode = Boolean(data.testMode);
+          setTestMode(mode);
           setError(null);
+          await cacheKey(data.publishableKey, mode);
+          console.log('[StripeWrapper] Public Stripe key loaded in', Date.now() - startedAt, 'ms');
         } else {
           setError('Invalid key response');
         }
       } else {
         setError('Failed to fetch payment configuration');
       }
-    } catch (err) {
-      console.error('Error fetching Stripe publishable key:', err);
-      setError('Network error fetching payment configuration');
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        setError('Stripe key fetch timed out');
+        console.warn('[StripeWrapper] Stripe key fetch timed out after', STRIPE_FETCH_TIMEOUT_MS, 'ms');
+      } else {
+        console.error('Error fetching Stripe publishable key:', err);
+        setError('Network error fetching payment configuration');
+      }
+      // Non-blocking startup: app remains usable, only payment flows may be unavailable.
+      console.warn('[StripeWrapper] Continuing without fresh Stripe key');
     }
-  }, []);
+  }, [cacheKey, withTimeout]);
 
   useEffect(() => {
-    fetchUserSpecificKey();
+    console.log('[StripeWrapper] Bootstrapping with backend:', backendOriginRef.current);
+    let mounted = true;
+    void hydrateCachedKey()
+      .finally(() => {
+        if (mounted) {
+          setIsBootstrapped(true);
+        }
+      });
+    void fetchUserSpecificKey();
     
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      const wasAuthenticated = isAuthenticated;
+      const wasAuthenticated = authStateRef.current;
       const nowAuthenticated = !!session;
-      setIsAuthenticated(nowAuthenticated);
+      authStateRef.current = nowAuthenticated;
       
       if (wasAuthenticated !== nowAuthenticated || event === 'SIGNED_IN') {
-        setLoading(true);
-        fetchUserSpecificKey();
+        void fetchUserSpecificKey();
       }
     });
 
     return () => {
+      mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [fetchUserSpecificKey, isAuthenticated]);
+  }, [fetchUserSpecificKey, hydrateCachedKey]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2563EB" />
-      </View>
-    );
+  useEffect(() => {
+    stripeProviderReady = Boolean(publishableKey);
+  }, [publishableKey]);
+
+  if (!isBootstrapped) {
+    // Never block app shell while Stripe initializes.
+    return children;
   }
 
-  if (error || !publishableKey) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorTitle}>Payment Setup Error</Text>
-        <Text style={styles.errorText}>
-          {error || 'Unable to initialize payment system. Please try again later.'}
-        </Text>
-      </View>
-    );
+  if (!publishableKey) {
+    return children;
   }
 
   return (
@@ -119,30 +175,3 @@ export function StripeWrapper({ children }: StripeWrapperProps) {
     </StripeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 24,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#DC2626',
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-});

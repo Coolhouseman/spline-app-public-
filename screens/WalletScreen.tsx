@@ -16,6 +16,7 @@ import { supabase } from '@/services/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeBottomTabBarHeight } from '@/hooks/useSafeBottomTabBarHeight';
 import { CardInputModal } from '@/components/CardInputModal';
+import { isStripeProviderReady } from '@/components/StripeWrapper.native';
 import { useLevelUp } from '@/contexts/LevelUpContext';
 
 type Props = NativeStackScreenProps<any, 'Wallet'>;
@@ -153,6 +154,13 @@ export default function WalletScreen({ navigation }: Props) {
 
   const handleAddCard = async () => {
     if (!user) return;
+    if (!isStripeProviderReady()) {
+      Alert.alert(
+        'Payments Temporarily Unavailable',
+        'Payment services are still initializing. Please try again in a few seconds.'
+      );
+      return;
+    }
     
     setCardSetupLoading(true);
     setProcessing(true);
