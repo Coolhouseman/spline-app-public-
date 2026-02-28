@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { User } from '@/shared/types';
 import { AuthService, SignupData } from '@/services/auth.service';
 import { generateUniqueId } from '@/utils/storage';
@@ -19,9 +20,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Global flag to track signup state (survives re-renders and closures)
-let globalIsSigningUp = false;
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,16 +27,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userSetBySignup = useRef(false);
   const instanceId = useRef(Date.now());
   const STARTUP_AUTH_TIMEOUT_MS = 8000;
+  const SIGNUP_STALE_TIMEOUT_MS = 20000;
+  const SIGNUP_APPSTATE_STALE_MS = 15000;
+  const signupInProgressRef = useRef(false);
+  const signupStartedAtRef = useRef<number | null>(null);
+  const signupWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousUiStateRef = useRef<string | null>(null);
+
+  const clearSignupWatchdog = () => {
+    if (signupWatchdogRef.current) {
+      clearTimeout(signupWatchdogRef.current);
+      signupWatchdogRef.current = null;
+    }
+  };
+
+  const endSignupFlow = (reason: string) => {
+    clearSignupWatchdog();
+    signupInProgressRef.current = false;
+    signupStartedAtRef.current = null;
+    setIsSigningUp(false);
+    console.log(`[Auth] signup_flow_end reason=${reason}`);
+  };
+
+  const beginSignupFlow = (reason: string) => {
+    clearSignupWatchdog();
+    signupInProgressRef.current = true;
+    signupStartedAtRef.current = Date.now();
+    setIsSigningUp(true);
+    signupWatchdogRef.current = setTimeout(() => {
+      console.warn(
+        `[Auth] signup_flow_watchdog_timeout elapsed_ms=${SIGNUP_STALE_TIMEOUT_MS} reason=auto_clear`
+      );
+      endSignupFlow('watchdog_timeout');
+    }, SIGNUP_STALE_TIMEOUT_MS);
+    console.log(`[Auth] signup_flow_start reason=${reason}`);
+  };
 
   useEffect(() => {
     console.log(`[AuthProvider ${instanceId.current}] Mounted`);
     loadUser();
     
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State changed:', event, 'globalIsSigningUp:', globalIsSigningUp, 'userSetBySignup:', userSetBySignup.current);
+      console.log('[Auth] State changed:', event, 'signupInProgress:', signupInProgressRef.current, 'userSetBySignup:', userSetBySignup.current);
       
       // Skip ALL auth state changes during active signup
-      if (globalIsSigningUp) {
+      if (signupInProgressRef.current) {
         console.log('[Auth] Skipping - signup in progress');
         return;
       }
@@ -97,9 +130,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       console.log(`[AuthProvider ${instanceId.current}] Unmounting`);
+      clearSignupWatchdog();
+      signupInProgressRef.current = false;
+      signupStartedAtRef.current = null;
       authListener?.subscription?.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') {
+        return;
+      }
+      if (!signupInProgressRef.current) {
+        return;
+      }
+
+      const startedAt = signupStartedAtRef.current;
+      const elapsed = startedAt ? Date.now() - startedAt : 0;
+      if (elapsed >= SIGNUP_APPSTATE_STALE_MS) {
+        console.warn(
+          `[Auth] appstate_active_detected_stale_signup elapsed_ms=${elapsed} action=clear_signup_flow`
+        );
+        endSignupFlow('appstate_stale_recovery');
+      } else {
+        console.log(`[Auth] appstate_active_signup_still_fresh elapsed_ms=${elapsed}`);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const uiState = [
+      `isLoading=${isLoading}`,
+      `isSigningUp=${isSigningUp}`,
+      `hasUser=${Boolean(user)}`,
+      `signupInProgressRef=${signupInProgressRef.current}`,
+    ].join(' ');
+
+    if (previousUiStateRef.current !== uiState) {
+      console.log(`[Auth] ui_state_transition prev="${previousUiStateRef.current}" next="${uiState}"`);
+      previousUiStateRef.current = uiState;
+    }
+  }, [isLoading, isSigningUp, user]);
 
   const loadUser = async () => {
     const startupStartedAt = Date.now();
@@ -175,12 +251,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (userData: SignupData): Promise<string> => {
+    beginSignupFlow('email_signup');
     try {
-      // Set flags to prevent auth state listener from interfering and show loading
-      globalIsSigningUp = true;
-      setIsSigningUp(true);
-      console.log('[Signup] Starting, setting globalIsSigningUp flag');
-      
       const { user: newUser } = await AuthService.signup(userData);
       console.log('[Signup] Complete, setting user:', newUser.id);
       
@@ -189,27 +261,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(newUser);
       setIsLoading(false);
       console.log('[Signup] User state updated, userSetBySignup is now true');
-      
-      // Clear isSigningUp AFTER user is set - this triggers navigation
-      setIsSigningUp(false);
-      
-      // Defer clearing globalIsSigningUp to allow any pending auth events to be skipped
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Verify session is stable before clearing the flag
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.id === newUser.id) {
-        console.log('[Signup] Session verified stable, clearing globalIsSigningUp flag');
-        globalIsSigningUp = false;
-      } else {
-        console.log('[Signup] Session mismatch, keeping flag for safety');
-        setTimeout(() => { globalIsSigningUp = false; }, 2000);
-      }
+      endSignupFlow('email_signup_success');
       
       return newUser.unique_id;
     } catch (error) {
-      globalIsSigningUp = false;
-      setIsSigningUp(false);
+      endSignupFlow('email_signup_error');
       userSetBySignup.current = false;
       console.error('Signup failed:', error);
       throw error;
@@ -222,8 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Set user to null first to immediately update UI
       setUser(null);
       userSetBySignup.current = false;
-      globalIsSigningUp = false;
-      setIsSigningUp(false);
+      endSignupFlow('logout');
       
       // Then sign out from Supabase with a timeout (this might be slow or fail, but UI is already updated)
       // Attach .catch() to prevent unhandled rejection if promise rejects after timeout
@@ -238,8 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Even if signOut fails, ensure user state is cleared
       setUser(null);
       userSetBySignup.current = false;
-      globalIsSigningUp = false;
-      setIsSigningUp(false);
+      endSignupFlow('logout_error_recovery');
     }
   };
 
@@ -268,8 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (profile) {
           userSetBySignup.current = true;
-          globalIsSigningUp = false;
-          setIsSigningUp(false);
+          endSignupFlow('refresh_user');
           setUser(profile as User);
         }
       }
@@ -280,13 +333,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setSocialSignupInProgress = (inProgress: boolean) => {
     console.log('[Auth] setSocialSignupInProgress:', inProgress);
-    globalIsSigningUp = inProgress;
-    setIsSigningUp(inProgress);
+    if (inProgress) {
+      beginSignupFlow('social_auth');
+    } else {
+      endSignupFlow('social_auth_complete');
+    }
   };
 
   const clearSignupOverlay = () => {
-    console.log('[Auth] clearSignupOverlay - hiding loading but keeping auth listener blocked');
-    setIsSigningUp(false);
+    console.log('[Auth] clearSignupOverlay - clearing signup overlay and flow flags');
+    endSignupFlow('clear_signup_overlay');
   };
 
   return (

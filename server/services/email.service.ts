@@ -133,7 +133,7 @@ ACTION REQUIRED
 Please process this ${data.withdrawalType === 'fast' ? 'FAST (priority)' : 'NORMAL'} transfer of $${data.netAmount.toFixed(2)} to the user's bank account.
 
 Once processed, update the status in the Admin Dashboard:
-https://splinepay.replit.app/admin → Withdrawals → Mark as Completed
+https://www.spline.nz/admin → Withdrawals → Mark as Completed
 
 ====================================
 This is an automated notification from Spline Pay.
@@ -198,7 +198,7 @@ This is an automated notification from Spline Pay.
         <p style="margin: 5px 0 0; font-size: 14px;">
           Process this ${data.withdrawalType === 'fast' ? '<strong>PRIORITY</strong>' : 'standard'} transfer of <strong>$${data.netAmount.toFixed(2)}</strong> to the user's bank account.
         </p>
-        <a href="https://splinepay.replit.app/admin" class="btn">Open Admin Dashboard</a>
+        <a href="https://www.spline.nz/admin" class="btn">Open Admin Dashboard</a>
       </div>
     </div>
   </div>
@@ -416,7 +416,7 @@ This is an automated security notification from Spline Pay.
         <p style="margin: 5px 0 0; font-size: 14px;">
           Review this user's activity in the Admin Dashboard.
         </p>
-        <a href="https://splinepay.replit.app/admin" class="btn">Open Admin Dashboard</a>
+        <a href="https://www.spline.nz/admin" class="btn">Open Admin Dashboard</a>
       </div>
     </div>
   </div>
@@ -544,7 +544,7 @@ This is an automated notification from Spline Pay.
         <p style="margin: 5px 0 0; font-size: 14px;">
           Review this report in the Admin Dashboard.
         </p>
-        <a href="https://splinepay.replit.app/admin" class="btn">Open Admin Dashboard</a>
+        <a href="https://www.spline.nz/admin" class="btn">Open Admin Dashboard</a>
       </div>
     </div>
   </div>

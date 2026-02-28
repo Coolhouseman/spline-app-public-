@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, TextInput, StyleSheet, Pressable, Alert, Platform, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showAppleButton, setShowAppleButton] = useState(false);
+  const socialAuthOperationRef = useRef(0);
 
   useEffect(() => {
     SocialAuthService.isAppleSignInAvailable().then(setShowAppleButton);
@@ -43,39 +44,62 @@ export default function LoginScreen({ navigation }: Props) {
     }
   };
 
-  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
-    if (result.success && result.userId) {
-      const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
-      if (requiresOnboarding) {
-        clearSignupOverlay();
-        navigation.navigate('SocialSignupName', {
-          userId: result.userId,
-          email: result.email,
-          provider,
-          fullName: result.fullName,
-          needsPhone: result.needsPhoneVerification,
-          needsDOB: result.needsDOB,
-          existingPhone: result.existingPhone,
-        });
-      } else {
-        await refreshUser();
-      }
+  const beginSocialAuthOperation = () => {
+    socialAuthOperationRef.current += 1;
+    setSocialSignupInProgress(true);
+    return socialAuthOperationRef.current;
+  };
+
+  const finishSocialAuthOperation = (operationId: number, clearOverlay: boolean) => {
+    if (socialAuthOperationRef.current !== operationId) {
+      return;
+    }
+    if (clearOverlay) {
+      clearSignupOverlay();
     } else {
       setSocialSignupInProgress(false);
-      if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
-        Alert.alert('Sign-In Failed', result.error);
+    }
+  };
+
+  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google', operationId: number) => {
+    try {
+      if (result.success && result.userId) {
+        const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
+        if (requiresOnboarding) {
+          navigation.navigate('SocialSignupName', {
+            userId: result.userId,
+            email: result.email,
+            provider,
+            fullName: result.fullName,
+            needsPhone: result.needsPhoneVerification,
+            needsDOB: result.needsDOB,
+            existingPhone: result.existingPhone,
+          });
+          finishSocialAuthOperation(operationId, true);
+        } else {
+          await refreshUser();
+          finishSocialAuthOperation(operationId, false);
+        }
+      } else {
+        finishSocialAuthOperation(operationId, false);
+        if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+          Alert.alert('Sign-In Failed', result.error);
+        }
       }
+    } catch (error: any) {
+      finishSocialAuthOperation(operationId, false);
+      Alert.alert('Sign-In Failed', error?.message || 'Social sign-in failed');
     }
   };
 
   const handleAppleSignIn = async () => {
+    const operationId = beginSocialAuthOperation();
     setAppleLoading(true);
-    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithApple();
-      await handleSocialAuthResult(result, 'apple');
+      await handleSocialAuthResult(result, 'apple', operationId);
     } catch (error: any) {
-      setSocialSignupInProgress(false);
+      finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
       setAppleLoading(false);
@@ -83,13 +107,13 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleGoogleSignIn = async () => {
+    const operationId = beginSocialAuthOperation();
     setGoogleLoading(true);
-    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
-      await handleSocialAuthResult(result, 'google');
+      await handleSocialAuthResult(result, 'google', operationId);
     } catch (error: any) {
-      setSocialSignupInProgress(false);
+      finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
       setGoogleLoading(false);

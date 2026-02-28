@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, useWindowDimensions, Platform, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ export default function WelcomeScreen({ navigation }: Props) {
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showAppleButton, setShowAppleButton] = useState(false);
+  const socialAuthOperationRef = useRef(0);
 
   const progress = useSharedValue(0);
   const fadeIn = useSharedValue(0);
@@ -186,49 +187,71 @@ export default function WelcomeScreen({ navigation }: Props) {
     opacity: interpolate(fadeIn.value, [0, 1], [0, 0.05]),
   }));
 
-  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google') => {
-    console.log('[WelcomeScreen] handleSocialAuthResult called with:', JSON.stringify(result, null, 2));
-    if (result.success && result.userId) {
-      console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
-      
-      // Use RootNavigation (app-level navigation ref) for reliable navigation after OAuth browser return
-      // This is the standard pattern for navigating from OAuth callbacks
-      
-      const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
-      if (requiresOnboarding) {
-        console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupName');
-        RootNavigation.navigate('SocialSignupName', {
-          userId: result.userId,
-          email: result.email,
-          provider,
-          fullName: result.fullName,
-          needsPhone: result.needsPhoneVerification,
-          needsDOB: result.needsDOB,
-          existingPhone: result.existingPhone,
-        });
-        // Clear overlay after navigation
-        setTimeout(() => clearSignupOverlay(), 100);
-      } else {
-        console.log('[WelcomeScreen] Profile complete, refreshing user');
-        await refreshUser();
-      }
+  const beginSocialAuthOperation = () => {
+    socialAuthOperationRef.current += 1;
+    setSocialSignupInProgress(true);
+    return socialAuthOperationRef.current;
+  };
+
+  const finishSocialAuthOperation = (operationId: number, clearOverlay: boolean) => {
+    if (socialAuthOperationRef.current !== operationId) {
+      return;
+    }
+    if (clearOverlay) {
+      clearSignupOverlay();
     } else {
-      console.log('[WelcomeScreen] Auth failed or no userId:', result.error);
       setSocialSignupInProgress(false);
-      if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
-        Alert.alert('Sign-In Failed', result.error);
+    }
+  };
+
+  const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google', operationId: number) => {
+    console.log('[WelcomeScreen] handleSocialAuthResult called with:', JSON.stringify(result, null, 2));
+    try {
+      if (result.success && result.userId) {
+        console.log('[WelcomeScreen] Success! needsName:', result.needsName, 'needsPhone:', result.needsPhoneVerification, 'needsDOB:', result.needsDOB);
+        
+        // Use RootNavigation (app-level navigation ref) for reliable navigation after OAuth browser return
+        // This is the standard pattern for navigating from OAuth callbacks
+        const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
+        if (requiresOnboarding) {
+          console.log('[WelcomeScreen] Using RootNavigation to navigate to SocialSignupName');
+          RootNavigation.navigate('SocialSignupName', {
+            userId: result.userId,
+            email: result.email,
+            provider,
+            fullName: result.fullName,
+            needsPhone: result.needsPhoneVerification,
+            needsDOB: result.needsDOB,
+            existingPhone: result.existingPhone,
+          });
+          // Clear overlay after navigation handoff
+          setTimeout(() => finishSocialAuthOperation(operationId, true), 100);
+        } else {
+          console.log('[WelcomeScreen] Profile complete, refreshing user');
+          await refreshUser();
+          finishSocialAuthOperation(operationId, false);
+        }
+      } else {
+        console.log('[WelcomeScreen] Auth failed or no userId:', result.error);
+        finishSocialAuthOperation(operationId, false);
+        if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
+          Alert.alert('Sign-In Failed', result.error);
+        }
       }
+    } catch (error: any) {
+      finishSocialAuthOperation(operationId, false);
+      Alert.alert('Sign-In Failed', error?.message || 'Social sign-in failed');
     }
   };
 
   const handleAppleSignIn = async () => {
+    const operationId = beginSocialAuthOperation();
     setAppleLoading(true);
-    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithApple();
-      await handleSocialAuthResult(result, 'apple');
+      await handleSocialAuthResult(result, 'apple', operationId);
     } catch (error: any) {
-      setSocialSignupInProgress(false);
+      finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
       setAppleLoading(false);
@@ -236,13 +259,13 @@ export default function WelcomeScreen({ navigation }: Props) {
   };
 
   const handleGoogleSignIn = async () => {
+    const operationId = beginSocialAuthOperation();
     setGoogleLoading(true);
-    setSocialSignupInProgress(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
-      await handleSocialAuthResult(result, 'google');
+      await handleSocialAuthResult(result, 'google', operationId);
     } catch (error: any) {
-      setSocialSignupInProgress(false);
+      finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
       setGoogleLoading(false);

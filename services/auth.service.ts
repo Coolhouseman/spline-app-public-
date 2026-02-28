@@ -5,6 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 import { ReferralsService } from './referrals.service';
+import { resolveBackendOrigin } from '@/utils/backend';
 
 export interface SignupData {
   name: string;
@@ -19,6 +20,15 @@ export interface SignupData {
 }
 
 export class AuthService {
+  private static getBackendOriginSafe(): string {
+    try {
+      return resolveBackendOrigin();
+    } catch (error) {
+      console.warn('[AuthService] Failed to resolve backend origin, using production fallback:', error);
+      return 'https://www.spline.nz';
+    }
+  }
+
   static async signup(data: SignupData): Promise<{ user: User; session: any }> {
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
@@ -452,7 +462,7 @@ export class AuthService {
       throw new Error('Not authenticated');
     }
 
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
+    const backendUrl = this.getBackendOriginSafe();
     
     // Create AbortController for fetch timeout
     const controller = new AbortController();

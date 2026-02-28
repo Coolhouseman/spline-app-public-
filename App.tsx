@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -48,11 +48,19 @@ const DarkNavTheme = {
 };
 
 function RootNavigator() {
-  const { user, isLoading, isSigningUp } = useAuth();
+  const { user, isLoading, isSigningUp, clearSignupOverlay } = useAuth();
   const colorScheme = useColorScheme();
   const [forceUnlocked, setForceUnlocked] = React.useState(false);
   const STARTUP_FORCE_UNLOCK_MS = 12000;
+  const SIGNUP_OVERLAY_FORCE_UNLOCK_MS = 15000;
   const previousBootStateRef = React.useRef<string | null>(null);
+  const [appState, setAppState] = React.useState<AppStateStatus>(AppState.currentState);
+  const appStateRef = React.useRef<AppStateStatus>(AppState.currentState);
+  const clearSignupOverlayRef = React.useRef(clearSignupOverlay);
+
+  React.useEffect(() => {
+    clearSignupOverlayRef.current = clearSignupOverlay;
+  }, [clearSignupOverlay]);
 
   React.useEffect(() => {
     if (!isLoading) {
@@ -68,6 +76,32 @@ function RootNavigator() {
     return () => clearTimeout(timer);
   }, [isLoading]);
 
+  React.useEffect(() => {
+    if (!isSigningUp) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      console.warn(
+        `[Startup] Force-clearing signup overlay after ${SIGNUP_OVERLAY_FORCE_UNLOCK_MS}ms`
+      );
+      clearSignupOverlayRef.current();
+    }, SIGNUP_OVERLAY_FORCE_UNLOCK_MS);
+
+    return () => clearTimeout(timer);
+  }, [isSigningUp]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previous = appStateRef.current;
+      appStateRef.current = nextState;
+      console.log('[Startup] AppState transition:', previous, '->', nextState);
+      setAppState(nextState);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   // Debug logging - track user state in RootNavigator
   React.useEffect(() => {
     console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading, 'isSigningUp:', isSigningUp);
@@ -79,10 +113,17 @@ function RootNavigator() {
       : (user ? 'authenticated' : 'unauthenticated');
 
     if (previousBootStateRef.current !== bootState) {
-      console.log('[Startup] Boot state transition:', previousBootStateRef.current, '->', bootState);
+      console.log(
+        '[Startup] Boot state transition:',
+        previousBootStateRef.current,
+        '->',
+        bootState,
+        `appState=${appState}`,
+        `isSigningUp=${isSigningUp}`
+      );
       previousBootStateRef.current = bootState;
     }
-  }, [forceUnlocked, isLoading, user]);
+  }, [appState, forceUnlocked, isLoading, isSigningUp, user]);
 
   // Show loading during initial load
   if (isLoading && !forceUnlocked) {

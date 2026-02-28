@@ -344,7 +344,7 @@ router.post('/initiate-card-setup', userAuthMiddleware, async (req: Authenticate
     } else if (directHost.includes('localhost')) {
       baseUrl = `http://${directHost}`;
     } else {
-      baseUrl = 'https://splinepay.replit.app';
+      baseUrl = process.env.BACKEND_URL || 'https://www.spline.nz';
     }
     
     console.log(`Card setup for user ${userId}: ${setupIntent.id} (testMode: ${testMode})`);

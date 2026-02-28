@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { StripeService } from './stripe.service';
 import { GamificationService, XPAwardResult } from './gamification.service';
 import type { Wallet, Transaction } from '@/shared/types';
+import { resolveBackendOrigin } from '@/utils/backend';
 
 /**
  * ==========================================================
@@ -41,6 +42,15 @@ export interface BankDetails {
   account_last4: string;       // Last 4 digits (for user display)
   account_type: string;
 }
+
+const resolveBackendOriginSafe = (): string => {
+  try {
+    return resolveBackendOrigin();
+  } catch (resolveError) {
+    console.warn('[WalletService] Failed to resolve backend origin, using fallback:', resolveError);
+    return 'https://www.spline.nz';
+  }
+};
 
 export const NZ_BANKS = [
   { id: 'anz', name: 'ANZ Bank' },
@@ -1273,38 +1283,44 @@ export class WalletService {
       const userUniqueId = user?.unique_id || 'N/A';
       const userDatabaseId = user?.id || userId;
 
-      // Call the notification API - use production URL since this runs on mobile
-      const SERVER_URL = 'https://splinepay.replit.app';
+      const SERVER_URL = resolveBackendOriginSafe();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       // Use SESSION_SECRET as service key for internal API authentication
       // This secret is only available server-side, preventing unauthorized access
       const serviceKey = 'spline-internal-service'; // Fallback key that matches server expectation
 
-      await fetch(`${SERVER_URL}/api/notify-withdrawal`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Service-Key': serviceKey
-        },
-        body: JSON.stringify({
-          userId: userUniqueId,
-          userDatabaseId: userDatabaseId,
-          userName,
-          userEmail,
-          userPhone,
-          amount,
-          feeAmount,
-          netAmount,
-          withdrawalType,
-          bankName: bankDetails?.bank_name || 'Unknown Bank',
-          accountNumber: bankDetails?.account_number || 'Not provided',
-          accountHolderName: bankDetails?.account_holder_name || 'Not provided',
-          accountLast4: bankDetails?.account_last4 || '****',
-          estimatedArrival,
-          transactionId,
-          remainingBalance
-        })
-      });
+      try {
+        await fetch(`${SERVER_URL}/api/notify-withdrawal`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Service-Key': serviceKey
+          },
+          body: JSON.stringify({
+            userId: userUniqueId,
+            userDatabaseId: userDatabaseId,
+            userName,
+            userEmail,
+            userPhone,
+            amount,
+            feeAmount,
+            netAmount,
+            withdrawalType,
+            bankName: bankDetails?.bank_name || 'Unknown Bank',
+            accountNumber: bankDetails?.account_number || 'Not provided',
+            accountHolderName: bankDetails?.account_holder_name || 'Not provided',
+            accountLast4: bankDetails?.account_last4 || '****',
+            estimatedArrival,
+            transactionId,
+            remainingBalance
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       console.log('Withdrawal notification sent successfully');
     } catch (error) {

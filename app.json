@@ -2,7 +2,7 @@
   "expo": {
     "name": "Spline",
     "slug": "spline",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "splitpaymentapp",
@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
-      "buildNumber": "38",
+      "buildNumber": "39",
       "infoPlist": {
         "FacebookAppID": "933543809238060",
         "FacebookClientToken": "8d6c6f52607a2af2a6f592c09c3475ff",
@@ -53,7 +53,7 @@
     },
     "android": {
       "package": "com.splitpaymentapp.split",
-      "versionCode": 17,
+      "versionCode": 18,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/adaptive-icon.png",

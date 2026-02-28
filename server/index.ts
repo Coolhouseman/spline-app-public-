@@ -685,7 +685,7 @@ app.post('/api/request-password-reset', async (req, res) => {
     }
     
     const { error } = await supabaseServer.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.BACKEND_URL || 'https://splinepay.replit.app'}/reset-password`
+      redirectTo: `${process.env.BACKEND_URL || 'https://www.spline.nz'}/reset-password`
     });
     
     if (error) {

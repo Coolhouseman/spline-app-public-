@@ -5,6 +5,7 @@ import { ThemedText } from './ThemedText';
 import { Spacing, BorderRadius, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { supabase } from '@/services/supabase';
+import { resolveBackendOrigin } from '@/utils/backend';
 
 interface VoucherClaimModalProps {
   visible: boolean;
@@ -27,6 +28,16 @@ export function VoucherClaimModal({
   const [loading, setLoading] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const REQUEST_TIMEOUT_MS = 10000;
+
+  const getBackendOriginSafe = () => {
+    try {
+      return resolveBackendOrigin();
+    } catch (resolveError) {
+      console.warn('[VoucherClaimModal] Failed to resolve backend origin, using fallback:', resolveError);
+      return 'https://www.spline.nz';
+    }
+  };
 
   const handleClaimVoucher = async () => {
     setLoading(true);
@@ -41,7 +52,9 @@ export function VoucherClaimModal({
         return;
       }
 
-      const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://splinepay.replit.app';
+      const backendUrl = getBackendOriginSafe();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       const response = await fetch(`${backendUrl}/api/gamification/claim-voucher`, {
         method: 'POST',
         headers: {
@@ -51,7 +64,8 @@ export function VoucherClaimModal({
         body: JSON.stringify({
           voucherType,
         }),
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
 
       const result = await response.json();
 
@@ -65,7 +79,11 @@ export function VoucherClaimModal({
       setLoading(false);
     } catch (err: any) {
       console.error('Voucher claim error:', err);
-      setError('Something went wrong. Please try again.');
+      if (err?.name === 'AbortError') {
+        setError('Request timed out. Please try again.');
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };

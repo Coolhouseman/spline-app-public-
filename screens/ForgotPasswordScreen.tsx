@@ -24,7 +24,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
     // The web page will then provide a deep link to open the app
     // Note: Expo Go uses exp:// scheme which isn't in the allowed list,
     // so we must use the web URL even on mobile
-    return 'https://splinepay.replit.app/reset-password';
+    return 'https://www.spline.nz/reset-password';
   };
 
   const handleResetPassword = async () => {
