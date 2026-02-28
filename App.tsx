@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, useColorScheme, Platform } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -17,7 +17,6 @@ import MainTabNavigator from "@/navigation/MainTabNavigator";
 import AuthStackNavigator from "@/navigation/AuthStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StripeWrapper } from "@/components/StripeWrapper";
-import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LevelUpProvider } from "@/contexts/LevelUpContext";
 import { useTheme } from "@/hooks/useTheme";
@@ -51,18 +50,47 @@ const DarkNavTheme = {
 function RootNavigator() {
   const { user, isLoading, isSigningUp } = useAuth();
   const colorScheme = useColorScheme();
+  const [forceUnlocked, setForceUnlocked] = React.useState(false);
+  const STARTUP_FORCE_UNLOCK_MS = 12000;
+  const previousBootStateRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isLoading) {
+      setForceUnlocked(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      console.warn(`[Startup] Force-unlocking RootNavigator after ${STARTUP_FORCE_UNLOCK_MS}ms`);
+      setForceUnlocked(true);
+    }, STARTUP_FORCE_UNLOCK_MS);
+
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   // Debug logging - track user state in RootNavigator
   React.useEffect(() => {
     console.log('RootNavigator: user changed to:', user ? user.id : 'null', 'isLoading:', isLoading, 'isSigningUp:', isSigningUp);
   }, [user, isLoading, isSigningUp]);
 
+  React.useEffect(() => {
+    const bootState = isLoading
+      ? (forceUnlocked ? 'force_unlocked_loading' : 'loading')
+      : (user ? 'authenticated' : 'unauthenticated');
+
+    if (previousBootStateRef.current !== bootState) {
+      console.log('[Startup] Boot state transition:', previousBootStateRef.current, '->', bootState);
+      previousBootStateRef.current = bootState;
+    }
+  }, [forceUnlocked, isLoading, user]);
+
   // Show loading during initial load
-  if (isLoading) {
+  if (isLoading && !forceUnlocked) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
-        <LoadingOverlay visible={true} message="Loading..." />
+        <ActivityIndicator size="large" color="#FFFFFF" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -84,7 +112,8 @@ function RootNavigator() {
       {/* Overlay loading on top of navigator during signup - keeps navigator mounted */}
       {isSigningUp && (
         <View style={[styles.loading, styles.overlay, { backgroundColor: colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light }]}>
-          <LoadingOverlay visible={true} message="Creating your account..." />
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Creating your account...</Text>
         </View>
       )}
     </View>
@@ -256,6 +285,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   overlay: {
     position: 'absolute',

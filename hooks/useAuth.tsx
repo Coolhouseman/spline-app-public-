@@ -103,6 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUser = async () => {
     const startupStartedAt = Date.now();
+    const HARD_STARTUP_UNLOCK_MS = 12000;
+    const hardUnlockTimer = setTimeout(() => {
+      console.warn(
+        `[AuthProvider ${instanceId.current}] Force-unlocking startup UI after ${HARD_STARTUP_UNLOCK_MS}ms`
+      );
+      setIsLoading(false);
+    }, HARD_STARTUP_UNLOCK_MS);
+
     try {
       console.log(`[AuthProvider ${instanceId.current}] Loading user...`);
       const restorePromise = AuthService.restoreSession();
@@ -146,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load user:', error);
     } finally {
+      clearTimeout(hardUnlockTimer);
       // Never block first paint forever waiting on auth/network.
       console.log(
         `[AuthProvider ${instanceId.current}] Startup auth path finished in ${Date.now() - startupStartedAt}ms`
