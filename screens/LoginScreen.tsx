@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TextInput, StyleSheet, Pressable, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, Alert, Platform, ActivityIndicator, AppState } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
@@ -8,6 +8,7 @@ import { ScreenKeyboardAwareScrollView } from '@/components/ScreenKeyboardAwareS
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/theme';
+import { logDiagnosticEvent } from '@/services/diagnostics.service';
 import { SocialAuthService } from '@/services/socialAuth.service';
 
 type Props = NativeStackScreenProps<any, 'Login'>;
@@ -21,11 +22,53 @@ export default function LoginScreen({ navigation }: Props) {
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showAppleButton, setShowAppleButton] = useState(false);
+  const SOCIAL_AUTH_STALE_MS = 45000;
   const socialAuthOperationRef = useRef(0);
+  const socialAuthStartedAtRef = useRef<number | null>(null);
+  const socialAuthWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     SocialAuthService.isAppleSignInAvailable().then(setShowAppleButton);
   }, []);
+
+  const clearSocialAuthWatchdog = () => {
+    if (socialAuthWatchdogRef.current) {
+      clearTimeout(socialAuthWatchdogRef.current);
+      socialAuthWatchdogRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearSocialAuthWatchdog();
+      socialAuthStartedAtRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        return;
+      }
+      if (!appleLoading && !googleLoading) {
+        return;
+      }
+      const startedAt = socialAuthStartedAtRef.current;
+      const elapsed = startedAt ? Date.now() - startedAt : 0;
+      if (elapsed >= SOCIAL_AUTH_STALE_MS) {
+        console.warn(
+          `[LoginScreen] social_auth_stale_after_foreground elapsed_ms=${elapsed} action=reset_loading`
+        );
+        void logDiagnosticEvent('login_social_auth_stale_on_active', { elapsedMs: elapsed });
+        clearSocialAuthWatchdog();
+        setAppleLoading(false);
+        setGoogleLoading(false);
+        clearSignupOverlay();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [appleLoading, clearSignupOverlay, googleLoading]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -45,15 +88,40 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const beginSocialAuthOperation = () => {
+    if (appleLoading || googleLoading) {
+      return null;
+    }
     socialAuthOperationRef.current += 1;
-    setSocialSignupInProgress(true);
-    return socialAuthOperationRef.current;
+    void logDiagnosticEvent('login_social_auth_begin');
+    const operationId = socialAuthOperationRef.current;
+    socialAuthStartedAtRef.current = Date.now();
+    clearSocialAuthWatchdog();
+    socialAuthWatchdogRef.current = setTimeout(() => {
+      if (socialAuthOperationRef.current !== operationId) {
+        return;
+      }
+      console.warn(
+        `[LoginScreen] social_auth_watchdog_timeout elapsed_ms=${SOCIAL_AUTH_STALE_MS} operation_id=${operationId}`
+      );
+      void logDiagnosticEvent('login_social_auth_watchdog_timeout', {
+        timeoutMs: SOCIAL_AUTH_STALE_MS,
+      });
+      setAppleLoading(false);
+      setGoogleLoading(false);
+      clearSignupOverlay();
+      Alert.alert('Sign-In Timed Out', 'Please try signing in again.');
+    }, SOCIAL_AUTH_STALE_MS);
+    return operationId;
   };
 
   const finishSocialAuthOperation = (operationId: number, clearOverlay: boolean) => {
     if (socialAuthOperationRef.current !== operationId) {
       return;
     }
+    clearSocialAuthWatchdog();
+    socialAuthStartedAtRef.current = null;
+    setAppleLoading(false);
+    setGoogleLoading(false);
     if (clearOverlay) {
       clearSignupOverlay();
     } else {
@@ -63,7 +131,14 @@ export default function LoginScreen({ navigation }: Props) {
 
   const handleSocialAuthResult = async (result: any, provider: 'apple' | 'google', operationId: number) => {
     try {
+      if (socialAuthOperationRef.current !== operationId) {
+        return;
+      }
       if (result.success && result.userId) {
+        void logDiagnosticEvent('login_social_auth_success', {
+          needsOnboarding: Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB),
+        });
+        setSocialSignupInProgress(true);
         const requiresOnboarding = Boolean(result.needsName || result.needsPhoneVerification || result.needsDOB);
         if (requiresOnboarding) {
           navigation.navigate('SocialSignupName', {
@@ -81,6 +156,9 @@ export default function LoginScreen({ navigation }: Props) {
           finishSocialAuthOperation(operationId, false);
         }
       } else {
+        void logDiagnosticEvent('login_social_auth_failed', {
+          error: result?.error ?? 'unknown',
+        });
         finishSocialAuthOperation(operationId, false);
         if (result.error && result.error !== 'Sign-in was cancelled' && result.error !== 'Google Sign-In was cancelled') {
           Alert.alert('Sign-In Failed', result.error);
@@ -94,6 +172,9 @@ export default function LoginScreen({ navigation }: Props) {
 
   const handleAppleSignIn = async () => {
     const operationId = beginSocialAuthOperation();
+    if (!operationId) {
+      return;
+    }
     setAppleLoading(true);
     try {
       const result = await SocialAuthService.signInWithApple();
@@ -102,12 +183,17 @@ export default function LoginScreen({ navigation }: Props) {
       finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Apple Sign-In failed');
     } finally {
-      setAppleLoading(false);
+      if (socialAuthOperationRef.current === operationId) {
+        setAppleLoading(false);
+      }
     }
   };
 
   const handleGoogleSignIn = async () => {
     const operationId = beginSocialAuthOperation();
+    if (!operationId) {
+      return;
+    }
     setGoogleLoading(true);
     try {
       const result = await SocialAuthService.signInWithGoogle();
@@ -116,7 +202,9 @@ export default function LoginScreen({ navigation }: Props) {
       finishSocialAuthOperation(operationId, false);
       Alert.alert('Error', error.message || 'Google Sign-In failed');
     } finally {
-      setGoogleLoading(false);
+      if (socialAuthOperationRef.current === operationId) {
+        setGoogleLoading(false);
+      }
     }
   };
 
@@ -205,7 +293,7 @@ export default function LoginScreen({ navigation }: Props) {
               { backgroundColor: '#000', opacity: pressed ? 0.8 : 1 }
             ]}
             onPress={handleAppleSignIn}
-            disabled={appleLoading}
+            disabled={appleLoading || googleLoading}
           >
             {appleLoading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -226,7 +314,7 @@ export default function LoginScreen({ navigation }: Props) {
             { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }
           ]}
           onPress={handleGoogleSignIn}
-          disabled={googleLoading}
+          disabled={googleLoading || appleLoading}
         >
           {googleLoading ? (
             <ActivityIndicator color={theme.text} size="small" />

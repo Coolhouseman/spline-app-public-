@@ -3,6 +3,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { supabase } from './supabase';
+import { logDiagnosticEvent } from './diagnostics.service';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -25,6 +26,32 @@ const generateUniqueId = (): string => {
   const min = 100000;
   const max = 9999999;
   return Math.floor(min + Math.random() * (max - min + 1)).toString();
+};
+
+const OAUTH_INIT_TIMEOUT_MS = 12000;
+const OAUTH_BROWSER_TIMEOUT_MS = 45000;
+const OAUTH_SESSION_TIMEOUT_MS = 15000;
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  stage: string
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${stage} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 };
 
 export const SocialAuthService = {
@@ -93,21 +120,31 @@ export const SocialAuthService = {
         : 'splitpaymentapp://auth/callback';
       
       console.log('[Google Sign-In] Starting with redirect URL:', redirectUrl, 'Platform:', Platform.OS);
+      void logDiagnosticEvent('google_oauth_start', {
+        platform: Platform.OS,
+      });
       
       // Start Supabase OAuth flow - let Supabase handle PKCE/state
-      const { data: oauthData, error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-          queryParams: {
-            prompt: 'select_account',
+      const { data: oauthData, error: oauthError } = await withTimeout(
+        supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+            queryParams: {
+              prompt: 'select_account',
+            },
           },
-        },
-      });
+        }),
+        OAUTH_INIT_TIMEOUT_MS,
+        'google_oauth_init'
+      );
 
       if (oauthError || !oauthData?.url) {
         console.error('[Google Sign-In] OAuth init error:', oauthError);
+        void logDiagnosticEvent('google_oauth_init_error', {
+          error: oauthError?.message ?? 'missing_oauth_url',
+        });
         return { success: false, error: oauthError?.message || 'Failed to start Google Sign-In' };
       }
 
@@ -115,18 +152,24 @@ export const SocialAuthService = {
       console.log('[Google Sign-In] OAuth URL:', oauthData.url);
       
       // Open the browser for OAuth - use showInRecents for better handling
-      const result = await WebBrowser.openAuthSessionAsync(
-        oauthData.url, 
-        redirectUrl,
-        { showInRecents: true }
+      const result = await withTimeout(
+        WebBrowser.openAuthSessionAsync(
+          oauthData.url, 
+          redirectUrl,
+          { showInRecents: true }
+        ),
+        OAUTH_BROWSER_TIMEOUT_MS,
+        'google_oauth_browser'
       );
 
       console.log('[Google Sign-In] Auth session result type:', result.type);
 
       if (result.type !== 'success') {
         if (result.type === 'cancel' || result.type === 'dismiss') {
+          void logDiagnosticEvent('google_oauth_cancelled', { type: result.type });
           return { success: false, error: 'Google Sign-In was cancelled' };
         }
+        void logDiagnosticEvent('google_oauth_failed_result', { type: result.type });
         return { success: false, error: 'Google Sign-In failed. Please try again.' };
       }
 
@@ -146,6 +189,10 @@ export const SocialAuthService = {
       
       if (errorCode) {
         console.error('[Google Sign-In] OAuth error:', errorCode, errorDescription);
+        void logDiagnosticEvent('google_oauth_callback_error', {
+          errorCode,
+          errorDescription: errorDescription ?? undefined,
+        });
         return { success: false, error: errorDescription || errorCode };
       }
       
@@ -155,13 +202,20 @@ export const SocialAuthService = {
       
       if (accessToken && refreshToken) {
         console.log('[Google Sign-In] Got tokens from hash fragment, setting session...');
-        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
+        const { data: sessionData, error: sessionError } = await withTimeout(
+          supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          }),
+          OAUTH_SESSION_TIMEOUT_MS,
+          'google_set_session'
+        );
 
         if (sessionError) {
           console.error('[Google Sign-In] Session error:', sessionError);
+          void logDiagnosticEvent('google_oauth_set_session_error', {
+            error: sessionError.message,
+          });
           return { success: false, error: sessionError.message };
         }
 
@@ -170,6 +224,9 @@ export const SocialAuthService = {
         }
 
         console.log('[Google Sign-In] User authenticated via tokens:', sessionData.user.id);
+        void logDiagnosticEvent('google_oauth_success_tokens', {
+          hasUser: true,
+        });
         return await this.handleSocialAuthUser(
           sessionData.user.id,
           sessionData.user.email,
@@ -182,10 +239,17 @@ export const SocialAuthService = {
       
       if (code) {
         console.log('[Google Sign-In] Got authorization code, exchanging for session...');
-        const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        const { data: sessionData, error: exchangeError } = await withTimeout(
+          supabase.auth.exchangeCodeForSession(code),
+          OAUTH_SESSION_TIMEOUT_MS,
+          'google_exchange_code'
+        );
         
         if (exchangeError) {
           console.error('[Google Sign-In] Code exchange error:', exchangeError);
+          void logDiagnosticEvent('google_oauth_exchange_error', {
+            error: exchangeError.message,
+          });
           return { success: false, error: exchangeError.message };
         }
         
@@ -194,6 +258,9 @@ export const SocialAuthService = {
         }
         
         console.log('[Google Sign-In] User authenticated via code exchange:', sessionData.user.id);
+        void logDiagnosticEvent('google_oauth_success_code_exchange', {
+          hasUser: true,
+        });
         return await this.handleSocialAuthUser(
           sessionData.user.id,
           sessionData.user.email,
@@ -203,15 +270,25 @@ export const SocialAuthService = {
       
       // Fallback: Check current session (in case tokens were set automatically)
       console.log('[Google Sign-In] No tokens/code in URL, checking current session...');
-      const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
+      const { data: { session }, error: getSessionError } = await withTimeout(
+        supabase.auth.getSession(),
+        OAUTH_SESSION_TIMEOUT_MS,
+        'google_get_session_fallback'
+      );
       
       if (getSessionError) {
         console.error('[Google Sign-In] Get session error:', getSessionError);
+        void logDiagnosticEvent('google_oauth_get_session_error', {
+          error: getSessionError.message,
+        });
         return { success: false, error: getSessionError.message };
       }
       
       if (session?.user) {
         console.log('[Google Sign-In] User authenticated from existing session:', session.user.id);
+        void logDiagnosticEvent('google_oauth_success_existing_session', {
+          hasUser: true,
+        });
         return await this.handleSocialAuthUser(
           session.user.id,
           session.user.email,
@@ -223,10 +300,23 @@ export const SocialAuthService = {
       console.error('[Google Sign-In] No session found after auth. URL was:', url);
       console.error('[Google Sign-In] Hash params:', Object.fromEntries(hashParams.entries()));
       console.error('[Google Sign-In] Query params:', Object.fromEntries(queryParams.entries()));
+      void logDiagnosticEvent('google_oauth_no_session_after_callback', {
+        hasHashTokens: Boolean(accessToken && refreshToken),
+        hasCode: Boolean(code),
+      });
       return { success: false, error: 'Authentication completed but no session was created. Please try again.' };
     } catch (error: any) {
       console.error('[Google Sign-In] Error:', error);
-      return { success: false, error: error.message || 'Google Sign-In failed' };
+      const message = error?.message || 'Google Sign-In failed';
+      if (message.includes('timed out')) {
+        void logDiagnosticEvent('google_oauth_timeout', { message });
+        return {
+          success: false,
+          error: 'Google Sign-In timed out. Please reopen the app and try again.',
+        };
+      }
+      void logDiagnosticEvent('google_oauth_unhandled_error', { message });
+      return { success: false, error: message };
     }
   },
 

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus, Pressable, Alert, Share } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -21,6 +21,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LevelUpProvider } from "@/contexts/LevelUpContext";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
+import { buildDiagnosticReport, getDiagnosticEvents, logDiagnosticEvent } from "@/services/diagnostics.service";
 import { supabase } from "@/services/supabase";
 import { navigationRef, notifyReady } from "@/utils/RootNavigation";
 
@@ -30,6 +31,7 @@ const SPLASH_COLORS = {
   light: '#2563EB',
   dark: '#1e40af',
 };
+const LINKING_INITIAL_URL_TIMEOUT_MS = 2500;
 
 const LightNavTheme = {
   ...DefaultTheme,
@@ -53,10 +55,13 @@ function RootNavigator() {
   const [forceUnlocked, setForceUnlocked] = React.useState(false);
   const STARTUP_FORCE_UNLOCK_MS = 12000;
   const SIGNUP_OVERLAY_FORCE_UNLOCK_MS = 15000;
+  const ACTIVE_STARTUP_RECOVERY_UNLOCK_MS = 6000;
   const previousBootStateRef = React.useRef<string | null>(null);
   const [appState, setAppState] = React.useState<AppStateStatus>(AppState.currentState);
   const appStateRef = React.useRef<AppStateStatus>(AppState.currentState);
   const clearSignupOverlayRef = React.useRef(clearSignupOverlay);
+  const activeStartupUnlockTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
 
   React.useEffect(() => {
     clearSignupOverlayRef.current = clearSignupOverlay;
@@ -70,11 +75,40 @@ function RootNavigator() {
 
     const timer = setTimeout(() => {
       console.warn(`[Startup] Force-unlocking RootNavigator after ${STARTUP_FORCE_UNLOCK_MS}ms`);
+      void logDiagnosticEvent('root_force_unlock_startup_timeout', {
+        timeoutMs: STARTUP_FORCE_UNLOCK_MS,
+      });
       setForceUnlocked(true);
     }, STARTUP_FORCE_UNLOCK_MS);
 
     return () => clearTimeout(timer);
   }, [isLoading]);
+
+  React.useEffect(() => {
+    const clearActiveStartupUnlockTimer = () => {
+      if (activeStartupUnlockTimerRef.current) {
+        clearTimeout(activeStartupUnlockTimerRef.current);
+        activeStartupUnlockTimerRef.current = null;
+      }
+    };
+
+    if (!(appState === 'active' && isLoading && !forceUnlocked)) {
+      clearActiveStartupUnlockTimer();
+      return;
+    }
+
+    activeStartupUnlockTimerRef.current = setTimeout(() => {
+      console.warn(
+        `[Startup] App resumed while loading; forcing unlock after ${ACTIVE_STARTUP_RECOVERY_UNLOCK_MS}ms`
+      );
+      void logDiagnosticEvent('root_force_unlock_on_active_loading', {
+        timeoutMs: ACTIVE_STARTUP_RECOVERY_UNLOCK_MS,
+      });
+      setForceUnlocked(true);
+    }, ACTIVE_STARTUP_RECOVERY_UNLOCK_MS);
+
+    return () => clearActiveStartupUnlockTimer();
+  }, [appState, forceUnlocked, isLoading]);
 
   React.useEffect(() => {
     if (!isSigningUp) {
@@ -85,6 +119,9 @@ function RootNavigator() {
       console.warn(
         `[Startup] Force-clearing signup overlay after ${SIGNUP_OVERLAY_FORCE_UNLOCK_MS}ms`
       );
+      void logDiagnosticEvent('root_force_clear_signup_overlay_timeout', {
+        timeoutMs: SIGNUP_OVERLAY_FORCE_UNLOCK_MS,
+      });
       clearSignupOverlayRef.current();
     }, SIGNUP_OVERLAY_FORCE_UNLOCK_MS);
 
@@ -96,6 +133,7 @@ function RootNavigator() {
       const previous = appStateRef.current;
       appStateRef.current = nextState;
       console.log('[Startup] AppState transition:', previous, '->', nextState);
+      void logDiagnosticEvent('app_state_transition', { previous, nextState });
       setAppState(nextState);
     });
 
@@ -126,12 +164,44 @@ function RootNavigator() {
   }, [appState, forceUnlocked, isLoading, isSigningUp, user]);
 
   // Show loading during initial load
+  const handleDiagnosticsPress = async () => {
+    if (isExportingDiagnostics) {
+      return;
+    }
+    setIsExportingDiagnostics(true);
+    try {
+      const report = await buildDiagnosticReport();
+      await Share.share({
+        title: 'Spline Diagnostics',
+        message: report,
+      });
+      void logDiagnosticEvent('diagnostics_report_shared', { source: 'root_loading' });
+    } catch (error) {
+      console.error('[Diagnostics] Failed to export diagnostics:', error);
+      Alert.alert('Diagnostics Unavailable', 'Could not export diagnostics right now.');
+      void logDiagnosticEvent('diagnostics_report_share_error', {
+        source: 'root_loading',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsExportingDiagnostics(false);
+    }
+  };
+
   if (isLoading && !forceUnlocked) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.loadingText}>Loading...</Text>
+        <Pressable
+          onPress={handleDiagnosticsPress}
+          style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
+        >
+          <Text style={styles.diagnosticsButtonText}>
+            {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -155,6 +225,14 @@ function RootNavigator() {
         <View style={[styles.loading, styles.overlay, { backgroundColor: colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light }]}>
           <ActivityIndicator size="large" color="#FFFFFF" />
           <Text style={styles.loadingText}>Creating your account...</Text>
+          <Pressable
+            onPress={handleDiagnosticsPress}
+            style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Text style={styles.diagnosticsButtonText}>
+              {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
+            </Text>
+          </Pressable>
         </View>
       )}
     </View>
@@ -166,6 +244,35 @@ const linking = {
     Linking.createURL('/'),
     'splitpaymentapp://',
   ],
+  async getInitialURL() {
+    try {
+      const url = await Promise.race([
+        Linking.getInitialURL(),
+        new Promise<null>((resolve) =>
+          setTimeout(() => {
+            console.warn(
+              `[Startup] Linking getInitialURL timed out after ${LINKING_INITIAL_URL_TIMEOUT_MS}ms`
+            );
+            void logDiagnosticEvent('linking_get_initial_url_timeout', {
+              timeoutMs: LINKING_INITIAL_URL_TIMEOUT_MS,
+            });
+            resolve(null);
+          }, LINKING_INITIAL_URL_TIMEOUT_MS)
+        ),
+      ]);
+      console.log('[Startup] Linking initial URL:', url ?? 'none');
+      void logDiagnosticEvent('linking_initial_url_resolved', {
+        hasUrl: Boolean(url),
+      });
+      return url;
+    } catch (error) {
+      console.error('[Startup] Linking getInitialURL failed:', error);
+      void logDiagnosticEvent('linking_get_initial_url_error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  },
   config: {
     screens: {
       Auth: {
@@ -233,6 +340,7 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
   const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
+  const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
 
   useEffect(() => {
     const handleUrl = async (event: { url: string }) => {
@@ -255,6 +363,30 @@ function AppContent() {
     };
   }, []);
 
+  const handleDiagnosticsPress = async () => {
+    if (isExportingDiagnostics) {
+      return;
+    }
+    setIsExportingDiagnostics(true);
+    try {
+      const report = await buildDiagnosticReport();
+      await Share.share({
+        title: 'Spline Diagnostics',
+        message: report,
+      });
+      void logDiagnosticEvent('diagnostics_report_shared', { source: 'navigation_fallback' });
+    } catch (error) {
+      console.error('[Diagnostics] Failed to export diagnostics:', error);
+      Alert.alert('Diagnostics Unavailable', 'Could not export diagnostics right now.');
+      void logDiagnosticEvent('diagnostics_report_share_error', {
+        source: 'navigation_fallback',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsExportingDiagnostics(false);
+    }
+  };
+
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: splashBg }]}>
       <KeyboardProvider>
@@ -262,6 +394,20 @@ function AppContent() {
           ref={navigationRef}
           theme={navTheme}
           linking={linking}
+          fallback={
+            <View style={[styles.loading, { backgroundColor: splashBg }]}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+              <Text style={styles.loadingText}>Loading...</Text>
+              <Pressable
+                onPress={handleDiagnosticsPress}
+                style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={styles.diagnosticsButtonText}>
+                  {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
+                </Text>
+              </Pressable>
+            </View>
+          }
           onReady={notifyReady}
         >
           <RootNavigator />
@@ -275,6 +421,21 @@ function AppContent() {
 export default function App() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+
+  useEffect(() => {
+    const dumpRecentDiagnostics = async () => {
+      try {
+        const events = await getDiagnosticEvents();
+        const recent = events.slice(-15);
+        if (recent.length > 0) {
+          console.log('[Diagnostics] Recent events:', JSON.stringify(recent));
+        }
+      } catch (error) {
+        console.warn('[Diagnostics] Failed to read recent events:', error);
+      }
+    };
+    void dumpRecentDiagnostics();
+  }, []);
 
   useEffect(() => {
     const initializeFacebookSdk = async () => {
@@ -340,5 +501,19 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 999,
+  },
+  diagnosticsButton: {
+    marginTop: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  diagnosticsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

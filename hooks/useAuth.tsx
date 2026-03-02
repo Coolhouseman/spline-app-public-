@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { User } from '@/shared/types';
 import { AuthService, SignupData } from '@/services/auth.service';
 import { generateUniqueId } from '@/utils/storage';
+import { logDiagnosticEvent } from '@/services/diagnostics.service';
 import { supabase } from '@/services/supabase';
 
 interface AuthContextType {
@@ -33,11 +34,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signupStartedAtRef = useRef<number | null>(null);
   const signupWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousUiStateRef = useRef<string | null>(null);
+  const isLoadingRef = useRef(true);
+  const startupRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startupRecoveryInFlightRef = useRef(false);
+  const STARTUP_ACTIVE_RECOVERY_DELAY_MS = 3000;
+  const STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS = 6000;
 
   const clearSignupWatchdog = () => {
     if (signupWatchdogRef.current) {
       clearTimeout(signupWatchdogRef.current);
       signupWatchdogRef.current = null;
+    }
+  };
+
+  const clearStartupRecoveryTimer = () => {
+    if (startupRecoveryTimerRef.current) {
+      clearTimeout(startupRecoveryTimerRef.current);
+      startupRecoveryTimerRef.current = null;
     }
   };
 
@@ -47,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signupStartedAtRef.current = null;
     setIsSigningUp(false);
     console.log(`[Auth] signup_flow_end reason=${reason}`);
+    void logDiagnosticEvent('auth_signup_flow_end', { reason });
   };
 
   const beginSignupFlow = (reason: string) => {
@@ -58,9 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn(
         `[Auth] signup_flow_watchdog_timeout elapsed_ms=${SIGNUP_STALE_TIMEOUT_MS} reason=auto_clear`
       );
+      void logDiagnosticEvent('auth_signup_watchdog_timeout', {
+        timeoutMs: SIGNUP_STALE_TIMEOUT_MS,
+      });
       endSignupFlow('watchdog_timeout');
     }, SIGNUP_STALE_TIMEOUT_MS);
     console.log(`[Auth] signup_flow_start reason=${reason}`);
+    void logDiagnosticEvent('auth_signup_flow_start', { reason });
   };
 
   useEffect(() => {
@@ -142,6 +160,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (nextAppState !== 'active') {
         return;
       }
+
+      if (isLoadingRef.current) {
+        clearStartupRecoveryTimer();
+        startupRecoveryTimerRef.current = setTimeout(async () => {
+          if (!isLoadingRef.current || startupRecoveryInFlightRef.current) {
+            return;
+          }
+          startupRecoveryInFlightRef.current = true;
+          console.warn(
+            `[Auth] startup_active_recovery_begin delay_ms=${STARTUP_ACTIVE_RECOVERY_DELAY_MS}`
+          );
+          void logDiagnosticEvent('auth_startup_active_recovery_begin', {
+            delayMs: STARTUP_ACTIVE_RECOVERY_DELAY_MS,
+          });
+          try {
+            const recoveredSession = await Promise.race([
+              AuthService.restoreSession(),
+              new Promise<null>((resolve) =>
+                setTimeout(() => {
+                  console.warn(
+                    `[Auth] startup_active_recovery_timeout timeout_ms=${STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS}`
+                  );
+                  void logDiagnosticEvent('auth_startup_active_recovery_timeout', {
+                    timeoutMs: STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS,
+                  });
+                  resolve(null);
+                }, STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS)
+              ),
+            ]);
+
+            if (recoveredSession?.user) {
+              console.log('[Auth] startup_active_recovery_success user_id=', recoveredSession.user.id);
+              void logDiagnosticEvent('auth_startup_active_recovery_success', { hasUser: true });
+              setUser(recoveredSession.user);
+            } else {
+              console.log('[Auth] startup_active_recovery_no_session forcing_ui_unlock=true');
+              void logDiagnosticEvent('auth_startup_active_recovery_empty', { hasUser: false });
+            }
+          } catch (error) {
+            console.error('[Auth] startup_active_recovery_error:', error);
+            void logDiagnosticEvent('auth_startup_active_recovery_error', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } finally {
+            startupRecoveryInFlightRef.current = false;
+            setIsLoading(false);
+          }
+        }, STARTUP_ACTIVE_RECOVERY_DELAY_MS);
+      }
+
       if (!signupInProgressRef.current) {
         return;
       }
@@ -159,9 +227,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      clearStartupRecoveryTimer();
       subscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+    if (!isLoading) {
+      clearStartupRecoveryTimer();
+      startupRecoveryInFlightRef.current = false;
+    }
+  }, [isLoading]);
 
   useEffect(() => {
     const uiState = [
@@ -184,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn(
         `[AuthProvider ${instanceId.current}] Force-unlocking startup UI after ${HARD_STARTUP_UNLOCK_MS}ms`
       );
+      void logDiagnosticEvent('auth_hard_startup_unlock', { timeoutMs: HARD_STARTUP_UNLOCK_MS });
       setIsLoading(false);
     }, HARD_STARTUP_UNLOCK_MS);
 
@@ -197,6 +275,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn(
               `[AuthProvider ${instanceId.current}] Startup auth timed out after ${STARTUP_AUTH_TIMEOUT_MS}ms`
             );
+            void logDiagnosticEvent('auth_startup_timeout', {
+              timeoutMs: STARTUP_AUTH_TIMEOUT_MS,
+            });
             resolve(null);
           }, STARTUP_AUTH_TIMEOUT_MS)
         ),
@@ -207,11 +288,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           `[AuthProvider ${instanceId.current}] Restored user in ${Date.now() - startupStartedAt}ms:`,
           session.user.id
         );
+        void logDiagnosticEvent('auth_startup_restore_success', {
+          elapsedMs: Date.now() - startupStartedAt,
+        });
         setUser(session.user);
       } else {
         console.log(
           `[AuthProvider ${instanceId.current}] No session restored during startup after ${Date.now() - startupStartedAt}ms`
         );
+        void logDiagnosticEvent('auth_startup_restore_empty', {
+          elapsedMs: Date.now() - startupStartedAt,
+        });
         // Keep listening for a late session resolution after initial UI unlock.
         void restorePromise
           .then((lateSession) => {
@@ -220,6 +307,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 `[AuthProvider ${instanceId.current}] Restored user after timeout in ${Date.now() - startupStartedAt}ms:`,
                 lateSession.user.id
               );
+              void logDiagnosticEvent('auth_startup_restore_late_success', {
+                elapsedMs: Date.now() - startupStartedAt,
+              });
               setUser(lateSession.user);
             }
           })
