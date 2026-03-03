@@ -175,10 +175,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             delayMs: STARTUP_ACTIVE_RECOVERY_DELAY_MS,
           });
           try {
+            let activeRecoveryTimeoutId: ReturnType<typeof setTimeout> | null = null;
             const recoveredSession = await Promise.race([
               AuthService.restoreSession(),
               new Promise<null>((resolve) =>
-                setTimeout(() => {
+                (activeRecoveryTimeoutId = setTimeout(() => {
                   console.warn(
                     `[Auth] startup_active_recovery_timeout timeout_ms=${STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS}`
                   );
@@ -186,9 +187,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     timeoutMs: STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS,
                   });
                   resolve(null);
-                }, STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS)
+                }, STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS))
               ),
             ]);
+            if (activeRecoveryTimeoutId) {
+              clearTimeout(activeRecoveryTimeoutId);
+            }
 
             if (recoveredSession?.user) {
               console.log('[Auth] startup_active_recovery_success user_id=', recoveredSession.user.id);
@@ -268,10 +272,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log(`[AuthProvider ${instanceId.current}] Loading user...`);
       const restorePromise = AuthService.restoreSession();
+      let startupTimeoutId: ReturnType<typeof setTimeout> | null = null;
       const session = await Promise.race([
         restorePromise,
         new Promise<null>((resolve) =>
-          setTimeout(() => {
+          (startupTimeoutId = setTimeout(() => {
             console.warn(
               `[AuthProvider ${instanceId.current}] Startup auth timed out after ${STARTUP_AUTH_TIMEOUT_MS}ms`
             );
@@ -279,9 +284,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               timeoutMs: STARTUP_AUTH_TIMEOUT_MS,
             });
             resolve(null);
-          }, STARTUP_AUTH_TIMEOUT_MS)
+          }, STARTUP_AUTH_TIMEOUT_MS))
         ),
       ]);
+      if (startupTimeoutId) {
+        clearTimeout(startupTimeoutId);
+      }
 
       if (session) {
         console.log(
@@ -330,12 +338,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
+    void logDiagnosticEvent('auth_password_login_begin');
     try {
       const { user: loggedInUser } = await AuthService.login(email, password);
       setUser(loggedInUser);
+      void logDiagnosticEvent('auth_password_login_success');
       return true;
     } catch (error) {
       console.error('Login failed:', error);
+      void logDiagnosticEvent('auth_password_login_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   };
