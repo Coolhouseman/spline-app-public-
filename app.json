@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
-      "buildNumber": "41",
+      "buildNumber": "42",
       "infoPlist": {
         "FacebookAppID": "933543809238060",
         "FacebookClientToken": "8d6c6f52607a2af2a6f592c09c3475ff",
@@ -53,7 +53,7 @@
     },
     "android": {
       "package": "com.splitpaymentapp.split",
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/adaptive-icon.png",

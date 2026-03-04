@@ -36,7 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const previousUiStateRef = useRef<string | null>(null);
   const isLoadingRef = useRef(true);
   const startupRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startupRecoveryInFlightRef = useRef(false);
+  const restoreGenerationRef = useRef(0);
+  const restoreInFlightRef = useRef(false);
   const STARTUP_ACTIVE_RECOVERY_DELAY_MS = 3000;
   const STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS = 6000;
 
@@ -163,55 +164,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (isLoadingRef.current) {
         clearStartupRecoveryTimer();
-        startupRecoveryTimerRef.current = setTimeout(async () => {
-          if (!isLoadingRef.current || startupRecoveryInFlightRef.current) {
-            return;
-          }
-          startupRecoveryInFlightRef.current = true;
-          console.warn(
-            `[Auth] startup_active_recovery_begin delay_ms=${STARTUP_ACTIVE_RECOVERY_DELAY_MS}`
-          );
-          void logDiagnosticEvent('auth_startup_active_recovery_begin', {
-            delayMs: STARTUP_ACTIVE_RECOVERY_DELAY_MS,
-          });
-          try {
-            let activeRecoveryTimeoutId: ReturnType<typeof setTimeout> | null = null;
-            const recoveredSession = await Promise.race([
-              AuthService.restoreSession(),
-              new Promise<null>((resolve) =>
-                (activeRecoveryTimeoutId = setTimeout(() => {
-                  console.warn(
-                    `[Auth] startup_active_recovery_timeout timeout_ms=${STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS}`
-                  );
-                  void logDiagnosticEvent('auth_startup_active_recovery_timeout', {
-                    timeoutMs: STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS,
-                  });
-                  resolve(null);
-                }, STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS))
-              ),
-            ]);
-            if (activeRecoveryTimeoutId) {
-              clearTimeout(activeRecoveryTimeoutId);
+
+        if (restoreInFlightRef.current) {
+          console.log('[Auth] startup_active_recovery_skipped reason=restore_in_flight');
+          void logDiagnosticEvent('auth_restore_skipped_inflight', { reason: 'active_recovery' });
+        } else {
+          startupRecoveryTimerRef.current = setTimeout(async () => {
+            if (!isLoadingRef.current) {
+              return;
+            }
+            if (restoreInFlightRef.current) {
+              console.log('[Auth] startup_active_recovery_skipped_at_fire reason=restore_in_flight');
+              void logDiagnosticEvent('auth_restore_skipped_inflight', { reason: 'active_recovery_at_fire' });
+              return;
             }
 
-            if (recoveredSession?.user) {
-              console.log('[Auth] startup_active_recovery_success user_id=', recoveredSession.user.id);
-              void logDiagnosticEvent('auth_startup_active_recovery_success', { hasUser: true });
-              setUser(recoveredSession.user);
-            } else {
-              console.log('[Auth] startup_active_recovery_no_session forcing_ui_unlock=true');
-              void logDiagnosticEvent('auth_startup_active_recovery_empty', { hasUser: false });
-            }
-          } catch (error) {
-            console.error('[Auth] startup_active_recovery_error:', error);
-            void logDiagnosticEvent('auth_startup_active_recovery_error', {
-              error: error instanceof Error ? error.message : String(error),
+            const generation = ++restoreGenerationRef.current;
+            restoreInFlightRef.current = true;
+            console.warn(
+              `[Auth] startup_active_recovery_begin delay_ms=${STARTUP_ACTIVE_RECOVERY_DELAY_MS} generation=${generation}`
+            );
+            void logDiagnosticEvent('auth_startup_active_recovery_begin', {
+              delayMs: STARTUP_ACTIVE_RECOVERY_DELAY_MS,
+              generation,
             });
-          } finally {
-            startupRecoveryInFlightRef.current = false;
-            setIsLoading(false);
-          }
-        }, STARTUP_ACTIVE_RECOVERY_DELAY_MS);
+            try {
+              let activeRecoveryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+              const recoveredSession = await Promise.race([
+                AuthService.restoreSession(),
+                new Promise<null>((resolve) =>
+                  (activeRecoveryTimeoutId = setTimeout(() => {
+                    console.warn(
+                      `[Auth] startup_active_recovery_timeout timeout_ms=${STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS}`
+                    );
+                    void logDiagnosticEvent('auth_startup_active_recovery_timeout', {
+                      timeoutMs: STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS,
+                    });
+                    resolve(null);
+                  }, STARTUP_ACTIVE_RECOVERY_TIMEOUT_MS))
+                ),
+              ]);
+              if (activeRecoveryTimeoutId) {
+                clearTimeout(activeRecoveryTimeoutId);
+              }
+
+              if (generation !== restoreGenerationRef.current) {
+                console.log(`[Auth] active_recovery_stale_ignored generation=${generation} current=${restoreGenerationRef.current}`);
+                void logDiagnosticEvent('auth_restore_stale_ignored', { generation, current: restoreGenerationRef.current, source: 'active_recovery' });
+                return;
+              }
+
+              if (recoveredSession?.user) {
+                console.log('[Auth] startup_active_recovery_success user_id=', recoveredSession.user.id);
+                void logDiagnosticEvent('auth_startup_active_recovery_success', { hasUser: true });
+                setUser(recoveredSession.user);
+              } else {
+                console.log('[Auth] startup_active_recovery_no_session forcing_ui_unlock=true');
+                void logDiagnosticEvent('auth_startup_active_recovery_empty', { hasUser: false });
+              }
+            } catch (error) {
+              console.error('[Auth] startup_active_recovery_error:', error);
+              void logDiagnosticEvent('auth_startup_active_recovery_error', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            } finally {
+              if (generation === restoreGenerationRef.current) {
+                restoreInFlightRef.current = false;
+              }
+              setIsLoading(false);
+            }
+          }, STARTUP_ACTIVE_RECOVERY_DELAY_MS);
+        }
       }
 
       if (!signupInProgressRef.current) {
@@ -240,7 +263,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoadingRef.current = isLoading;
     if (!isLoading) {
       clearStartupRecoveryTimer();
-      startupRecoveryInFlightRef.current = false;
     }
   }, [isLoading]);
 
@@ -259,6 +281,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isLoading, isSigningUp, user]);
 
   const loadUser = async () => {
+    const generation = ++restoreGenerationRef.current;
+    restoreInFlightRef.current = true;
     const startupStartedAt = Date.now();
     const HARD_STARTUP_UNLOCK_MS = 12000;
     const hardUnlockTimer = setTimeout(() => {
@@ -270,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, HARD_STARTUP_UNLOCK_MS);
 
     try {
-      console.log(`[AuthProvider ${instanceId.current}] Loading user...`);
+      console.log(`[AuthProvider ${instanceId.current}] Loading user... generation=${generation}`);
       const restorePromise = AuthService.restoreSession();
       let startupTimeoutId: ReturnType<typeof setTimeout> | null = null;
       const session = await Promise.race([
@@ -291,6 +315,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(startupTimeoutId);
       }
 
+      if (generation !== restoreGenerationRef.current) {
+        console.log(`[Auth] restore_stale_ignored generation=${generation} current=${restoreGenerationRef.current}`);
+        void logDiagnosticEvent('auth_restore_stale_ignored', { generation, current: restoreGenerationRef.current });
+        return;
+      }
+
       if (session) {
         console.log(
           `[AuthProvider ${instanceId.current}] Restored user in ${Date.now() - startupStartedAt}ms:`,
@@ -307,9 +337,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void logDiagnosticEvent('auth_startup_restore_empty', {
           elapsedMs: Date.now() - startupStartedAt,
         });
-        // Keep listening for a late session resolution after initial UI unlock.
         void restorePromise
           .then((lateSession) => {
+            if (generation !== restoreGenerationRef.current) {
+              console.log(`[Auth] late_restore_stale_ignored generation=${generation} current=${restoreGenerationRef.current}`);
+              void logDiagnosticEvent('auth_late_restore_stale_ignored', { generation, current: restoreGenerationRef.current });
+              return;
+            }
             if (lateSession?.user) {
               console.log(
                 `[AuthProvider ${instanceId.current}] Restored user after timeout in ${Date.now() - startupStartedAt}ms:`,
@@ -328,10 +362,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load user:', error);
     } finally {
+      if (generation === restoreGenerationRef.current) {
+        restoreInFlightRef.current = false;
+      }
       clearTimeout(hardUnlockTimer);
-      // Never block first paint forever waiting on auth/network.
       console.log(
-        `[AuthProvider ${instanceId.current}] Startup auth path finished in ${Date.now() - startupStartedAt}ms`
+        `[AuthProvider ${instanceId.current}] Startup auth path finished in ${Date.now() - startupStartedAt}ms generation=${generation}`
       );
       setIsLoading(false);
     }

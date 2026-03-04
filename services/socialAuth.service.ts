@@ -30,7 +30,7 @@ const generateUniqueId = (): string => {
 
 const OAUTH_INIT_TIMEOUT_MS = 12000;
 const OAUTH_BROWSER_TIMEOUT_MS = 45000;
-const OAUTH_SESSION_TIMEOUT_MS = 35000;
+const OAUTH_SESSION_TIMEOUT_MS = 15000;
 
 const withTimeout = async <T>(
   promise: Promise<T>,
@@ -51,24 +51,6 @@ const withTimeout = async <T>(
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
-  }
-};
-
-const withTimeoutRetry = async <T>(
-  run: () => Promise<T>,
-  timeoutMs: number,
-  stage: string
-): Promise<T> => {
-  try {
-    return await withTimeout(run(), timeoutMs, stage);
-  } catch (error: any) {
-    const message = error?.message || '';
-    if (!message.includes('timed out')) {
-      throw error;
-    }
-    console.warn(`[Google Sign-In] ${stage} timed out, retrying once...`);
-    void logDiagnosticEvent('google_oauth_stage_retry', { stage, timeoutMs });
-    return withTimeout(run(), timeoutMs, `${stage}_retry`);
   }
 };
 
@@ -220,8 +202,9 @@ export const SocialAuthService = {
       
       if (accessToken && refreshToken) {
         console.log('[Google Sign-In] Got tokens from hash fragment, setting session...');
-        const { data: sessionData, error: sessionError } = await withTimeoutRetry(
-          () => supabase.auth.setSession({
+        void logDiagnosticEvent('google_oauth_set_session_begin', { flow: 'tokens' });
+        const { data: sessionData, error: sessionError } = await withTimeout(
+          supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           }),
@@ -257,8 +240,9 @@ export const SocialAuthService = {
       
       if (code) {
         console.log('[Google Sign-In] Got authorization code, exchanging for session...');
-        const { data: sessionData, error: exchangeError } = await withTimeoutRetry(
-          () => supabase.auth.exchangeCodeForSession(code),
+        void logDiagnosticEvent('google_oauth_exchange_code_begin', { flow: 'pkce' });
+        const { data: sessionData, error: exchangeError } = await withTimeout(
+          supabase.auth.exchangeCodeForSession(code),
           OAUTH_SESSION_TIMEOUT_MS,
           'google_exchange_code'
         );
@@ -286,10 +270,10 @@ export const SocialAuthService = {
         );
       }
       
-      // Fallback: Check current session (in case tokens were set automatically)
       console.log('[Google Sign-In] No tokens/code in URL, checking current session...');
-      const { data: { session }, error: getSessionError } = await withTimeoutRetry(
-        () => supabase.auth.getSession(),
+      void logDiagnosticEvent('google_oauth_get_session_fallback_begin', { flow: 'fallback' });
+      const { data: { session }, error: getSessionError } = await withTimeout(
+        supabase.auth.getSession(),
         OAUTH_SESSION_TIMEOUT_MS,
         'google_get_session_fallback'
       );
@@ -330,7 +314,7 @@ export const SocialAuthService = {
         void logDiagnosticEvent('google_oauth_timeout', { message });
         return {
           success: false,
-          error: 'Google Sign-In timed out. Please reopen the app and try again.',
+          error: 'Google Sign-In timed out. Please try again.',
         };
       }
       void logDiagnosticEvent('google_oauth_unhandled_error', { message });

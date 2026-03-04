@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus, Pressable, Alert, Share } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus, Alert, Share } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -32,6 +32,8 @@ const SPLASH_COLORS = {
   dark: '#1e40af',
 };
 const LINKING_INITIAL_URL_TIMEOUT_MS = 2500;
+const DIAGNOSTIC_TAP_THRESHOLD = 6;
+const DIAGNOSTIC_TAP_WINDOW_MS = 1800;
 
 const LightNavTheme = {
   ...DefaultTheme,
@@ -62,6 +64,8 @@ function RootNavigator() {
   const clearSignupOverlayRef = React.useRef(clearSignupOverlay);
   const activeStartupUnlockTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
+  const diagnosticsTapCountRef = React.useRef(0);
+  const diagnosticsTapWindowTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     clearSignupOverlayRef.current = clearSignupOverlay;
@@ -188,20 +192,43 @@ function RootNavigator() {
     }
   };
 
+  const handleHiddenDiagnosticsTap = () => {
+    diagnosticsTapCountRef.current += 1;
+    if (diagnosticsTapWindowTimerRef.current) {
+      clearTimeout(diagnosticsTapWindowTimerRef.current);
+    }
+    diagnosticsTapWindowTimerRef.current = setTimeout(() => {
+      diagnosticsTapCountRef.current = 0;
+      diagnosticsTapWindowTimerRef.current = null;
+    }, DIAGNOSTIC_TAP_WINDOW_MS);
+
+    if (diagnosticsTapCountRef.current >= DIAGNOSTIC_TAP_THRESHOLD) {
+      diagnosticsTapCountRef.current = 0;
+      if (diagnosticsTapWindowTimerRef.current) {
+        clearTimeout(diagnosticsTapWindowTimerRef.current);
+        diagnosticsTapWindowTimerRef.current = null;
+      }
+      void handleDiagnosticsPress();
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (diagnosticsTapWindowTimerRef.current) {
+        clearTimeout(diagnosticsTapWindowTimerRef.current);
+        diagnosticsTapWindowTimerRef.current = null;
+      }
+    };
+  }, []);
+
   if (isLoading && !forceUnlocked) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
-        <Text style={styles.loadingText}>Loading...</Text>
-        <Pressable
-          onPress={handleDiagnosticsPress}
-          style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
-        >
-          <Text style={styles.diagnosticsButtonText}>
-            {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
-          </Text>
-        </Pressable>
+        <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
+          {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}
+        </Text>
       </View>
     );
   }
@@ -224,15 +251,9 @@ function RootNavigator() {
       {isSigningUp && (
         <View style={[styles.loading, styles.overlay, { backgroundColor: colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light }]}>
           <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>Creating your account...</Text>
-          <Pressable
-            onPress={handleDiagnosticsPress}
-            style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
-          >
-            <Text style={styles.diagnosticsButtonText}>
-              {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
-            </Text>
-          </Pressable>
+          <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
+            {isExportingDiagnostics ? 'Loading diagnostics...' : 'Creating your account...'}
+          </Text>
         </View>
       )}
     </View>
@@ -341,6 +362,8 @@ function AppContent() {
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
   const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
   const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
+  const diagnosticsTapCountRef = React.useRef(0);
+  const diagnosticsTapWindowTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handleUrl = async (event: { url: string }) => {
@@ -387,6 +410,35 @@ function AppContent() {
     }
   };
 
+  const handleHiddenDiagnosticsTap = () => {
+    diagnosticsTapCountRef.current += 1;
+    if (diagnosticsTapWindowTimerRef.current) {
+      clearTimeout(diagnosticsTapWindowTimerRef.current);
+    }
+    diagnosticsTapWindowTimerRef.current = setTimeout(() => {
+      diagnosticsTapCountRef.current = 0;
+      diagnosticsTapWindowTimerRef.current = null;
+    }, DIAGNOSTIC_TAP_WINDOW_MS);
+
+    if (diagnosticsTapCountRef.current >= DIAGNOSTIC_TAP_THRESHOLD) {
+      diagnosticsTapCountRef.current = 0;
+      if (diagnosticsTapWindowTimerRef.current) {
+        clearTimeout(diagnosticsTapWindowTimerRef.current);
+        diagnosticsTapWindowTimerRef.current = null;
+      }
+      void handleDiagnosticsPress();
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (diagnosticsTapWindowTimerRef.current) {
+        clearTimeout(diagnosticsTapWindowTimerRef.current);
+        diagnosticsTapWindowTimerRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: splashBg }]}>
       <KeyboardProvider>
@@ -397,15 +449,9 @@ function AppContent() {
           fallback={
             <View style={[styles.loading, { backgroundColor: splashBg }]}>
               <ActivityIndicator size="large" color="#FFFFFF" />
-              <Text style={styles.loadingText}>Loading...</Text>
-              <Pressable
-                onPress={handleDiagnosticsPress}
-                style={({ pressed }) => [styles.diagnosticsButton, { opacity: pressed ? 0.8 : 1 }]}
-              >
-                <Text style={styles.diagnosticsButtonText}>
-                  {isExportingDiagnostics ? 'Preparing diagnostics...' : 'Export diagnostics'}
-                </Text>
-              </Pressable>
+              <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
+                {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}
+              </Text>
             </View>
           }
           onReady={notifyReady}
@@ -501,19 +547,5 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 999,
-  },
-  diagnosticsButton: {
-    marginTop: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  diagnosticsButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
   },
 });
