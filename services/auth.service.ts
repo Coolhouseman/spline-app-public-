@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 import { ReferralsService } from './referrals.service';
 import { resolveBackendOrigin } from '@/utils/backend';
+import { logDiagnosticEvent } from './diagnostics.service';
 
 export interface SignupData {
   name: string;
@@ -212,10 +213,20 @@ export class AuthService {
   }
 
   static async restoreSession(): Promise<{ user: User; session: any } | null> {
+    const restoreStartedAt = Date.now();
     try {
+      void logDiagnosticEvent('auth_restore_session_begin');
       const { data: { session }, error } = await supabase.auth.getSession();
+      void logDiagnosticEvent('auth_restore_session_get_session_complete', {
+        elapsedMs: Date.now() - restoreStartedAt,
+        hasSession: Boolean(session?.user),
+      });
       
       if (error) {
+        void logDiagnosticEvent('auth_restore_session_get_session_error', {
+          elapsedMs: Date.now() - restoreStartedAt,
+          error: error.message,
+        });
         if (error.message?.includes('Refresh Token') || error.message?.includes('Invalid')) {
           await supabase.auth.signOut();
         }
@@ -223,6 +234,9 @@ export class AuthService {
       }
       
       if (!session || !session.user) {
+        void logDiagnosticEvent('auth_restore_session_no_session', {
+          elapsedMs: Date.now() - restoreStartedAt,
+        });
         return null;
       }
 
@@ -231,19 +245,38 @@ export class AuthService {
         .select('*')
         .eq('id', session.user.id)
         .single();
+      void logDiagnosticEvent('auth_restore_session_profile_fetch_complete', {
+        elapsedMs: Date.now() - restoreStartedAt,
+        hasProfile: Boolean(profile),
+      });
 
-      if (!profile) return null;
+      if (!profile) {
+        void logDiagnosticEvent('auth_restore_session_profile_missing', {
+          elapsedMs: Date.now() - restoreStartedAt,
+        });
+        return null;
+      }
 
       // Check if profile is complete (has phone and DOB)
       // Incomplete profiles from social auth need to complete signup flow
       const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
       if (!isProfileComplete) {
         console.log('[AuthService] Profile incomplete (missing phone/DOB), not restoring session');
+        void logDiagnosticEvent('auth_restore_session_profile_incomplete', {
+          elapsedMs: Date.now() - restoreStartedAt,
+        });
         return null;
       }
 
+      void logDiagnosticEvent('auth_restore_session_success', {
+        elapsedMs: Date.now() - restoreStartedAt,
+      });
       return { user: profile as User, session };
     } catch (error: any) {
+      void logDiagnosticEvent('auth_restore_session_error', {
+        elapsedMs: Date.now() - restoreStartedAt,
+        error: error?.message ?? String(error),
+      });
       if (error?.message?.includes('Refresh Token') || error?.message?.includes('Invalid')) {
         try {
           await supabase.auth.signOut();

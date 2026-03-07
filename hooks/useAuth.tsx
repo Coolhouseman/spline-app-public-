@@ -25,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const isMountedRef = useRef(true);
   const userSetBySignup = useRef(false);
   const instanceId = useRef(Date.now());
   const STARTUP_AUTH_TIMEOUT_MS = 8000;
@@ -82,73 +83,128 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void logDiagnosticEvent('auth_signup_flow_start', { reason });
   };
 
-  useEffect(() => {
-    console.log(`[AuthProvider ${instanceId.current}] Mounted`);
-    loadUser();
-    
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State changed:', event, 'signupInProgress:', signupInProgressRef.current, 'userSetBySignup:', userSetBySignup.current);
-      
-      // Skip ALL auth state changes during active signup
-      if (signupInProgressRef.current) {
-        console.log('[Auth] Skipping - signup in progress');
-        return;
-      }
-      
-      // For SIGNED_OUT, verify there's actually no session before clearing user
-      if (event === 'SIGNED_OUT') {
-        if (userSetBySignup.current) {
-          console.log('[Auth] SIGNED_OUT but userSetBySignup is true, verifying session...');
-          const { data: { session: currentSession } } = await supabase.auth.getSession();
-          if (currentSession?.user) {
-            console.log('[Auth] Session still valid, ignoring spurious SIGNED_OUT');
-            return;
-          }
-        }
-        console.log('[Auth] Processing SIGNED_OUT - clearing user');
-        setUser(null);
-        userSetBySignup.current = false;
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        if (userSetBySignup.current) {
-          console.log('[Auth] Skipping SIGNED_IN - user already set by signup');
+  const processAuthStateChange = async (event: string, session: any) => {
+    const authStateStartedAt = Date.now();
+    console.log(
+      '[Auth] State changed:',
+      event,
+      'signupInProgress:',
+      signupInProgressRef.current,
+      'userSetBySignup:',
+      userSetBySignup.current
+    );
+    void logDiagnosticEvent('auth_state_change_received', {
+      event,
+      hasSessionUser: Boolean(session?.user),
+      signupInProgress: signupInProgressRef.current,
+      userSetBySignup: userSetBySignup.current,
+    });
+
+    if (!isMountedRef.current) {
+      void logDiagnosticEvent('auth_state_change_ignored_unmounted', { event });
+      return;
+    }
+
+    // Skip ALL auth state changes during active signup
+    if (signupInProgressRef.current) {
+      console.log('[Auth] Skipping - signup in progress');
+      void logDiagnosticEvent('auth_state_change_skipped_signup', { event });
+      return;
+    }
+
+    // For SIGNED_OUT, verify there's actually no session before clearing user
+    if (event === 'SIGNED_OUT') {
+      if (userSetBySignup.current) {
+        console.log('[Auth] SIGNED_OUT but userSetBySignup is true, verifying session...');
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.user) {
+          console.log('[Auth] Session still valid, ignoring spurious SIGNED_OUT');
+          void logDiagnosticEvent('auth_state_change_signed_out_ignored_valid_session', {
+            elapsedMs: Date.now() - authStateStartedAt,
+          });
           return;
         }
-        const { data: profile } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile) {
-          // Check if profile is complete (has phone and DOB)
-          const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
-          if (!isProfileComplete) {
-            console.log('[Auth] Profile incomplete (missing phone/DOB), not setting user - needs profile completion');
-            return;
-          }
-          setUser(profile as User);
-        }
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile) {
-          // Check if profile is complete (has phone and DOB)
-          const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
-          if (!isProfileComplete) {
-            console.log('[Auth] Profile incomplete on token refresh, not updating user');
-            return;
-          }
-          setUser(profile as User);
-        }
       }
+      console.log('[Auth] Processing SIGNED_OUT - clearing user');
+      if (!isMountedRef.current) {
+        void logDiagnosticEvent('auth_state_change_ignored_unmounted', { event, phase: 'signed_out' });
+        return;
+      }
+      setUser(null);
+      userSetBySignup.current = false;
+      void logDiagnosticEvent('auth_state_change_signed_out_applied', {
+        elapsedMs: Date.now() - authStateStartedAt,
+      });
+      return;
+    }
+
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      if (event === 'SIGNED_IN' && userSetBySignup.current) {
+        console.log('[Auth] Skipping SIGNED_IN - user already set by signup');
+        void logDiagnosticEvent('auth_state_change_skipped_user_set_by_signup', { event });
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!profile) {
+        void logDiagnosticEvent('auth_state_change_profile_missing', {
+          event,
+          elapsedMs: Date.now() - authStateStartedAt,
+        });
+        return;
+      }
+
+      const isProfileComplete = Boolean(profile.phone && profile.date_of_birth);
+      if (!isProfileComplete) {
+        if (event === 'SIGNED_IN') {
+          console.log('[Auth] Profile incomplete (missing phone/DOB), not setting user - needs profile completion');
+        } else {
+          console.log('[Auth] Profile incomplete on token refresh, not updating user');
+        }
+        void logDiagnosticEvent('auth_state_change_profile_incomplete', {
+          event,
+          elapsedMs: Date.now() - authStateStartedAt,
+        });
+        return;
+      }
+
+      if (!isMountedRef.current) {
+        void logDiagnosticEvent('auth_state_change_ignored_unmounted', { event, phase: 'set_user' });
+        return;
+      }
+      setUser(profile as User);
+      void logDiagnosticEvent('auth_state_change_user_applied', {
+        event,
+        elapsedMs: Date.now() - authStateStartedAt,
+      });
+    }
+  };
+
+  useEffect(() => {
+    console.log(`[AuthProvider ${instanceId.current}] Mounted`);
+    isMountedRef.current = true;
+    loadUser();
+    
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setTimeout(() => {
+        void processAuthStateChange(event, session).catch((error) => {
+          console.error('[Auth] Auth state handler failed:', error);
+          void logDiagnosticEvent('auth_state_change_handler_error', {
+            event,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }, 0);
     });
 
     return () => {
       console.log(`[AuthProvider ${instanceId.current}] Unmounting`);
+      isMountedRef.current = false;
       clearSignupWatchdog();
       signupInProgressRef.current = false;
       signupStartedAtRef.current = null;
