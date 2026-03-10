@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
+import * as SplashScreen from "expo-splash-screen";
 import {
   getTrackingPermissionsAsync,
   requestTrackingPermissionsAsync,
@@ -35,6 +36,10 @@ const LINKING_INITIAL_URL_TIMEOUT_MS = 2500;
 const DIAGNOSTIC_TAP_THRESHOLD = 6;
 const DIAGNOSTIC_TAP_WINDOW_MS = 1800;
 
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn("[Startup] Failed to prevent native splash auto-hide:", error);
+});
+
 const LightNavTheme = {
   ...DefaultTheme,
   colors: {
@@ -51,9 +56,26 @@ const DarkNavTheme = {
   },
 };
 
+function useHideNativeSplashOnLayout() {
+  const hasHiddenSplashRef = React.useRef(false);
+
+  return React.useCallback(() => {
+    if (hasHiddenSplashRef.current) {
+      return;
+    }
+    hasHiddenSplashRef.current = true;
+    requestAnimationFrame(() => {
+      void SplashScreen.hideAsync().catch((error) => {
+        console.warn("[Startup] Failed to hide native splash screen:", error);
+      });
+    });
+  }, []);
+}
+
 function RootNavigator() {
   const { user, isLoading, isSigningUp, clearSignupOverlay } = useAuth();
   const colorScheme = useColorScheme();
+  const handleAppFrameLayout = useHideNativeSplashOnLayout();
   const [forceUnlocked, setForceUnlocked] = React.useState(false);
   const STARTUP_FORCE_UNLOCK_MS = 12000;
   const SIGNUP_OVERLAY_FORCE_UNLOCK_MS = 15000;
@@ -224,7 +246,7 @@ function RootNavigator() {
   if (isLoading && !forceUnlocked) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
-      <View style={[styles.loading, { backgroundColor: splashBg }]}>
+      <View onLayout={handleAppFrameLayout} style={[styles.loading, { backgroundColor: splashBg }]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
           {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}
@@ -236,7 +258,7 @@ function RootNavigator() {
   console.log('RootNavigator rendering: user is', user ? 'authenticated' : 'null');
 
   return (
-    <View style={{ flex: 1 }}>
+    <View onLayout={handleAppFrameLayout} style={{ flex: 1 }}>
       <Stack.Navigator 
         key={user ? 'authenticated' : 'unauthenticated'}
         screenOptions={{ headerShown: false }}
@@ -361,6 +383,7 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
   const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
+  const handleNavigationFallbackLayout = useHideNativeSplashOnLayout();
   const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
   const diagnosticsTapCountRef = React.useRef(0);
   const diagnosticsTapWindowTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -447,7 +470,7 @@ function AppContent() {
           theme={navTheme}
           linking={linking}
           fallback={
-            <View style={[styles.loading, { backgroundColor: splashBg }]}>
+            <View onLayout={handleNavigationFallbackLayout} style={[styles.loading, { backgroundColor: splashBg }]}>
               <ActivityIndicator size="large" color="#FFFFFF" />
               <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
                 {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}

@@ -41,3 +41,4 @@ server/dist/
 # Service account keys
 *-*.json
 spline-*.json
+!package-lock.json
