@@ -16,7 +16,12 @@ type NotificationType =
   | 'split_completed' 
   | 'payment_reminder'
   | 'payment_received'
-  | 'split_cancelled';
+  | 'split_cancelled'
+  | 'peer_payment_request'
+  | 'peer_payment_paid'
+  | 'peer_payment_received'
+  | 'peer_payment_declined'
+  | 'peer_payment_cancelled';
 
 function handleNotificationNavigation(data: Record<string, any> | undefined, delayMs: number = 0) {
   const notificationType = data?.type as NotificationType | undefined;
@@ -73,6 +78,29 @@ function handleNotificationNavigation(data: Record<string, any> | undefined, del
           });
           break;
 
+        case 'peer_payment_request':
+        case 'peer_payment_paid':
+        case 'peer_payment_received':
+        case 'peer_payment_declined':
+        case 'peer_payment_cancelled':
+          if (data?.peerPaymentId) {
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'PeerPaymentRequestDetail',
+                params: { peerPaymentId: data.peerPaymentId },
+              },
+            });
+          } else {
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'Notifications',
+              },
+            });
+          }
+          break;
+
         case 'payment_reminder':
           console.log('[PushNotification] Deep linking to Notifications for payment reminder');
           RootNavigation.navigate('Main', {
@@ -99,6 +127,14 @@ function handleNotificationNavigation(data: Record<string, any> | undefined, del
               screen: 'FriendsTab',
               params: {
                 screen: 'Friends',
+              },
+            });
+          } else if (data?.peerPaymentId) {
+            RootNavigation.navigate('Main', {
+              screen: 'HomeTab',
+              params: {
+                screen: 'PeerPaymentRequestDetail',
+                params: { peerPaymentId: data.peerPaymentId },
               },
             });
           } else {

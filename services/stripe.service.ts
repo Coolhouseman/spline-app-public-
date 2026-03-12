@@ -476,4 +476,49 @@ export class StripeService {
       return { success: false, error: error.message || 'Network error' };
     }
   }
+
+  static async processWalletPayment(
+    amount: number,
+    type: string,
+    description: string,
+    metadata?: Record<string, unknown>
+  ): Promise<{ success: boolean; new_balance?: number; transaction_id?: string; error?: string }> {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
+      const response = await fetch(`${SERVER_URL}/api/stripe/process-wallet-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          amount,
+          type,
+          description,
+          metadata: metadata || {},
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to process wallet payment',
+        };
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('Wallet payment API error:', error);
+      return { success: false, error: error.message || 'Network error' };
+    }
+  }
 }

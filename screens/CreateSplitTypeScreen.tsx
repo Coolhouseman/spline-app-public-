@@ -20,6 +20,10 @@ export default function CreateSplitTypeScreen({ navigation }: Props) {
     navigation.navigate('CreateSplitSelectFriends', { splitType: type });
   };
 
+  const handlePeerToPeer = () => {
+    navigation.navigate('PeerPaymentMode');
+  };
+
   return (
     <ScreenScrollView contentContainerStyle={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.xl }]}>
@@ -79,6 +83,28 @@ export default function CreateSplitTypeScreen({ navigation }: Props) {
           </ThemedText>
           <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center' }]}>
             Upload a receipt and let each person pay their own share
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.typeCard,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+              opacity: pressed ? 0.7 : 1
+            }
+          ]}
+          onPress={handlePeerToPeer}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: theme.primary + '15' }]}>
+            <Feather name="repeat" size={32} color={theme.primary} />
+          </View>
+          <ThemedText style={[Typography.h2, { color: theme.text, marginTop: Spacing.lg, marginBottom: Spacing.sm }]}>
+            Peer to Peer
+          </ThemedText>
+          <ThemedText style={[Typography.body, { color: theme.textSecondary, textAlign: 'center' }]}>
+            Pay one friend directly or request one friend to pay you
           </ThemedText>
         </Pressable>
       </ThemedView>

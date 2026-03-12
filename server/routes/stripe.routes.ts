@@ -571,4 +571,90 @@ router.post('/process-split-payment', userAuthMiddleware, async (req: Authentica
   }
 });
 
+router.post('/process-wallet-payment', userAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const { amount, type, description, metadata } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Amount must be greater than zero' });
+    }
+
+    if (!type) {
+      return res.status(400).json({ success: false, error: 'Transaction type is required' });
+    }
+
+    const { data: wallet, error: walletError } = await supabaseAdmin
+      .from('wallets')
+      .select('id, balance')
+      .eq('user_id', userId)
+      .single();
+
+    if (walletError || !wallet) {
+      console.error('Wallet not found:', walletError);
+      return res.status(400).json({ success: false, error: 'Wallet not found' });
+    }
+
+    const currentBalance = parseFloat(wallet.balance?.toString() || '0');
+    if (currentBalance < amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Insufficient balance',
+        current_balance: currentBalance,
+      });
+    }
+
+    const newBalance = currentBalance - amount;
+
+    const { error: updateError } = await supabaseAdmin
+      .from('wallets')
+      .update({
+        balance: newBalance,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', wallet.id)
+      .eq('balance', currentBalance);
+
+    if (updateError) {
+      console.error('Failed to update wallet:', updateError);
+      return res.status(500).json({ success: false, error: 'Failed to update wallet balance' });
+    }
+
+    const { data: transaction, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type,
+        amount,
+        description: description || 'Wallet payment',
+        direction: 'out',
+        metadata: metadata || {},
+      })
+      .select('id')
+      .single();
+
+    if (txError) {
+      console.error('Failed to log transaction:', txError);
+      await supabaseAdmin
+        .from('wallets')
+        .update({ balance: currentBalance })
+        .eq('id', wallet.id);
+      return res.status(500).json({ success: false, error: 'Failed to log transaction' });
+    }
+
+    res.json({
+      success: true,
+      new_balance: newBalance,
+      transaction_id: transaction.id,
+    });
+  } catch (error: any) {
+    console.error('Error processing wallet payment:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

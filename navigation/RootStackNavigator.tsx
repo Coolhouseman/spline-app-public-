@@ -6,6 +6,9 @@ import NotificationsScreen from '@/screens/NotificationsScreen';
 import CreateSplitSelectFriendsScreen from '@/screens/CreateSplitSelectFriendsScreen';
 import CreateSplitTypeScreen from '@/screens/CreateSplitTypeScreen';
 import CreateSplitDetailsScreen from '@/screens/CreateSplitDetailsScreen';
+import PeerPaymentModeScreen from '@/screens/PeerPaymentModeScreen';
+import PeerPaymentCreateScreen from '@/screens/PeerPaymentCreateScreen';
+import PeerPaymentRequestDetailScreen from '@/screens/PeerPaymentRequestDetailScreen';
 import { useTheme } from '@/hooks/useTheme';
 import { getCommonScreenOptions } from './screenOptions';
 
@@ -45,6 +48,21 @@ export default function RootStackNavigator() {
         name="CreateSplitDetails" 
         component={CreateSplitDetailsScreen}
         options={{ title: 'Event Details' }}
+      />
+      <Stack.Screen
+        name="PeerPaymentMode"
+        component={PeerPaymentModeScreen}
+        options={{ headerShown: false, presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="PeerPaymentCreate"
+        component={PeerPaymentCreateScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PeerPaymentRequestDetail"
+        component={PeerPaymentRequestDetailScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

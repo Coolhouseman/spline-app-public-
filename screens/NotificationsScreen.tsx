@@ -158,6 +158,19 @@ export default function NotificationsScreen({ navigation }: Props) {
           navigation.goBack();
         }
         break;
+      case 'peer_payment_request':
+      case 'peer_payment_paid':
+      case 'peer_payment_received':
+      case 'peer_payment_declined':
+      case 'peer_payment_cancelled': {
+        const peerPaymentId = (notification.metadata as any)?.peer_payment_id;
+        if (peerPaymentId) {
+          navigation.navigate('PeerPaymentRequestDetail', { peerPaymentId });
+        } else {
+          navigation.goBack();
+        }
+        break;
+      }
       case 'payment_reminder':
         navigation.goBack();
         break;

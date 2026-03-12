@@ -56,26 +56,54 @@ const DarkNavTheme = {
   },
 };
 
-function useHideNativeSplashOnLayout() {
-  const hasHiddenSplashRef = React.useRef(false);
+const splashHiddenRef = { current: false };
 
-  return React.useCallback(() => {
-    if (hasHiddenSplashRef.current) {
-      return;
-    }
-    hasHiddenSplashRef.current = true;
-    requestAnimationFrame(() => {
-      void SplashScreen.hideAsync().catch((error) => {
-        console.warn("[Startup] Failed to hide native splash screen:", error);
-      });
+function hideNativeSplash() {
+  if (splashHiddenRef.current) return;
+  splashHiddenRef.current = true;
+  requestAnimationFrame(() => {
+    void SplashScreen.hideAsync().catch((error) => {
+      console.warn("[Startup] Failed to hide native splash screen:", error);
     });
-  }, []);
+  });
+}
+
+const MAX_SPLASH_VISIBLE_MS = 5000;
+setTimeout(() => {
+  if (!splashHiddenRef.current) {
+    console.warn(`[Startup] Safety: hiding splash after ${MAX_SPLASH_VISIBLE_MS}ms`);
+    hideNativeSplash();
+  }
+}, MAX_SPLASH_VISIBLE_MS);
+
+const STARTUP_MESSAGES = [
+  'Security check...',
+  'Loading...',
+  'Building environment...',
+  'Almost there...',
+];
+const STARTUP_MESSAGE_INTERVAL_MS = 1800;
+
+function useStartupMessage() {
+  const [index, setIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    if (index >= STARTUP_MESSAGES.length - 1) return;
+
+    const timer = setTimeout(() => {
+      setIndex((prev) => Math.min(prev + 1, STARTUP_MESSAGES.length - 1));
+    }, STARTUP_MESSAGE_INTERVAL_MS);
+
+    return () => clearTimeout(timer);
+  }, [index]);
+
+  return STARTUP_MESSAGES[index];
 }
 
 function RootNavigator() {
   const { user, isLoading, isSigningUp, clearSignupOverlay } = useAuth();
   const colorScheme = useColorScheme();
-  const handleAppFrameLayout = useHideNativeSplashOnLayout();
+  const startupMessage = useStartupMessage();
   const [forceUnlocked, setForceUnlocked] = React.useState(false);
   const STARTUP_FORCE_UNLOCK_MS = 12000;
   const SIGNUP_OVERLAY_FORCE_UNLOCK_MS = 15000;
@@ -246,10 +274,10 @@ function RootNavigator() {
   if (isLoading && !forceUnlocked) {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
-      <View onLayout={handleAppFrameLayout} style={[styles.loading, { backgroundColor: splashBg }]}>
+      <View style={[styles.loading, { backgroundColor: splashBg }]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
-          {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}
+          {isExportingDiagnostics ? 'Loading diagnostics...' : startupMessage}
         </Text>
       </View>
     );
@@ -258,7 +286,7 @@ function RootNavigator() {
   console.log('RootNavigator rendering: user is', user ? 'authenticated' : 'null');
 
   return (
-    <View onLayout={handleAppFrameLayout} style={{ flex: 1 }}>
+    <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
       <Stack.Navigator 
         key={user ? 'authenticated' : 'unauthenticated'}
         screenOptions={{ headerShown: false }}
@@ -383,7 +411,6 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
   const navTheme = colorScheme === 'dark' ? DarkNavTheme : LightNavTheme;
-  const handleNavigationFallbackLayout = useHideNativeSplashOnLayout();
   const [isExportingDiagnostics, setIsExportingDiagnostics] = React.useState(false);
   const diagnosticsTapCountRef = React.useRef(0);
   const diagnosticsTapWindowTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -470,7 +497,7 @@ function AppContent() {
           theme={navTheme}
           linking={linking}
           fallback={
-            <View onLayout={handleNavigationFallbackLayout} style={[styles.loading, { backgroundColor: splashBg }]}>
+            <View style={[styles.loading, { backgroundColor: splashBg }]}>
               <ActivityIndicator size="large" color="#FFFFFF" />
               <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
                 {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}

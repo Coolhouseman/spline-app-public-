@@ -34,6 +34,24 @@ export interface SplitEvent {
   participants?: SplitParticipant[];
 }
 
+export interface PeerPayment {
+  id: string;
+  requester_id: string;
+  payer_id: string;
+  recipient_id: string;
+  title: string;
+  amount: number;
+  direction: 'pay_friend' | 'request_payment';
+  status: 'pending' | 'processing' | 'paid' | 'declined' | 'cancelled';
+  receipt_image?: string | null;
+  created_at: string;
+  updated_at: string;
+  paid_at?: string | null;
+  requester?: User;
+  payer?: User;
+  recipient?: User;
+}
+
 export interface SplitParticipant {
   id: string;
   split_event_id: string;
@@ -69,7 +87,14 @@ export interface Wallet {
 export interface Transaction {
   id: string;
   user_id: string;
-  type: 'deposit' | 'withdrawal' | 'split_payment' | 'split_received';
+  type:
+    | 'deposit'
+    | 'withdrawal'
+    | 'split_payment'
+    | 'split_received'
+    | 'peer_payment_sent'
+    | 'peer_payment_received'
+    | 'card_charge';
   amount: number;
   description: string;
   direction: 'in' | 'out';
@@ -83,6 +108,10 @@ export interface Transaction {
     bank_account_number?: string;
     bank_name?: string;
     account_holder_name?: string;
+    peer_payment_id?: string;
+    counterparty_id?: string;
+    counterparty_name?: string;
+    title?: string;
   };
   created_at: string;
 }
@@ -90,7 +119,22 @@ export interface Transaction {
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'split_invite' | 'split_accepted' | 'split_declined' | 'split_paid' | 'payment_received' | 'split_completed' | 'friend_request' | 'friend_accepted' | 'payment_reminder';
+  type:
+    | 'split_invite'
+    | 'split_accepted'
+    | 'split_declined'
+    | 'split_paid'
+    | 'payment_received'
+    | 'split_completed'
+    | 'split_cancelled'
+    | 'friend_request'
+    | 'friend_accepted'
+    | 'payment_reminder'
+    | 'peer_payment_request'
+    | 'peer_payment_paid'
+    | 'peer_payment_received'
+    | 'peer_payment_declined'
+    | 'peer_payment_cancelled';
   title: string;
   message: string;
   split_event_id?: string;
@@ -100,6 +144,11 @@ export interface Notification {
     amount?: string;
     creator_name?: string;
     sender_name?: string;
+    peer_payment_id?: string;
+    requester_id?: string;
+    payer_id?: string;
+    recipient_id?: string;
+    title?: string;
   };
   read: boolean;
   created_at: string;

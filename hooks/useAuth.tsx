@@ -4,7 +4,7 @@ import { User } from '@/shared/types';
 import { AuthService, SignupData } from '@/services/auth.service';
 import { generateUniqueId } from '@/utils/storage';
 import { logDiagnosticEvent } from '@/services/diagnostics.service';
-import { supabase } from '@/services/supabase';
+import { supabase, activateAutoRefresh } from '@/services/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -426,6 +426,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `[AuthProvider ${instanceId.current}] Startup auth path finished in ${Date.now() - startupStartedAt}ms generation=${generation}`
       );
       setIsLoading(false);
+      activateAutoRefresh();
     }
   };
 

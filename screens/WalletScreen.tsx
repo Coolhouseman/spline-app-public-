@@ -329,6 +329,12 @@ export default function WalletScreen({ navigation }: Props) {
         return 'credit-card';
       case 'split_received':
         return 'trending-up';
+      case 'peer_payment_sent':
+        return 'send';
+      case 'peer_payment_received':
+        return 'arrow-down-left';
+      case 'card_charge':
+        return 'credit-card';
       default:
         return 'dollar-sign';
     }
@@ -338,9 +344,12 @@ export default function WalletScreen({ navigation }: Props) {
     switch (type) {
       case 'deposit':
       case 'split_received':
+      case 'peer_payment_received':
         return theme.success;
       case 'withdrawal':
       case 'split_payment':
+      case 'peer_payment_sent':
+      case 'card_charge':
         return theme.danger;
       default:
         return theme.textSecondary;

@@ -219,7 +219,14 @@ export class WalletService {
    */
   private static async logTransaction(
     userId: string,
-    type: 'deposit' | 'withdrawal' | 'split_payment' | 'split_received',
+    type:
+      | 'deposit'
+      | 'withdrawal'
+      | 'split_payment'
+      | 'split_received'
+      | 'peer_payment_sent'
+      | 'peer_payment_received'
+      | 'card_charge',
     amount: number,
     description: string,
     direction: 'in' | 'out',
@@ -1723,6 +1730,185 @@ export class WalletService {
     }
     
     return { transaction: payerTransaction, xpResult };
+  }
+
+  static async payPeerPayment(
+    userId: string,
+    peerPaymentId: string | null,
+    amount: number,
+    recipientId: string,
+    recipientName: string,
+    title: string
+  ): Promise<{ transaction: Transaction }> {
+    if (amount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    const wallet = await this.ensureWalletExists(userId);
+    const currentBalance = await this.getCurrentBalance(userId);
+    const walletPayment = Math.min(currentBalance, amount);
+    const cardPayment = amount - walletPayment;
+
+    const {
+      data: payerUser,
+      error: payerUserError,
+    } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .single();
+
+    if (payerUserError) {
+      throw new Error('Failed to load payer details');
+    }
+
+    if (
+      cardPayment > 0 &&
+      (!wallet.bank_connected || !wallet.stripe_customer_id || !wallet.stripe_payment_method_id)
+    ) {
+      throw new Error(
+        `Insufficient wallet balance ($${currentBalance.toFixed(2)}). ` +
+          `Add a payment card to pay the remaining $${cardPayment.toFixed(2)}.`
+      );
+    }
+
+    let walletTransactionId: string | null = null;
+    const payerDescription = `You've paid ${recipientName} via peer to peer payment method`;
+    const metadata = {
+      peer_payment_id: peerPaymentId,
+      counterparty_id: recipientId,
+      counterparty_name: recipientName,
+      title,
+    };
+
+    if (walletPayment > 0) {
+      const walletResult = await StripeService.processWalletPayment(
+        walletPayment,
+        'peer_payment_sent',
+        payerDescription,
+        metadata
+      );
+
+      if (!walletResult.success) {
+        throw new Error(walletResult.error || 'Wallet deduction was declined');
+      }
+
+      walletTransactionId = walletResult.transaction_id || null;
+    }
+
+    if (cardPayment > 0) {
+      try {
+        const chargeResult = await StripeService.chargeCard(
+          wallet.stripe_customer_id!,
+          wallet.stripe_payment_method_id!,
+          cardPayment,
+          `Peer payment: ${title}`,
+          {
+            user_id: userId,
+            recipient_id: recipientId,
+            peer_payment_id: peerPaymentId || '',
+            type: 'peer_payment_sent',
+          }
+        );
+
+        if (!chargeResult.success) {
+          if (walletTransactionId && walletPayment > 0) {
+            const { error } = await supabase.rpc('process_deposit', {
+              p_user_id: userId,
+              p_amount: walletPayment,
+              p_description: `Refund: ${title} (card payment failed)`,
+            });
+            if (error) {
+              throw new Error(`Critical: Failed to refund wallet after card failure: ${error.message}`);
+            }
+          }
+          throw new Error('Card payment failed. No charges were made.');
+        }
+
+        const { error: cardChargeLogError } = await supabase.rpc('log_transaction_rpc', {
+          p_user_id: userId,
+          p_type: 'card_charge',
+          p_amount: cardPayment,
+          p_description: `Card charged for peer payment: ${title}`,
+          p_direction: 'out',
+          p_split_event_id: null,
+          p_metadata: {
+            source: 'stripe_card',
+            stripe_payment_intent_id: chargeResult.paymentIntentId,
+            payment_type: 'peer_payment_card_payment',
+            peer_payment_id: peerPaymentId,
+            counterparty_id: recipientId,
+            counterparty_name: recipientName,
+            title,
+          },
+        });
+
+        if (cardChargeLogError) {
+          console.error('Failed to log peer payment card charge:', cardChargeLogError);
+        }
+      } catch (cardError) {
+        if (walletTransactionId && walletPayment > 0) {
+          const { error } = await supabase.rpc('process_deposit', {
+            p_user_id: userId,
+            p_amount: walletPayment,
+            p_description: `Refund: ${title} (card payment failed)`,
+          });
+          if (error) {
+            throw new Error(`Critical: Failed to refund wallet after card failure: ${error.message}`);
+          }
+        }
+        throw cardError;
+      }
+    }
+
+    const { data: creditResult, error: creditError } = await supabase.rpc('credit_peer_payment_wallet', {
+      p_recipient_id: recipientId,
+      p_amount: amount,
+      p_title: title,
+      p_peer_payment_id: peerPaymentId,
+      p_sender_id: userId,
+      p_sender_name: payerUser?.name || 'Someone',
+    });
+
+    if (creditError || !creditResult?.success) {
+      throw new Error(creditError?.message || creditResult?.error || 'Failed to credit recipient wallet');
+    }
+
+    let payerTransaction: Transaction;
+    if (cardPayment > 0) {
+      payerTransaction = await this.logTransaction(
+        userId,
+        'peer_payment_sent',
+        cardPayment,
+        payerDescription,
+        'out',
+        undefined,
+        metadata
+      );
+    } else if (walletTransactionId) {
+      const { data: existingTx } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', walletTransactionId)
+        .single();
+
+      payerTransaction = existingTx
+        ? (existingTx as Transaction)
+        : ({
+            id: walletTransactionId,
+            user_id: userId,
+            type: 'peer_payment_sent',
+            amount: walletPayment,
+            description: payerDescription,
+            direction: 'out',
+            metadata,
+            created_at: new Date().toISOString(),
+          } as Transaction);
+    } else {
+      throw new Error('No payment was processed');
+    }
+
+    return { transaction: payerTransaction };
   }
 
   static async getTransactions(userId: string): Promise<Transaction[]> {
