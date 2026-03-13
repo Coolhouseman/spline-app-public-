@@ -218,6 +218,17 @@ export default function PeerPaymentRequestDetailScreen({ navigation, route }: Pr
           </View>
         ) : null}
 
+        {peerPayment.message ? (
+          <View style={[styles.receiptCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
+              Message
+            </ThemedText>
+            <ThemedText style={[Typography.body, { color: theme.text }]}>
+              {peerPayment.message}
+            </ThemedText>
+          </View>
+        ) : null}
+
         {role === 'payer' && isPending ? (
           <View style={styles.actions}>
             <Pressable

@@ -40,6 +40,7 @@ export interface PeerPayment {
   payer_id: string;
   recipient_id: string;
   title: string;
+  message?: string | null;
   amount: number;
   direction: 'pay_friend' | 'request_payment';
   status: 'pending' | 'processing' | 'paid' | 'declined' | 'cancelled';

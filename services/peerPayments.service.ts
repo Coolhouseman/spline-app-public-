@@ -26,6 +26,7 @@ interface PayFriendInput extends ReceiptInput {
   payerId: string;
   recipientId: string;
   title: string;
+  message?: string;
   amount: number;
 }
 
@@ -104,7 +105,7 @@ export class PeerPaymentsService {
       extensionFromPath(input.receiptUri) ||
       'jpg'
     );
-    const filePath = `peer-payments/receipt-${Date.now()}.${fileExt}`;
+    const filePath = `receipts/peer-payment-${Date.now()}.${fileExt}`;
     const contentType = input.receiptMimeType || mimeTypeFromExtension(fileExt);
 
     let uploadData: ArrayBuffer | Blob;
@@ -117,21 +118,26 @@ export class PeerPaymentsService {
       uploadData = await response.blob();
     } else {
       if (!input.receiptUri) throw new Error('Missing receipt image data');
-      const base64 = await FileSystem.readAsStringAsync(input.receiptUri, {
-        encoding: 'base64',
-      });
-      uploadData = decode(base64);
+      try {
+        const response = await fetch(input.receiptUri);
+        uploadData = await response.arrayBuffer();
+      } catch {
+        const base64 = await FileSystem.readAsStringAsync(input.receiptUri, {
+          encoding: 'base64',
+        });
+        uploadData = decode(base64);
+      }
     }
 
     const { error } = await supabase.storage
       .from('user-uploads')
       .upload(filePath, uploadData, {
         contentType,
-        upsert: true,
       });
 
     if (error) {
-      throw new Error('Failed to upload receipt');
+      console.error('[PeerPayments] Receipt upload failed:', error);
+      throw new Error(error.message || 'Failed to upload receipt');
     }
 
     const { data } = supabase.storage.from('user-uploads').getPublicUrl(filePath);
@@ -257,6 +263,7 @@ export class PeerPaymentsService {
     const title = input.title.trim();
     if (!title) throw new Error('Please enter a title');
     if (input.amount <= 0) throw new Error('Amount must be greater than zero');
+    const message = input.message?.trim() || null;
 
     const receiptUrl = await this.uploadReceipt(input);
 
@@ -295,6 +302,7 @@ export class PeerPaymentsService {
         payer_id: input.payerId,
         recipient_id: input.recipientId,
         title,
+        message,
         amount: input.amount,
         direction: 'pay_friend',
         status: 'paid',
@@ -332,6 +340,7 @@ export class PeerPaymentsService {
         payer_id: input.payerId,
         recipient_id: input.recipientId,
         title,
+        message,
         amount: input.amount,
         direction: 'pay_friend',
         status: 'paid',

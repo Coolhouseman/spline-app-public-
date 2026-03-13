@@ -24,6 +24,8 @@ import { BorderRadius, Spacing, Typography } from '@/constants/theme';
 
 type Props = NativeStackScreenProps<any, 'PeerPaymentCreate'>;
 
+const QUICK_EMOJI_MESSAGES = ['🎉 Thanks!', '🍕 For dinner', '☕ Coffee on me', '💸 Sent with love', '🙏 Appreciate you'];
+
 interface FriendWithDetails {
   id: string;
   user_id: string;
@@ -51,6 +53,7 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
+  const [message, setMessage] = useState('');
   const [receiptImage, setReceiptImage] = useState<string | undefined>();
   const [receiptBase64, setReceiptBase64] = useState<string | undefined>();
   const [receiptMimeType, setReceiptMimeType] = useState<string | undefined>();
@@ -180,6 +183,7 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
           payerId: user.id,
           recipientId: selectedFriend.friend_id,
           title: title.trim(),
+          message,
           amount: parsedAmount,
           receiptUri: receiptImage,
           receiptBase64,
@@ -380,6 +384,54 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
           </ThemedText>
         </Pressable>
 
+        {mode === 'pay' ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <ThemedText style={[Typography.body, { color: theme.textSecondary }]}>
+                Add a Message
+              </ThemedText>
+              <ThemedText style={[Typography.caption, { color: theme.textSecondary }]}>
+                Optional
+              </ThemedText>
+            </View>
+
+            <TextInput
+              style={[
+                styles.messageInput,
+                { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border },
+              ]}
+              placeholder="Say something nice... emojis welcome"
+              placeholderTextColor={theme.textSecondary}
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              textAlignVertical="top"
+              maxLength={180}
+            />
+
+            <View style={styles.emojiRow}>
+              {QUICK_EMOJI_MESSAGES.map((item) => (
+                <Pressable
+                  key={item}
+                  style={({ pressed }) => [
+                    styles.emojiChip,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                  onPress={() => setMessage((prev) => (prev ? `${prev} ${item}`.trim() : item))}
+                >
+                  <ThemedText style={[Typography.caption, { color: theme.text }]}>
+                    {item}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
+
         <Pressable
           style={({ pressed }) => [
             styles.submitButton,
@@ -516,6 +568,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
+  },
+  messageInput: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    fontSize: 16,
+    minHeight: 110,
+  },
+  emojiRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  emojiChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   submitButton: {
     marginTop: Spacing['2xl'],

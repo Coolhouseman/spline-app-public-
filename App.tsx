@@ -68,7 +68,7 @@ function hideNativeSplash() {
   });
 }
 
-const MAX_SPLASH_VISIBLE_MS = 5000;
+const MAX_SPLASH_VISIBLE_MS = 1200;
 setTimeout(() => {
   if (!splashHiddenRef.current) {
     console.warn(`[Startup] Safety: hiding splash after ${MAX_SPLASH_VISIBLE_MS}ms`);
