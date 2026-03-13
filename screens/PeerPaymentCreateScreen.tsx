@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
@@ -58,6 +59,7 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
   const [receiptBase64, setReceiptBase64] = useState<string | undefined>();
   const [receiptMimeType, setReceiptMimeType] = useState<string | undefined>();
   const [receiptFileName, setReceiptFileName] = useState<string | undefined>();
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
 
   useEffect(() => {
     const loadFriends = async () => {
@@ -352,7 +354,9 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
 
         {receiptImage ? (
           <View style={styles.receiptPreviewContainer}>
-            <Image source={{ uri: receiptImage }} style={styles.receiptPreview} />
+            <Pressable onPress={() => setImageViewerVisible(true)}>
+              <Image source={{ uri: receiptImage }} style={styles.receiptPreview} />
+            </Pressable>
             <Pressable
               style={[styles.removeReceiptButton, { backgroundColor: theme.surface }]}
               onPress={() => {
@@ -364,6 +368,12 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
             >
               <Feather name="trash-2" size={16} color={theme.danger} />
             </Pressable>
+            <View style={styles.zoomHint}>
+              <Feather name="maximize-2" size={14} color="#FFFFFF" />
+              <ThemedText style={[Typography.caption, styles.zoomHintText]}>
+                Tap to enlarge
+              </ThemedText>
+            </View>
           </View>
         ) : null}
 
@@ -452,6 +462,22 @@ export default function PeerPaymentCreateScreen({ navigation, route }: Props) {
           )}
         </Pressable>
       </ScreenKeyboardAwareScrollView>
+
+      <Modal
+        visible={imageViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageViewerVisible(false)}
+      >
+        <Pressable style={styles.imageModalBackdrop} onPress={() => setImageViewerVisible(false)}>
+          <Pressable style={styles.imageModalClose} onPress={() => setImageViewerVisible(false)}>
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </Pressable>
+          {receiptImage ? (
+            <Image source={{ uri: receiptImage }} style={styles.fullImage} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -550,6 +576,21 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: BorderRadius.sm,
   },
+  zoomHint: {
+    position: 'absolute',
+    right: Spacing.sm,
+    bottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 999,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  zoomHintText: {
+    color: '#FFFFFF',
+    marginLeft: Spacing.xs,
+  },
   removeReceiptButton: {
     position: 'absolute',
     top: Spacing.sm,
@@ -568,6 +609,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
+  },
+  imageModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  imageModalClose: {
+    position: 'absolute',
+    top: 56,
+    right: 24,
+    zIndex: 1,
+    padding: Spacing.sm,
+  },
+  fullImage: {
+    width: '100%',
+    height: '80%',
   },
   messageInput: {
     borderWidth: 1,

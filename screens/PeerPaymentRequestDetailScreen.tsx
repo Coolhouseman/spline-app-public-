@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, Pressable, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, Image, Alert, ActivityIndicator, Modal } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -31,6 +31,7 @@ export default function PeerPaymentRequestDetailScreen({ navigation, route }: Pr
   const [peerPayment, setPeerPayment] = useState<PeerPaymentRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
 
   const loadPeerPayment = useCallback(async () => {
     if (!user?.id) return;
@@ -214,7 +215,15 @@ export default function PeerPaymentRequestDetailScreen({ navigation, route }: Pr
             <ThemedText style={[Typography.h2, { color: theme.text, marginBottom: Spacing.md }]}>
               Invoice or Photo
             </ThemedText>
-            <Image source={{ uri: peerPayment.receipt_image }} style={styles.receiptImage} resizeMode="cover" />
+            <Pressable onPress={() => setImageViewerVisible(true)}>
+              <Image source={{ uri: peerPayment.receipt_image }} style={styles.receiptImage} resizeMode="cover" />
+              <View style={styles.zoomHint}>
+                <Feather name="maximize-2" size={14} color="#FFFFFF" />
+                <ThemedText style={[Typography.caption, styles.zoomHintText]}>
+                  Tap to enlarge
+                </ThemedText>
+              </View>
+            </Pressable>
           </View>
         ) : null}
 
@@ -295,6 +304,22 @@ export default function PeerPaymentRequestDetailScreen({ navigation, route }: Pr
           </View>
         ) : null}
       </ScreenScrollView>
+
+      <Modal
+        visible={imageViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageViewerVisible(false)}
+      >
+        <Pressable style={styles.imageModalBackdrop} onPress={() => setImageViewerVisible(false)}>
+          <Pressable style={styles.imageModalClose} onPress={() => setImageViewerVisible(false)}>
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </Pressable>
+          {peerPayment.receipt_image ? (
+            <Image source={{ uri: peerPayment.receipt_image }} style={styles.fullImage} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -353,6 +378,21 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: BorderRadius.sm,
   },
+  zoomHint: {
+    position: 'absolute',
+    right: Spacing.sm,
+    bottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 999,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  zoomHintText: {
+    color: '#FFFFFF',
+    marginLeft: Spacing.xs,
+  },
   actions: {
     marginTop: Spacing.xl,
   },
@@ -374,5 +414,23 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
     borderRadius: BorderRadius.sm,
     padding: Spacing.lg,
+  },
+  imageModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  imageModalClose: {
+    position: 'absolute',
+    top: 56,
+    right: 24,
+    zIndex: 1,
+    padding: Spacing.sm,
+  },
+  fullImage: {
+    width: '100%',
+    height: '80%',
   },
 });
