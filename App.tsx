@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, useColorScheme, Platform, ActivityIndicator, Text, AppState, AppStateStatus, Alert, Share } from "react-native";
+import { StyleSheet, View, useColorScheme, Platform, Text, AppState, AppStateStatus, Alert, Share } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -76,34 +76,12 @@ setTimeout(() => {
   }
 }, MAX_SPLASH_VISIBLE_MS);
 
-const STARTUP_MESSAGES = [
-  'Security check...',
-  'Loading...',
-  'Building environment...',
-  'Almost there...',
-];
-const STARTUP_MESSAGE_INTERVAL_MS = 1800;
-
-function useStartupMessage() {
-  const [index, setIndex] = React.useState(0);
-
-  React.useEffect(() => {
-    if (index >= STARTUP_MESSAGES.length - 1) return;
-
-    const timer = setTimeout(() => {
-      setIndex((prev) => Math.min(prev + 1, STARTUP_MESSAGES.length - 1));
-    }, STARTUP_MESSAGE_INTERVAL_MS);
-
-    return () => clearTimeout(timer);
-  }, [index]);
-
-  return STARTUP_MESSAGES[index];
-}
+/** Fake startup copy — no spinner, matches plain blue splash UX */
+const STARTUP_PLACEHOLDER_TEXT = 'Security check';
 
 function RootNavigator() {
   const { user, isLoading, isSigningUp, clearSignupOverlay } = useAuth();
   const colorScheme = useColorScheme();
-  const startupMessage = useStartupMessage();
   const [forceUnlocked, setForceUnlocked] = React.useState(false);
   const STARTUP_FORCE_UNLOCK_MS = 12000;
   const SIGNUP_OVERLAY_FORCE_UNLOCK_MS = 15000;
@@ -275,9 +253,8 @@ function RootNavigator() {
     const splashBg = colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
     return (
       <View style={[styles.loading, { backgroundColor: splashBg }]}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
-          {isExportingDiagnostics ? 'Loading diagnostics...' : startupMessage}
+          {isExportingDiagnostics ? 'Loading diagnostics...' : STARTUP_PLACEHOLDER_TEXT}
         </Text>
       </View>
     );
@@ -300,7 +277,6 @@ function RootNavigator() {
       {/* Overlay loading on top of navigator during signup - keeps navigator mounted */}
       {isSigningUp && (
         <View style={[styles.loading, styles.overlay, { backgroundColor: colorScheme === 'dark' ? SPLASH_COLORS.dark : SPLASH_COLORS.light }]}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
           <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
             {isExportingDiagnostics ? 'Loading diagnostics...' : 'Creating your account...'}
           </Text>
@@ -498,9 +474,8 @@ function AppContent() {
           linking={linking}
           fallback={
             <View style={[styles.loading, { backgroundColor: splashBg }]}>
-              <ActivityIndicator size="large" color="#FFFFFF" />
               <Text style={styles.loadingText} onPress={handleHiddenDiagnosticsTap}>
-                {isExportingDiagnostics ? 'Loading diagnostics...' : 'Loading...'}
+                {isExportingDiagnostics ? 'Loading diagnostics...' : STARTUP_PLACEHOLDER_TEXT}
               </Text>
             </View>
           }
@@ -585,10 +560,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
   },
   overlay: {
     position: 'absolute',

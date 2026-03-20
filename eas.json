@@ -15,7 +15,13 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": false
+      "autoIncrement": false,
+      "android": {
+        "image": "sdk-54",
+        "env": {
+          "GRADLE_OPTS": "-Xmx4096m -XX:MaxMetaspaceSize=512m"
+        }
+      }
     }
   },
   "submit": {

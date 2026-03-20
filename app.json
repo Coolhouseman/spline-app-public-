@@ -2,12 +2,14 @@
   "expo": {
     "name": "Spline",
     "slug": "spline",
-    "version": "1.3.2",
+    "version": "1.3.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "splitpaymentapp",
     "userInterfaceStyle": "automatic",
     "splash": {
+      "image": "./assets/images/splash-blank.png",
+      "resizeMode": "contain",
       "backgroundColor": "#2563EB"
     },
     "newArchEnabled": true,
@@ -23,7 +25,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.splitpaymentapp.split",
-      "buildNumber": "51",
+      "buildNumber": "52",
       "infoPlist": {
         "FacebookAppID": "933543809238060",
         "FacebookClientToken": "8d6c6f52607a2af2a6f592c09c3475ff",
@@ -56,11 +58,10 @@
     },
     "android": {
       "package": "com.splitpaymentapp.split",
-      "versionCode": 31,
+      "versionCode": 32,
       "adaptiveIcon": {
-        "backgroundColor": "#2563EB",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
@@ -80,6 +81,23 @@
     },
     "plugins": [
       "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "ios": {
+            "backgroundColor": "#2563EB",
+            "image": "./assets/images/splash-blank.png",
+            "resizeMode": "contain",
+            "imageWidth": 1
+          },
+          "android": {
+            "backgroundColor": "#2563EB",
+            "image": "./assets/images/splash-blank.png",
+            "resizeMode": "contain",
+            "imageWidth": 1
+          }
+        }
+      ],
       [
         "react-native-fbsdk-next",
         {
@@ -112,7 +130,8 @@
         {}
       ],
       "expo-mail-composer",
-      "./plugins/withAndroidGradleRepoFix"
+      "./plugins/withAndroidGradleRepoFix",
+      "./plugins/withAndroidGradleVersion"
     ],
     "experiments": {
       "reactCompiler": true
