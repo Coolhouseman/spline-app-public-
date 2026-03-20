@@ -68,7 +68,8 @@ Before you can submit for review, ensure:
 - **Main store listing:** App name, short description, full description, screenshots, icon, feature graphic. All required fields must be filled.
 - **Content rating:** Questionnaire completed and rating applied.
 - **Target audience:** Age group and store listing declarations set.
-- **Privacy policy:** URL set if your app collects user data.
+- **Privacy policy:** URL set if your app collects user data. Use a live HTTPS URL on your domain (not an old Replit URL). **Spline:** `https://www.spline.nz/privacy`
+- **Account deletion URL (Data safety):** Required when users can create an account. **Spline:** `https://www.spline.nz/delete-account` (form + instructions; also see `server/public/delete-account.html`).
 - **Ads declaration:** If the app shows ads, declare it in the appropriate section.
 - **Data safety:** Data types and usage described in the Data safety form.
 
